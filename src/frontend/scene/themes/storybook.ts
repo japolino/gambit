@@ -14,6 +14,7 @@
  * the corridor is an illustration framed in a gilt arch on the book's page.
  * Parallax: painting, cast (two depths) and the frame move with the pointer.
  */
+import { BOARD_SKINS } from "../board-skins.js";
 import { esc, seedOf, rng, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import {
   BRASS_CORNER, COIN, DEFS, DIVIDER, DIVIDER_KNOT, DLG_PAD, IRONKEY, NIB, PLATE_BAND, QUILL, ROSE, SATCHEL, SCROLL_BAND, SCROLL_END, SPOOL, TAB,
@@ -603,6 +604,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   }
 
   return {
+    boardSkin: BOARD_SKINS.storybook,
     render,
     key(e) {
       if (e.key === "Escape") {

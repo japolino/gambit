@@ -26,6 +26,8 @@ export interface PlanContext {
   composeInset(layout: InsetLayoutId, sourceUrl: string): Promise<InsetOutcome>;
   /** The browser crops a stored image; the result is stored as a new image. */
   cropImage(source: GenOutput, rect: PixelRect): Promise<GenOutput>;
+  /** Cut a figure out of its background in the browser (after an optional crop); the render as drawn when it cannot. */
+  cutImage(source: GenOutput, crop?: PixelRect): Promise<GenOutput>;
   /** Inset models NovelAI rejected this session (connection + model). */
   insetOff: Set<string>;
 }

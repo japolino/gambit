@@ -18,6 +18,8 @@ import type { DelveView, SceneView, ThemeId } from "../../shared/scene-view.js";
 import { SceneLayer3D, webglOk } from "./layer3d.js";
 import { drawCorridor2D } from "./corridor2d.js";
 import { FORGE_CSS, mountForgePanel } from "./forge-panel.js";
+import { BOARD_CSS, DEFAULT_SKIN, mountBoard, type BoardOp } from "./board.js";
+import { createPuppetDom } from "./puppet-dom.js";
 import { PIXEL_FONT_CSS } from "./pixel-font.js";
 import { THEME_FONTS_CSS } from "./fonts.js";
 import { prepareArt } from "../art/prepare.js";
@@ -39,14 +41,16 @@ export interface SceneActions {
   cite(personId: string, text: string): void;
   /** The class panel (M7). */
   forge(op: ForgeOp, arg?: string, arg2?: string, text?: string): void;
+  /** The expedition board: move, open a lore tile at a depth, camp, hold still, turn back. */
+  board(op: BoardOp, cell?: string, tier?: number): void;
 }
 
-export type MeanwhileItem = { text: string; art?: string; imageId?: string | null };
+export type MeanwhileItem = { text: string; art?: string; imageId?: string | null; /** The vignette drawn as its own scene, once ready. */ cg?: string };
 
 export interface SceneHandle {
   readonly chatId: string;
   setView(v: SceneView): void;
-  setArt(key: string, url: string, cutout?: boolean): void;
+  setArt(key: string, url: string, cutout?: boolean, face?: [number, number, number, number] | null): void;
   hide(): void;
   show(): void;
   destroy(): void;
@@ -106,6 +110,11 @@ const CSS = `
 .gs .mw-art.none { display: none; }
 .gs .mw-text { font: 22px/1.5 "Gambit Fell", "Palatino Linotype", Georgia, serif; text-align: center; color: #f1e6cf; min-height: 3em; margin: 0; }
 .gs .mw-card { display: grid; gap: 14px; width: 100%; animation: mwIn .5s ease; }
+.gs .album { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 6px 0 12px; }
+.gs .album figure { margin: 0; display: grid; gap: 4px; }
+.gs .album img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: zoom-in; }
+.gs .album img:focus, .gs .album img:hover { outline: 2px solid currentColor; outline-offset: 2px; }
+.gs .album figcaption { font-size: .78em; opacity: .8; line-height: 1.3; }
 .gs .mw-dots { display: flex; gap: 8px; justify-content: center; margin-top: 10px; } .gs .mw-dots i { width: 8px; height: 8px; transform: rotate(45deg); background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
 .gs .mw-hint { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
 .gs > .fg { z-index: 40; }
@@ -120,7 +129,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   el.className = "gs";
   el.setAttribute("data-gambit-stage", "scene");
   const style = document.createElement("style");
-  style.textContent = CSS + FORGE_CSS;
+  style.textContent = CSS + FORGE_CSS + BOARD_CSS;
   const th = document.createElement("div");
   th.className = "th";
   el.append(th);
@@ -133,14 +142,26 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   const flat = world.querySelector(".flat") as HTMLDivElement;
   const delve2d = world.querySelector(".delve2d") as HTMLCanvasElement;
 
-  const art = new Map<string, { url: string; cutout: boolean }>();
+  const art = new Map<string, { url: string; cutout: boolean; face?: [number, number, number, number] | null }>();
   let journalOpen = false;
   const classes = mountForgePanel(el, (op, x, y, text) => a.forge(op, x, y, text), (key) => art.get(key)?.url ?? null);
   let view = first;
   let destroyed = false;
+  // Cue's puppet warp on the people the themes draw as <img> (swapped in after each render, sync or async).
+  const puppets = createPuppetDom();
+  let puppetQueued = 0;
+  const puppetWatch = new MutationObserver(() => {
+    if (puppetQueued) return;
+    puppetQueued = requestAnimationFrame(() => {
+      puppetQueued = 0;
+      if (!destroyed) puppets.attach(el);
+    });
+  });
+  puppetWatch.observe(el, { childList: true, subtree: true });
   let hidden = false;
   let layer: SceneLayer3D | null = null;
   const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const board = mountBoard(el, (op, cell, tier) => a.board(op, cell, tier), reducedMotion, (key) => (key ? art.get(key) ?? null : null));
   const low = (() => {
     try {
       return localStorage.getItem("gambit.scene.low") === "1";
@@ -164,7 +185,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   ro.observe(world);
 
   const urlOf = (key: string | undefined | null) => (key ? art.get(key)?.url ?? null : null);
-  const personSrc = (p: SceneView["people"][number]) => (p.imageId ? { url: `/api/v1/images/${p.imageId}`, cutout: false } : art.get(p.art) ?? null);
+  // Their own cut-out figure first, then the card art (keyed or framed), then a drawn portrait.
+  const personSrc = (p: SceneView["people"][number]) => (p.figure ? art.get(p.figure) : undefined) ?? (p.imageId ? { url: `/api/v1/images/${p.imageId}`, cutout: false } : art.get(p.art) ?? null);
 
   /* ------------------------------ Pointer ------------------------------ */
   const ptr = { tx: 0, ty: 0, x: 0, y: 0 };
@@ -282,6 +304,13 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       list(j.items.map((x) => `<li><b>${esc(x.name)}</b>: ${esc(x.description)} <span class="muted">(from ${esc(x.from)})</span></li>`), "Nothing special yet."),
       `<h3>What you did</h3>`,
       list(j.deeds.map((d) => `<li>${esc(d)}</li>`), "Nothing yet."),
+      `<h3>Album</h3>`,
+      (() => {
+        const shots = j.album.map((a) => ({ a, url: urlOf(a.key) })).filter((x) => x.url);
+        return shots.length
+          ? `<div class="album">${shots.map(({ a, url }) => `<figure><img src="${esc(url!)}" alt="${esc(a.caption)}" loading="lazy"><figcaption>Day ${a.day}: ${esc(a.caption)}</figcaption></figure>`).join("")}</div>`
+          : `<div class="muted">${j.album.length ? "Being drawn…" : "Key moments will be drawn here."}</div>`;
+      })(),
     ].join("");
   }
 
@@ -477,6 +506,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     personArt(v, id, mode = "color", rows = 120) {
       const p = v.people.find((x) => x.id === id);
       const src = p ? personSrc(p) : null;
+      // A real cut-out (alpha) breathes and sways in every theme that shows it as an <img> (puppet-dom.ts).
+      if (src?.cutout && mode === "color") puppets.mark(src.url, (src as { face?: [number, number, number, number] | null }).face ?? null);
       return src ? preparedArt(src, mode, rows) : null;
     },
     dither: (url, rows) => ditherUrl(url, rows),
@@ -489,7 +520,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       coin: v.coin,
       currency: v.skin.currency || "coin",
       vigor: v.vigor,
-      ...(v.hex ? { supplies: { now: v.hex.supplies, max: v.hex.max } } : {}),
+      ...(v.board ? { supplies: { now: v.board.supplies, max: v.board.cap } } : v.hex ? { supplies: { now: v.hex.supplies, max: v.hex.max } } : {}),
       ...(v.thread ? { thread: { found: v.thread.found, total: v.thread.total, goal: v.thread.goal } } : {}),
     }),
     box(v) {
@@ -567,6 +598,11 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       current!.r.render(view);
     } catch (err) {
       console.error("[gambit] theme render", err);
+    }
+    try {
+      board.set(view, current?.r.boardSkin ?? DEFAULT_SKIN);
+    } catch (err) {
+      console.error("[gambit] board render", err);
     } finally {
       rendering = false;
     }
@@ -576,6 +612,10 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     if (el.classList.contains("gone") || view.busy || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (view.board) {
+      if (board.key(e)) e.preventDefault();
+      return;
+    }
     if (current?.r.key?.(e, view)) {
       e.preventDefault();
       return;
@@ -624,9 +664,10 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     const item = m.items![m.i];
     if (!item) return closeMeanwhile();
     m.box.classList.remove("waiting");
-    const url = item.imageId ? `/api/v1/images/${item.imageId}` : urlOf(item.art);
+    const cg = urlOf(item.cg);
+    const url = cg ?? (item.imageId ? `/api/v1/images/${item.imageId}` : urlOf(item.art));
     const body = m.box.querySelector(".mw-body")!;
-    body.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><p class="mw-text">${esc(item.text)}</p></div><div class="mw-dots">${m.items!.map((_, i) => `<i class="${i === m.i ? "on" : ""}"></i>`).join("")}</div>`;
+    body.innerHTML = `<div class="mw-card${cg ? " cg" : ""}"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><p class="mw-text">${esc(item.text)}</p></div><div class="mw-dots">${m.items!.map((_, i) => `<i class="${i === m.i ? "on" : ""}"></i>`).join("")}</div>`;
     m.box.querySelector(".mw-hint")!.textContent = m.i + 1 < m.items!.length ? "Tap to continue" : "Tap to wake";
     clearTimeout(m.timer);
     m.timer = window.setTimeout(() => {
@@ -645,14 +686,21 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       view = v;
       renderTheme();
     },
-    setArt(key, url, cutout = true) {
+    setArt(key, url, cutout = true, face) {
       const prev = art.get(key);
       if (prev?.url === url) return;
-      art.set(key, { url, cutout });
+      art.set(key, { url, cutout, ...(face !== undefined ? { face } : {}) });
       const v = view;
-      const used = key === v.place.art || v.tiles.some((t) => t.art === key) || v.people.some((p) => p.art === key) || key === v.delve?.textures.wall;
+      const used =
+        key === v.place.art ||
+        v.tiles.some((t) => t.art === key) ||
+        v.people.some((p) => p.art === key || p.figure === key) ||
+        key === v.delve?.textures.wall ||
+        !!v.board?.party.some((m) => m.art === key) ||
+        key === v.board?.map ||
+        key === v.board?.story?.art;
       if (used && !destroyed) renderTheme();
-      if (mw && mw.items?.[mw.i]?.art === key) paintMeanwhile();
+      if (mw && (mw.items?.[mw.i]?.art === key || mw.items?.[mw.i]?.cg === key)) paintMeanwhile();
       classes.art(key);
     },
     forge(v) {
@@ -693,8 +741,12 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       }
       frames.clear();
       ro.disconnect();
+      puppetWatch.disconnect();
+      if (puppetQueued) cancelAnimationFrame(puppetQueued);
+      puppets.destroy();
       layer?.destroy();
       classes.destroy();
+      board.destroy();
       el.remove();
       style.remove();
     },

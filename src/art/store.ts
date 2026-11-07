@@ -106,7 +106,7 @@ export interface IndexEntry extends GenOutput {
 export function cacheStore(store: JsonMapStore<GenOutput>): ArtCacheStore {
   return {
     get: (hash) => store.get(hash),
-    set: (hash, value) => store.set(hash, { imageId: value.imageId, url: value.url, cutout: value.cutout, ...(value.via ? { via: value.via } : {}) }),
+    set: (hash, value) => store.set(hash, { imageId: value.imageId, url: value.url, cutout: value.cutout, ...(value.via ? { via: value.via } : {}), ...(value.face !== undefined ? { face: value.face } : {}) }),
   };
 }
 

@@ -104,11 +104,11 @@ The Card Reader proposes the set. The player can switch any module on or off per
 3. a card in the user's library with the same name (Brannoc has his own card);
 4. a captioned image in the card's gallery.
 
-`engine/card/faces.ts` maps sprite labels to the six moods. It reads emotion words only, and skips actions and explicit variants. Sprites are shown as drawn, never keyed. Moods with no sprite are drawn from the base face with a NovelAI V4.5 character&style reference. The look's style words are left out so the reference sets the style, and there is no text-only fallback, because an off-model face is worse than the card's own. The V5 inset drew blanks from show-style card art. A rendered mood that comes back blank, or greyscale for a colourful character, is rejected in the browser and the base face stays.
+`engine/card/faces.ts` maps sprite labels to the six moods. It reads emotion words only, and skips actions and explicit variants. Sprites are shown as drawn, never keyed. Moods with no sprite are drawn from the character's figure (5.3a) with the V5 inset, or as a plain V5 render from their tags. Gambit does not use the NovelAI V4.5 reference: it gave flat, off-model results. A rendered mood that comes back blank, or greyscale for a colourful character, is rejected in the browser and the base face stays.
 
 An opaque base, such as a card avatar with its own background, is shown as a **framed portrait** (gilt rule, dark mat, the room softened behind it), and every mood shows inside the same frame. The art key carries the reference image, so a new avatar or sprite set never shows old renders. Characters with no art at all get Gambit portraits.
 
-When Inlay Illustrator is installed, Gambit reads its character library over the shared RPC pool (`inlay_illustrator.characters.<user>.<characterId>`): Inlay has already found who is on a card, tagged their appearance from its vision pass, and chosen their outfit and an on-model reference. Those tags ride in every drawn mood's caption (card art included), and Inlay's reference is the base for anyone who has no art of their own. Without Inlay, nothing changes. The look picker (5.2a) gains a **"match the card"** option that builds a look from the avatar's style.
+When Inlay Illustrator is installed, Gambit reads its character library over the shared RPC pool (`inlay_illustrator.characters.<user>.<characterId>`), and asks Inlay to profile anyone missing (5.3a): Inlay has already found who is on a card, tagged their appearance from its vision pass, and chosen their outfit and an on-model reference. Those tags ride in every drawn mood's caption (card art included), and Inlay's reference is the base for anyone who has no art of their own. Without Inlay, nothing changes. The look picker (5.2a) gains a **"match the card"** option that builds a look from the avatar's style.
 
 **Never in the way.**
 - Gambit is off until the player turns it on for a chat.
@@ -166,7 +166,7 @@ The Architect writes it when the NPC is created; it is stored as data:
 | Compelling | 3d20 keep highest |
 
    Then add `+ the character's stat` (Presence, Menace, or Guile depending on tactic) `+ Leverage (max +4)` against the **DC**. The DC comes from how big the ask is relative to what the NPC would accept, plus rapport.
-5. **Repetition decays.** Code compares the argument with earlier ones in the same Parley (word n-gram overlap, `src/engine/parley/similarity.ts`), and repeated arguments drop a tier. You cannot win by pasting the same speech.
+5. **Repetition decays.** Code compares the argument with earlier ones in the same Parley (word n-gram overlap, `src/engine/parley/similarity.ts`), and repeated arguments drop a tier. With an embedding connection the line is also embedded next to the earlier ones while the Referee reads it (`backend/referee-host.ts`): a near-paraphrase (cosine 0.86 and up) counts as repetition too, and the measure is stored on the read so a replay gives the same tier. You cannot win by pasting the same speech, or by rewording it.
 6. **Outcome tiers move the state track** for the contest (price, suspicion, morale, affection) and spend **patience**:
 
 | Result | Haggle effect | Patience |
@@ -421,11 +421,33 @@ The lock above is the 0.1 shape, not the goal. The goal is the same idea as Cue'
 | Fusion portraits | GPT Image edit with both parents as references | Blends the two outfits and motifs | Multiple references |
 | Item and skill icons | GPT Image **4×4 grid sheets** with the style anchor; code slices them | 16 icons per call, consistent in one sheet | Shared sheet plus anchor |
 | Icon placeholders | A curated ~300-icon subset of game-icons.net SVGs (CC BY 3.0, credited), inlined in the bundle and tinted in code | Instant; never wait for an icon | — |
+| A card character's **figure** (art kind `figure`) | NAI V5, transparent, full body, from the character's tags (Inlay's character tag, body and outfit tags when Inlay knows them) under the look's style tags; no reference image | The card's avatar is a framed picture; the figure is the same person standing, transparent, for scenes, board tokens, Parley and cut-ins | Character tags, fixed seed |
+| **CGs** (art kind `cg`) | NAI V5 with one character caption per person (their Inlay tags); a GPT Image edit with their figures first when GPT is connected | A wide illustration of a key moment | Character tags per person |
+| Expedition **board map** (art kind `map`) | GPT Image edit of the place's painting when GPT is there, else V5 top-down | The board lies on the place seen from above | The painting as a style reference |
 
 Notes:
 - **Expression sheets in one pass.** As an alternative to 6 edits, V5's full-page composition can render one 2×3 expression sheet of the same character, and code slices it. Identity is consistent inside one sheet, so it is cheaper and often more consistent. Both methods should be tried in the art spike (milestone 1).
 - **Typography is always code.** Skill names, damage numbers, and cut-in text are rendered in code, never baked into images.
 - **Avy's RPG Maker icon packs** were considered. Their style is low-resolution RTP-era and does not match the look, and their terms forbid reposting, so they are left out. Generated icons, with game-icons.net as the instant fallback, cover the need.
+
+### 5.3a Figures, the cut-out, and CGs
+
+- **Figures, not frames.** Everyone on the card who appears in a scene is drawn once as a full V5 figure with a transparent background, from their tags. No reference image is used. Scenes and the board show the figure when it is ready (card art meanwhile). Moods, poses and cut-in poses are then drawn *from the figure* with the V5 reference inset.
+- **Where the tags come from.**
+  1. **Inlay's character library**: character tag, head, eyes, body, outfit.
+  2. **Inlay, on request**: when the library lacks someone, Gambit publishes `gambit.inlay.wanted.<user>` with the card and the people, each with a description from the card. Then it reads `inlay_illustrator.profiles.<user>`. Inlay matches each person to a lorebook entry, or makes a custom character from the description. It runs its own text analysis, including the model's knowledge of a known character's Danbooru tag. Gambit polls the library until the profiles appear, for up to five minutes.
+  3. **The reader model**: without Inlay, or when Inlay finds nothing, a reader call (`meaning/figure-tags.ts`, ledger kind `figure-tags`) writes the character tag, sex and appearance tags from the card text. A miss is retried after five minutes.
+- **Figures move.** In every DOM theme, a figure that is a real cut-out is swapped for a canvas showing it through Cue's puppet rig (`frontend/scene/puppet-dom.ts`). It breathes, sways and turns its head, on one shared WebGL renderer, only while on screen, and not under reduced motion.
+  - **Parley:** a canvas follows the face's crossfading images and warps the ones that are cut-outs.
+    - The read drives the acting (`frontend/parley/acting.ts`). Irritated is angry with a huff; afraid is scared with a step back; tempted smiles and leans in; amused laughs; suspicious turns away; confused wonders.
+    - A caught bluff is a startle, then a step back.
+    - The head moves with the reply while it streams in.
+  - **3D themes:** in the diorama room and at the table, a cut-out person's plane becomes the rig's grid mesh (`frontend/scene/puppet-mesh.ts`), lit and shadowed as before.
+  - The battle stage has its own renderer over the rig.
+- **Tags change, the figure follows.** Gambit keeps a print of the tags each figure was drawn from (`art/figure-prints.json`). When someone's tags change, their figure is drawn again: Inlay profiled them, or the reader added their character tag. When Inlay's tags have no Danbooru character tag ("name (series)"), the reader's character tag and leading traits (species, size, build) go in front. Without the character tag, V5 draws a generic person from the traits, such as a tall demon for a small imp. Scenes and Parley ask for figures through the same prints (`backend/figure-prints.ts`). In Parley, a card person with no art of their own, such as a lorebook character, stands as their figure, not a separately drawn portrait. Their mood images are keyed by their tags, so new tags bring new moods.
+- **The cut-out runs in the browser.** ISNet-anime (fp16, 88 MB) on onnxruntime-web, WebGPU with a WASM fallback, in a worker, with a YOLOv8 anime face detector for the face box. It is vendored from Cue (`src/frontend/art/cutout`) with Cue's model store names, so a model Cue already downloaded on the same Lumiverse is reused. The backend asks for a cut with a pixel job (`art.pixels`, kind `cut`); a cut that comes back basic, with two figures, or with scenery falls back to the crop. No ComfyUI connection is needed.
+- **CGs for key moments.** A 2★ or 3★ story tile on the board, each Meanwhile vignette that shows someone or somewhere, the end of a Parley, and a promotion are each drawn as a wide CG with the people in it (their figures as references) at the place it happens. The story card and the montage show the CG when it is ready; finished CGs are posted to the chat as a picture with its caption, and the Journal keeps the last 24 in an **Album**.
+- **The board's map.** The board lies on the place seen from above (art kind `map`), with the place's painting as the room around it; turned tiles show the map under them.
 
 ### 5.4 Cut-ins
 
@@ -498,7 +520,7 @@ The Architect tags each monster with its rig type when designing it.
 - **Scene view** replaces a map: the place's painting (flat or in 3D, 6.2), the people in it, and a **menu** of what you can do there, with a slim HUD (party HP, time of day, coin). See 6.1.
 - **Mobile first-class.** The battle layout is designed for portrait orientation: enemy art on top, a timeline strip, then the party cards and action dial. Desktop gets a wider layout with the chat docked.
 - **Drawer tab** for the Journal (facts, quests, bestiary, codex) and settings.
-- **Audio:** hit, UI, and cut-in sounds are synthesized in WebAudio (sfxr-style recipes stored as data), with a few tiny clips inlined. Extensions cannot serve bundled files yet (8.1). Ambient loops and host TTS voices come later.
+- **Audio:** hit, UI, and cut-in sounds are synthesized in WebAudio (sfxr-style recipes stored as data), with a few tiny clips inlined. Extensions cannot serve bundled files yet (8.1). Voices come from the host's TTS (6.4); ambient loops come later.
 
 ### 6.1 Scenes and movement: menus, not a map
 
@@ -523,6 +545,13 @@ Choosing an item can also drop a suggested action into the chat input instead, s
 | Delve | **first-person grid**: step forward, turn left or right, with a command menu beside the view (Advance, Turn, Search, Light a torch, Use) and an automap that fills in as you walk | dungeon crawl |
 
 The command menu in a delve is also the input on phones: no swipe gestures to learn.
+
+**Expedition boards** (`src/engine/world/board.ts`, `src/meaning/board-deck.ts`, `src/frontend/scene/board.ts`). Any outdoor or dangerous place that is not a delve, and any wild overland cell, offers **Explore**: a small honeycomb (radius 3, about 30 tiles, a few edge tiles cut so no two outlines match) dealt face down over the place's painting. Each face-down tile shows a coloured ring for what kind of thing it is, not what it is: blue is safe (a camp, a spring), green is chance (a cache, food, a hazard, a lookout that turns its neighbours, or quiet ground), violet is the story, gold is the way on. The way in is at the bottom; the way on is near the top and needs the **whole party** standing on it.
+- **Turns.** The player and up to two companions are separate tokens. One member moves per turn, anywhere across tiles already turned (foes block the way), stopping on a face-down tile at the edge or on a foe. Turning a tile earns a supply (12 at most). After the last member, the foes roam.
+- **The story deck.** Violet tiles are the card's own world: facts the player has not met (stars from their weight), people they have not spoken to, the central thread's next revelation, and the lorebook entries ranked highest for this chat (4.0), dealt in turn so no kind crowds the others out. Lore opened on earlier boards is held back while fresh lore is left. A story tile is opened at a depth that costs supplies: **1 star** (1 supply) is a glimpse written by code; **2 stars** (3) is a short scene the model writes from the source; **3 stars** (6) is a full discovery that also changes something: a fact becomes known (Parley Leverage), a person draws Notice toward promotion, an entry goes into the journal, a revelation is found. A tile you pass on stays violet to come back to. Scenes are posted to the chat as asides and shown on the board.
+- **Foes.** Step onto a foe and the party acts first in the battle; let one step onto you and it is an ambush, so the foes act first. Winning clears the foe and the member's move carries on; losing ends the board and sends the party back, as any lost fight does (4.2).
+- **The crossing.** With everyone on the way on, leftover supplies become coin and the board closes; turning back closes it with nothing lost but time.
+- **Presentation.** Tiles are dealt in from the middle; a turned tile swells as it flips and lets off a ring and sparks; gains pop up where they happen; tokens hop, foes bob, reachable tiles glow, and a pulsing mark calls back to story tiles left for later and to the way on. The board is a shared overlay like the class panel, skinned by each theme (cards dealt on baize in Table, dithered backs and dashed rings in 1-bit, a sixteen-colour grid in Command), and it works by mouse, touch and keyboard (1 to 3 open a tile, Esc passes, Space holds still, C makes camp).
 
 **Contests in scenes.** Parley and combat open on top of the scene they start in, so the room stays visible. In the **table** theme (6.3), Parley is framed as a first-person game across a table: the NPC sits opposite, and the player's hand holds **fact cards** from the journal. Playing a fact card cites that fact as Leverage, and code still checks that the player knows it. The player still types what they say, and the Referee still reads it.
 
@@ -557,6 +586,10 @@ Each theme is its own interface in code, not a reskin: `src/frontend/scene/theme
 | **Command** | a character-grid EGA screen inside a CRT on a desk, a command terminal, floppy disks as the theme switcher | classic dungeon crawls |
 
 ---
+
+### 6.4 Voice
+
+Gambit's own lines can be spoken through the host's TTS (`ctx.tts`, `text-to-speech-v1`): board story scenes as their card opens, the Meanwhile montage, and each Parley reply once it is written. It is off until the player turns it on in the drawer ("Speak Gambit's scenes and replies"), where they can also pick a TTS connection (default: their own) and test it. The setting is kept per browser. Playback needs the `media` permission, which the user grants; without it the drawer says so and nothing else changes. Markdown and stage asterisks are stripped before speaking, and a long scene is cut at a sentence.
 
 ## 7. State, swipes, and saves
 
@@ -599,7 +632,8 @@ Surveyed against `D:\Lumiverse` at `8e0f3945`, using the Spindle types at v0.6.7
 | Permission | Used for |
 |---|---|
 | `generation` | Architect and helper calls; triggering narration |
-| `decisions` | The Referee (Jev / TypeSafe through the host) |
+| `decisions` | The Referee (Jev / TypeSafe through the host), and the play classifiers in 9.1 |
+| `embeddings` | Lorebook ranking (4.0), fact matching, Parley repetition, memory recall (9.1) |
 | `interceptor` | State and outcome injection; hiding mechanical messages from the prompt |
 | `image_gen`, `images` | The Illustrator, the asset store, and uploading sliced icon sheets |
 | `chats`, `chat_mutation` | Posting narrated outcomes, per-swipe event records, CAS metadata |
@@ -610,6 +644,7 @@ Surveyed against `D:\Lumiverse` at `8e0f3945`, using the Spindle types at v0.6.7
 | `world_books` | **Required:** read the card's, persona's, global, and active lorebook entries for the Card Reader; optional export of the Card Sheet as a lorebook |
 | `tools` | Optional, see 8.4 |
 | `push_notification` | Optional |
+| `media` | Optional: host TTS playback for Voice (6.4) |
 
 Storage and drawer tabs are free.
 
@@ -657,8 +692,21 @@ Since you maintain a Lumiverse fork, these would each simplify Gambit:
 | Art is inconsistent | Style anchor, visual DNA, reference-image edits, code-rendered UI |
 | The world sprawls faster than the player can follow | Promotion caps, consequence budgets, foreshadowing |
 | Swipe or edit abuse | Per-swipe events, seeded dice per exchange |
-| No Jev or no image provider | Helper LLM imitates typed answers; rules-only fallback; placeholder-only art mode |
+| No Jev or no image provider | Helper LLM imitates typed answers (Referee, contest chips); the play classifiers fall back to their word rules; placeholder-only art mode |
+| A picked connection fails | Each call falls back to the default connection (and drops reasoning first if reasoning was on); timeouts are not retried (9.1) |
 | Costs run away | Budget meter, "low art" mode, ledger cache (no repeat calls) |
+
+### 9.1 Which connection does what
+
+Settings live in user storage (`models.json`) and in the drawer under **Models** (`src/meaning/models.ts` pure routing, `src/backend/models.ts` the calls).
+
+- **Text roles.** Every text call has a role. *Reader*: card read, World Bible, armory, looks, class forging and awakening. *Narrator*: Gambit's Parley replies, board and lore scenes, Meanwhile, the night, promotions. *Helper*: place from the chat, contest framing, typed answers when no Decision model answers. Ledger kinds map to roles (`roleForKind`). Each role picks a connection (default: the default connection) and reasoning: **Auto** (default) thinks for the Reader when its connection has reasoning bound on, or its model name is a known thinker, and never for the others; **Think** and **No thinking** force it. Attempts in order: the picked connection, the same without reasoning if reasoning was on, then the default connection. A connection that rejects reasoning is asked without it from then on (until the settings change). Timeouts and cancels are never retried elsewhere; a stream that broke mid-answer is not either.
+- **Decision model.** Auto (default) prefers a TypeSafe/Jev connection, then the default Decision connection, then any with a key; or a picked one; or off. A failed request backs off for three minutes so play goes straight to code.
+- **Play classifiers on the Decision model**, each with its old rule as the fallback (`src/meaning/senses.ts`, `src/backend/senses.ts`), all off the player's path:
+  - *Places*: indoor, rest, shop, danger, delve, asked once per place (six places per request) in the background when the world is built or grows; the flags are stored on the place (`judged`, `indoor`) and the word regexes stay as the fallback (`applyTraits`, still gated by the modules; the start is always restful).
+  - *After a reply*, one request: which names the player's line mentions (the `mentions` rule proposes, the model drops false ones and catches other forms), which hidden card facts came up (they count as known for Leverage), and which quest steps the chat accomplished (searching the place still completes steps too).
+  - *Companions' reactions* to a fight's deeds, one choice per companion read against who they are; the warmth rule covers anyone unanswered.
+- **Embeddings.** Auto (the primary embedding connection), a picked one, or off. Used for lorebook ranking (4.0), facts (each hidden fact against the recent lines: the closest go to the Decision model; without one, cosine 0.8 and up counts), Parley repetition (4.1.2), and recall: memories the narrator's note leaves out (people elsewhere, older notes and rumours, other places' scars) that the player's latest line is about join the note before the reply, within 2.5 s of the interceptor's deadline. Small texts are cached as 8-bit vectors in memory.
 
 ---
 
@@ -741,12 +789,12 @@ gambit/
 
 **M4 status (2026-11-07): built and played in Lumiverse on one card.**
 - **World and movement** (`src/engine/world/`): the card's places become a World by shape (scene, town hub, journey line, frontier, delve). Each place has a menu: Talk, Look around (a Guile check that can turn up a hidden fact, which then counts as known for Parley Leverage), exits, Rest, Shop, Wait, and Fight where the place is dangerous. Moves spend the clock (morning to night, days), and every move, find and fight posts a short narrated aside to the chat without starting the character's reply. Shop drops a suggested line into the chat input instead.
-- **Scene view** (`src/frontend/scene/`): a three.js layer shows the place's painting on a mesh displaced by a depth guess (floor near, horizon far), with the people present as billboards (card art soft-edged, generated portraits for the rest). The camera drifts and leans toward the pointer. A screen pass carries the theme: paper grain for Storybook, ordered dither for 1-bit, scanlines for Command. Towns use a lobby (the companion in the middle, places as tiles), journeys a stop strip. With no WebGL, or `gambit.scene.low`, the same view runs flat.
+- **Scene view** (`src/frontend/scene/`): a three.js layer shows the place's painting on a mesh displaced by its depth: a guess at once (floor near, horizon far), then Depth Anything V2's estimate when it is ready (vendored from Cue, `src/frontend/art/depth`, run in a worker and kept per painting in the browser), with the people present as billboards (card art soft-edged, generated portraits for the rest). The camera drifts and leans toward the pointer. A screen pass carries the theme: paper grain for Storybook, ordered dither for 1-bit, scanlines for Command. Towns use a lobby (the companion in the middle, places as tiles), journeys a stop strip. With no WebGL, or `gambit.scene.low`, the same view runs flat.
 - **Delves:** a generated grid (every seed checked: all rooms reachable, the key before the lock, the boss behind it) walked in first person through real 3D corridors with a torch fog, an automap, and a command menu (arrow keys and WASD too). Fight and boss rooms start card battles; traps, rests, keys and caches resolve in code.
 - **Card battles:** the Architect's second read (`src/meaning/armory.ts`) names the card's foes (role, tier, element, weak points, whether they talk, a boss's second phase) and a kit per party member as effect atoms; code sizes everything. They are fought over the scene's own painting, with vigor carried between fights, coin paid out, rooms cleared, and defeat sending the party back to the start. **Talk in combat**: surrender, bargain, recruit, taunt and deceive, with chances from morale, Break and allies left.
 - **Looks are files** (`src/art/look-file.ts`, `scripts/validate-look.ts`, `looks/`): import and export in the drawer, Inlay's art styles offered as looks, and "Match this card" (the strong model writes a look file for the card; the validator checks it; its previews draw before you switch). Art is keyed by look, so switching looks keeps the old art and draws the new look as needed.
 - **Checked live:** the scene, Look around, Talk into a Parley and back, and two card battles (one lost, one won) on a scene-shaped card. The delve, the lobby, the journey strip and the 1-bit and flat fallbacks are checked in the local preview (`bun run preview`, `/scene`) and in tests (`tests/play.test.ts`, `tests/world.test.ts`).
-- **Still open:** the four-card check below (only one real card has been played); a real depth model instead of the depth guess; the shop itself (it only suggests a line for now).
+- **Still open:** the four-card check below (only one real card has been played); the shop itself (it only suggests a line for now).
 
 **M4.5 status (2026-11-07): built; checked in tests and once in Lumiverse.**
 - **Describe a look** in the drawer (Looks section): a sentence such as "1990s anime OVA cel, film grain, muted teal and amber" goes to the strong model through the answer ledger. The prompt asks for style only and no living artists' names. The answer must pass the same validator as an imported file; a failed one is asked once more, and there is no code fallback for taste. The look is saved as yours, and its gate and bust previews draw at once.

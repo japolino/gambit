@@ -16,6 +16,7 @@
  * control, so mouse, touch, keyboard and screen readers all work; hover and
  * focus are drawn into the frame buffer as inverse video.
  */
+import { BOARD_SKINS } from "../board-skins.js";
 import { esc, type MenuItem, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import { loadFont, wrap, type BitFont } from "./onebit/font.js";
 import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "./onebit/fb.js";
@@ -1378,6 +1379,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   }
 
   return {
+    boardSkin: BOARD_SKINS.onebit,
     render(v) {
       const prevJ = view ? ctx.journal.open : false;
       if (view?.delve && !v.delve) corridorFirst = true;

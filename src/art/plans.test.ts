@@ -20,6 +20,7 @@ function ctx(providers: ProviderSet, lookId: keyof typeof LOOKS = "painted_dark_
     readImage: async (id) => ({ data: `B64-${id}`, mimeType: "image/png" }),
     composeInset: async () => ({ ok: true, canvas: { image: "IMG", mask: "MASK" } }),
     cropImage: async (src) => ({ ...src, imageId: `crop-${src.imageId}` }),
+    cutImage: async (src) => ({ ...src, imageId: `cut-${src.imageId}`, cutout: true }),
     insetOff: new Set(),
     ...over,
   };
@@ -29,22 +30,22 @@ const labels = (spec: ArtSpec, c: PlanContext, priority: 0 | 1 | 2 | 3 = 1) => p
 
 describe("route order", () => {
   test("variants: anime looks try the V5 inset first, painted looks the GPT edit", () => {
-    expect(variantMethods(LOOKS.modern_anime, ALL)).toEqual(["v5_inset", "gpt_edit", "nai45_reference", "plain"]);
-    expect(variantMethods(LOOKS.painted_dark_fantasy, ALL)).toEqual(["gpt_edit", "v5_inset", "nai45_reference", "plain"]);
+    expect(variantMethods(LOOKS.modern_anime, ALL)).toEqual(["v5_inset", "gpt_edit", "plain"]);
+    expect(variantMethods(LOOKS.painted_dark_fantasy, ALL)).toEqual(["gpt_edit", "v5_inset", "plain"]);
     expect(variantMethods(LOOKS.modern_anime, { nai: null, nai45: null, gpt: GPT })).toEqual(["gpt_edit", "plain"]);
-    expect(variantMethods(LOOKS.modern_anime, ALL, new Set(["nai-1\u0000nai-diffusion-5-full-inpainting"]))).toEqual(["gpt_edit", "nai45_reference", "plain"]);
+    expect(variantMethods(LOOKS.modern_anime, ALL, new Set(["nai-1\u0000nai-diffusion-5-full-inpainting"]))).toEqual(["gpt_edit", "plain"]);
     expect(variantMethods(LOOKS.modern_anime, { nai: null, nai45: null, gpt: null })).toEqual([]);
   });
 
   test("expression plans under an anime look", () => {
     const spec: ArtSpec = { kind: "expression", character: HERO, expression: "angry", canonical: { imageId: "canon" } };
-    expect(labels(spec, ctx(ALL, "modern_anime"))).toEqual(["nai:nai-v5-inset-sprite", "gpt:gpt-edit-canonical", "nai:nai45-reference", "nai:nai-v5-dna", "gpt:gpt"]);
+    expect(labels(spec, ctx(ALL, "modern_anime"))).toEqual(["nai:nai-v5-inset-sprite", "gpt:gpt-edit-canonical", "nai:nai-v5-dna", "gpt:gpt"]);
   });
 
-  test("expressions from a card's own art lead with the V4.5 reference and never fall back to a text-only face", () => {
-    expect(variantMethods(LOOKS.modern_anime, ALL, new Set(), true)).toEqual(["nai45_reference", "gpt_edit", "v5_inset"]);
+  test("no V4.5 reference anywhere: card art leads with the V5 inset, then a plain render from tags", () => {
+    expect(variantMethods(LOOKS.painted_dark_fantasy, ALL, new Set(), true)).toEqual(["v5_inset", "gpt_edit", "plain"]);
     const spec: ArtSpec = { kind: "expression", character: HERO, expression: "sad", canonical: { imageId: "avatar", source: "card" } };
-    expect(labels(spec, ctx(ALL, "modern_anime"))).toEqual(["nai:nai45-reference", "gpt:gpt-edit-canonical", "nai:nai-v5-inset-sprite"]);
+    expect(labels(spec, ctx(ALL, "modern_anime"))).toEqual(["nai:nai-v5-inset-sprite", "gpt:gpt-edit-canonical", "nai:nai-v5-dna", "gpt:gpt"]);
     expect(labels(spec, ctx({ nai: null, nai45: null, gpt: null }, "modern_anime"))).toEqual([]);
   });
 
@@ -80,7 +81,7 @@ describe("plan preparation (the exact generate calls)", () => {
     expect(call.parameters).toMatchObject({ resolution: "1216x832", steps: 14, seed: 4242, characterTags: [{ tags: "girl, silver hair, green eyes, leather armor, smile, open mouth, happy" }] });
     const raw = JSON.parse((call.parameters as Record<string, string>).rawRequestOverride!);
     expect(raw).toMatchObject({ action: "infill", parameters: { image: "IMG", mask: "MASK", width: 1216, height: 832, noise: 0 } });
-    expect(await inset!.finish!({ imageId: "canvas", url: "/u", cutout: false })).toMatchObject({ imageId: "crop-canvas" });
+    expect(await inset!.finish!({ imageId: "canvas", url: "/u", cutout: false })).toMatchObject({ imageId: "cut-canvas", cutout: true });
     expect(inset!.descriptor.refs).toEqual(["canon"]);
   });
 
@@ -105,13 +106,14 @@ describe("plan preparation (the exact generate calls)", () => {
     expect(call.prompt).toContain("The same character as in the reference image");
   });
 
-  test("V4.5 precise reference with the canonical", async () => {
-    const plans = plansFor(ctx({ nai: NAI, nai45: { ...NAI, model: "nai-diffusion-4-5-full" }, gpt: null }, "painted_dark_fantasy", { insetOff: new Set(["nai-1\u0000nai-diffusion-5-full-inpainting"]) }), "k", { kind: "expression", character: HERO, expression: "sad", canonical: { imageId: "canon" } }, 1);
-    expect(plans[0]!.label).toBe("nai45-reference");
+  test("a figure is a plain transparent V5 render from its tags, with no reference image", async () => {
+    const tagged = { ...HERO, booru: "some character (series), red eyes, long coat" };
+    const plans = plansFor(ctx({ nai: NAI, nai45: { ...NAI, model: "nai-diffusion-4-5-full" }, gpt: null }, "modern_anime"), "k", { kind: "figure", character: tagged }, 1);
+    expect(plans.map((p) => p.label)).toEqual(["nai-v5"]);
     const call = await plans[0]!.prepare();
-    expect(call.model).toBe("nai-diffusion-4-5-full");
-    expect(call.parameters).toMatchObject({ resolvedReferenceImages: [{ data: "B64-canon", strength: 0.8, infoExtracted: 1, refType: "character&style" }], referenceFidelity: 1 });
-    expect(call.prompt).toContain("white background");
+    expect(call.parameters).not.toHaveProperty("resolvedReferenceImages");
+    expect(call.prompt).toContain("full body");
+    expect(JSON.stringify(call)).toContain("some character (series)");
   });
 
   test("user id rides on every call", async () => {

@@ -41,6 +41,7 @@ import { cleanCutout } from "./chart.js";
 import { journalHtml, narrationHtml, pickerHtml } from "./shared.js";
 import { WEDGE } from "./props3d.js";
 import type { Mode } from "./flat.js";
+import { createPuppetMeshes } from "../../puppet-mesh.js";
 
 interface Item {
   key: string;
@@ -102,6 +103,8 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   } | null = null;
   const items = new Map<string, Item>();
   const dynTex = new Set<Texture>();
+  // People who are cut-outs breathe and sway behind the counter through Cue's rig.
+  const puppets = createPuppetMeshes(ctx.reducedMotion);
   /** Props drawn inward toward the middle of the counter on a narrow (phone) screen. */
   let squeeze: Object3D[] = [];
 
@@ -383,6 +386,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   const labelEls = new Map<string, HTMLElement>();
   function frame(t: number, dt: number): void {
     if (!st || !parts) return;
+    puppets.tick(t, Math.min(0.1, dt));
     const camera = st.camera;
     const bp = basePose();
     if (Math.abs(camera.fov - bp.fov) > 0.01) {
@@ -645,6 +649,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
             plane.material.map = tx;
             plane.material.needsUpdate = true;
             plane.customDistanceMaterial = new MeshDistanceMaterial({ map: tx, alphaTest: 0.5 });
+            puppets.warp(plane, tx.image as HTMLImageElement);
           });
         }
       });
@@ -982,6 +987,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
       dr.removeEventListener("pointermove", onMove);
       dr.removeEventListener("focusin", onFocus);
       for (const t of dynTex) t.dispose();
+      puppets.dispose();
       M.forgetTextures();
     },
   };

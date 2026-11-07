@@ -1,16 +1,15 @@
 /**
  * Character consistency (docs/DESIGN.md, 5.3): from a canonical portrait to
- * its expressions and cut-in poses. Three routes, ordered by the look's
+ * its expressions and cut-in poses. Two routes, ordered by the look's
  * provider and what the user has:
  *   (a) NovelAI V5 reference inset (Cue's technique: the canonical on the
  *       left of a split canvas, the new picture inpainted on the right,
  *       copying identity and style; see nai-inset.ts / inset-geometry.ts),
  *   (b) GPT Image edit with the canonical as the source image and
- *       `input_fidelity: "high"`, transparent background,
- *   (c) NovelAI V4.5 Precise Reference (director reference) with the
- *       canonical.
- * Then a last resort: a plain render from the character's visual DNA and
- * fixed seed (no reference), so an expression is never left undrawn.
+ *       `input_fidelity: "high"`, transparent background.
+ * Then a plain V5 render from the character's tags (Inlay's character
+ * tags when there) and fixed seed, so an expression is never left undrawn.
+ * No V4.5 reference: it gave flat, off-model figures.
  */
 import type { ArtPriority } from "../shared/protocol.js";
 import { insetLayout, type InsetLayoutId } from "./inset-geometry.js";
@@ -31,24 +30,19 @@ export function insetOffKey(target: Pick<NaiTarget, "connectionId">, model: stri
 }
 
 /**
- * Route order for a variant: anime-leaning looks (NAI preferred) try the
- * inset first, painted and real looks (GPT preferred) the GPT edit first;
- * V4.5 reference, then a plain DNA render, come last. Routes the user cannot
- * run are left out.
+ * Route order for a variant: anime-leaning looks (NAI preferred) and the
+ * user's own art try the V5 inset first, painted and real looks (GPT
+ * preferred) the GPT edit first. No V4.5 reference: a plain render from
+ * their tags comes last. Routes the user cannot run are left out.
  */
 export function variantMethods(look: LookPreset, providers: ProviderSet, insetOff: ReadonlySet<string> = new Set(), fromCard = false): VariantMethod[] {
   const inset = providers.nai && isNaiV5(providers.nai.model) ? novelAiInsetModelFor("novelai", providers.nai.model) : null;
   const insetOk = !!(inset && providers.nai && !insetOff.has(insetOffKey(providers.nai, inset.model)));
-  // A card's own art (any style, often not NovelAI's) holds best under a V4.5
-  // character&style reference; the V5 inset drew blanks from show-style art.
-  // No plain DNA render for it: an off-model face is worse than the card's own.
-  const order: VariantMethod[] = fromCard
-    ? ["nai45_reference", "gpt_edit", "v5_inset"]
-    : look.preferred === "nai"
-      ? ["v5_inset", "gpt_edit", "nai45_reference"]
-      : ["gpt_edit", "v5_inset", "nai45_reference"];
-  const out = order.filter((m) => (m === "v5_inset" ? insetOk : m === "gpt_edit" ? !!providers.gpt : !!providers.nai45));
-  if (!fromCard && (providers.nai || providers.gpt)) out.push("plain");
+  // No V4.5 reference: from a Gambit render (a figure) the V5 inset keeps the
+  // person; otherwise a plain V5 render from their tags (Inlay's when there).
+  const order: VariantMethod[] = look.preferred === "nai" || fromCard ? ["v5_inset", "gpt_edit"] : ["gpt_edit", "v5_inset"];
+  const out = order.filter((m) => (m === "v5_inset" ? insetOk : !!providers.gpt));
+  if (providers.nai || providers.gpt) out.push("plain");
   return out;
 }
 
@@ -109,8 +103,8 @@ export function insetPlan(ctx: PlanContext, spec: VariantSpec, built: BuiltPromp
       });
       return { ...base, model: inset.model, prompt: compiled.prompt, negativePrompt: compiled.negativePrompt, parameters: compiled.parameters };
     },
-    // The render is the whole canvas: keep only the repainted part.
-    finish: async (raw) => ctx.cropImage(raw, layout.repaint),
+    // The render is the whole canvas: keep only the repainted part, cut out of its white.
+    finish: async (raw) => ctx.cutImage(raw, layout.repaint),
     rejects: (error) => {
       if (!novelAiInsetRejected(error, inset.model)) return false;
       ctx.insetOff.add(insetOffKey(target, inset.model));
@@ -131,34 +125,6 @@ export function variantPlans(ctx: PlanContext, spec: VariantSpec, seed: number, 
       if (plan) plans.push(plan);
     } else if (method === "gpt_edit" && ctx.providers.gpt) {
       plans.push(gptEditPlan(ctx, ctx.providers.gpt, buildPrompt(spec, ctx.look), priority, [canonical], "high", "gpt-edit-canonical"));
-    } else if (method === "nai45_reference" && ctx.providers.nai45) {
-      const target = ctx.providers.nai45;
-      const built = buildPrompt(spec, ctx.look, { naiAlpha: false });
-      const plan = naiPlainPlan(target, built, seed, 0, "nai45-reference");
-      plans.push({
-        ...plan,
-        cutout: false,
-        descriptor: { ...plan.descriptor, refs: [canonical], extra: `${plan.descriptor.extra};ref=precise` },
-        prepare: async () => {
-          let ref;
-          try {
-            ref = await ctx.readImage(canonical);
-          } catch (error) {
-            throw new PlanUnavailable(`canonical unreadable (${error instanceof Error ? error.message : String(error)})`);
-          }
-          return buildNaiCall({
-            target,
-            prompt: built.nai.prompt,
-            negative: built.nai.negative,
-            width: built.nai.width,
-            height: built.nai.height,
-            seed,
-            effort: "full",
-            characterTags: built.nai.characterTags,
-            references: [ref],
-          });
-        },
-      });
     } else if (method === "plain") {
       const order = ctx.look.preferred === "nai" ? (["nai", "gpt"] as const) : (["gpt", "nai"] as const);
       for (const p of order) {

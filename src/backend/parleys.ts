@@ -13,6 +13,7 @@
  * Editing a line re-judges its words with the same die faces; deleting it
  * rewinds the Parley to before it.
  */
+import { createFigurePrints } from "./figure-prints.js";
 import type { InterceptorContextDTO, InterceptorResultDTO, LlmMessageDTO, SpindleAPI } from "lumiverse-spindle-types";
 import type { ArtApi } from "../art/controller.js";
 import type { CharacterDNA } from "../art/specs.js";
@@ -21,8 +22,9 @@ import { applyExchange, closeParley, createParley, replayParley } from "../engin
 import { cleanReply, fallbackReply, narratorPrompt, outcomeBlock, sceneBlock } from "../engine/parley/narrate.js";
 import type { Exchange, ParleyScenario, ParleyState, RefereeRead } from "../engine/parley/types.js";
 import { EXPRESSION_FOR_MOOD } from "../shared/parley-view.js";
-import { expressionArtKey, npcArtKey, placeArtKey } from "../shared/art-keys.js";
+import { expressionArtKey, figureArtKey, npcArtKey, placeArtKey } from "../shared/art-keys.js";
 import type { ParleyMessageMeta, ParleyNarrator, ParleyViewMode, ToFrontend } from "../shared/protocol.js";
+import { modelsFor } from "./models.js";
 import { judge } from "./referee-host.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
@@ -82,6 +84,7 @@ const metaOf = (meta: unknown): ParleyMessageMeta | null => {
 export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: ParleyState) => void;
 
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
+  const figures = createFigurePrints(spindle, art);
   let endHook: ParleyEndHook | null = null;
   const live = new Map<string, ParleyState>();
   const scenes = new Map<string, ParleyScenario>();
@@ -161,18 +164,61 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     if (baseUrl) {
       // cutout: true means "show as drawn": the user's art is never keyed (a black ground would eat black clothes).
       const items: Extract<ToFrontend, { type: "art.update" }>["items"] = [{ key, state: "ready", url: baseUrl, ...(baseId ? { imageId: baseId } : {}), cutout: true, via: faces ? `card-${faces.source}` : "card-avatar" }];
+      const missing: typeof wanted = [];
       for (const expression of wanted) {
         const have = faces?.expressions[expression];
         if (have) items.push({ key: expressionArtKey(key, expression), state: "ready", url: `/api/v1/images/${have}`, imageId: have, cutout: true, via: `card-${faces!.source}` });
-        else if (baseId) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: baseId, source: "card" } }, 2, userId);
+        else missing.push(expression);
       }
       send({ type: "art.update", items }, userId);
+      const card = scenario.card;
+      if (!baseId) return;
+      if (!card) {
+        for (const expression of missing) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: baseId, source: "card" } }, 2, userId);
+        return;
+      }
+      // Their own full figure, drawn by V5 from their tags (Inlay's when there),
+      // transparent (play.ts draws the same one for scenes): it replaces the
+      // framed card art, and the moods they lack are drawn from it with the V5 inset.
+      const figure = figureArtKey(card.cardKey, card.castId);
+      // Through the tag prints: a figure whose tags changed is drawn again (figure-prints.ts).
+      void figures
+        .request(userId, figure, dna, 0, log)
+        .then(() => art.whenDone(figure, userId))
+        .then((f) => {
+        if (f.state === "ready" && f.imageId && f.url) {
+          send({ type: "art.update", items: [{ key, state: "ready", url: f.url, imageId: f.imageId, cutout: true, via: "figure", ...(f.face !== undefined ? { face: f.face } : {}) }] }, userId);
+          for (const expression of missing) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: f.imageId } }, 2, userId);
+        } else {
+          for (const expression of missing) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: baseId, source: "card" } }, 2, userId);
+        }
+        })
+        .catch(() => undefined);
       return;
     }
-    art.request(key, { kind: "portrait", character: dna }, 0, userId);
-    void art.whenDone(key, userId).then((portrait) => {
-      if (portrait.state === "ready" && portrait.imageId) expressions(portrait.imageId);
-    });
+    const portrait = () => {
+      art.request(key, { kind: "portrait", character: dna }, 0, userId);
+      void art.whenDone(key, userId).then((p) => {
+        if (p.state === "ready" && p.imageId) expressions(p.imageId);
+      });
+    };
+    // A card person with no art of their own (a lorebook character) stands as their figure,
+    // the same one scenes show; the moods are drawn from it. Without a figure: a portrait.
+    const person = scenario.card;
+    if (person) {
+      const figure = figureArtKey(person.cardKey, person.castId);
+      void figures
+        .request(userId, figure, dna, 0, log)
+        .then(() => art.whenDone(figure, userId))
+        .then((f) => {
+          if (f.state !== "ready" || !f.imageId || !f.url) return portrait();
+          send({ type: "art.update", items: [{ key, state: "ready", url: f.url, imageId: f.imageId, cutout: true, via: "figure", ...(f.face !== undefined ? { face: f.face } : {}) }] }, userId);
+          expressions(f.imageId);
+        })
+        .catch(() => portrait());
+      return;
+    }
+    portrait();
   }
 
   /** After an exchange: journal entries for a win, and the frontend event. */
@@ -207,25 +253,19 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     let text = "";
     let lastSent = 0;
     try {
-      const stream = spindle.generate.quietStream({
-        type: "quiet",
-        messages: [{ role: "system", content: system }, ...messages],
-        reasoning: { source: "off" },
-        parameters: { temperature: 0.9, max_tokens: 700 },
+      // The narrator role's connection (backend/models.ts); a picked one that fails falls back to the default.
+      text = await modelsFor(spindle).stream(
         userId,
-        signal: AbortSignal.timeout(90_000),
-      } as never);
-      for await (const chunk of stream) {
-        if (chunk.type === "token") {
-          text += chunk.token;
+        "narrator",
+        { messages: [{ role: "system", content: system }, ...messages], parameters: { temperature: 0.9, max_tokens: 700 }, signal: AbortSignal.timeout(90_000) },
+        (t) => {
+          text = t;
           if (Date.now() - lastSent > 180) {
             lastSent = Date.now();
             send({ type: "parley.reply", parleyId: state.id, index: ex.index, text: cleanReply(text), final: false }, userId);
           }
-        } else if (chunk.type === "done" && chunk.content) {
-          text = chunk.content;
-        }
-      }
+        },
+      );
     } catch (err) {
       log(`narrator failed (${err instanceof Error ? err.message.slice(0, 160) : String(err)}); using a short line`);
     }

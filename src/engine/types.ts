@@ -262,6 +262,8 @@ export interface BattleMeta {
   boss?: boolean;
   /** Delve room the fight is in, to mark it cleared. */
   room?: string;
+  /** A foe met on an expedition board: winning clears it from the board. */
+  board?: boolean;
   /** How the party fought (4.6 build profile): damage by element, statuses applied, talks. */
   tally?: { elements: Partial<Record<Element, number>>; statuses: Partial<Record<StatusId, number>>; talks: number; hits: number; uses?: Record<string, number> };
   /** Classes the player made (M7): what the art pipeline draws them from. */

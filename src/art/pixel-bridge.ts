@@ -6,7 +6,7 @@
  * Cue's inset bridge (see inset-bridge.ts for provenance). Never rejects;
  * never logs image data.
  */
-import type { PixelJob, ToBackend, ToFrontend } from "../shared/protocol.js";
+import type { CutMeta, PixelJob, ToBackend, ToFrontend } from "../shared/protocol.js";
 import { ChunkBuffer } from "./chunks.js";
 import { MAX_SHEET_CELLS } from "./sheet-geometry.js";
 import { base64ToBytes, pngSize } from "./png.js";
@@ -21,18 +21,23 @@ export interface PixelItem {
   height: number;
   /** The browser's isPreCut on this image. */
   preCut: boolean;
+  /** A cut job: what the cut-out found. */
+  cut?: CutMeta;
 }
 
 export type PixelOutcome = { ok: true; items: PixelItem[] } | { ok: false; error: string; timedOut?: true };
 
 export const PIXELS_TIMEOUT_MS = 30_000;
+/** A cut may first download the cut-out model (88 MB) in that browser. */
+export const CUT_TIMEOUT_MS = 5 * 60_000;
 
 type PixelMessage = Extract<ToBackend, { type: "art.pixels.chunk" } | { type: "art.pixels.error" }>;
 
 type Pending = {
   job: PixelJob;
   items: number | null;
-  buffers: Map<number, { buffer: ChunkBuffer; width?: number; height?: number; preCut?: boolean }>;
+  buffers: Map<number, { buffer: ChunkBuffer; width?: number; height?: number; preCut?: boolean; cut?: CutMeta }>;
+  timeoutMs: number;
   timer: ReturnType<typeof setTimeout> | null;
   activeAt: number;
   resolve: (outcome: PixelOutcome) => void;
@@ -53,7 +58,7 @@ export class PixelBridge {
     const requestId = `px-${Date.now().toString(36)}-${counter.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const job = { ...spec, requestId } as PixelJob;
     return new Promise<PixelOutcome>((resolve) => {
-      const entry: Pending = { job, items: null, buffers: new Map(), timer: null, activeAt: Date.now(), resolve };
+      const entry: Pending = { job, items: null, buffers: new Map(), timer: null, activeAt: Date.now(), resolve, timeoutMs: job.kind === "cut" ? Math.max(this.timeoutMs, CUT_TIMEOUT_MS) : this.timeoutMs };
       this.pending.set(requestId, entry);
       this.arm(entry);
       this.dispatch(entry);
@@ -103,6 +108,7 @@ export class PixelBridge {
       slot.width = message.width;
       slot.height = message.height;
       slot.preCut = message.preCut;
+      if (message.cut) slot.cut = message.cut;
     }
     const put = slot.buffer.put(message.index, message.chunk);
     if (put === "invalid") return invalid();
@@ -129,7 +135,7 @@ export class PixelBridge {
         size = null;
       }
       if (!size) return { ok: false, error: `Image ${i + 1} is not a PNG.` };
-      out.push({ data, width: size.width, height: size.height, preCut: slot.preCut === true });
+      out.push({ data, width: size.width, height: size.height, preCut: slot.preCut === true, ...(slot.cut ? { cut: slot.cut } : {}) });
     }
     return { ok: true, items: out };
   }
@@ -148,7 +154,7 @@ export class PixelBridge {
     entry.timer = setTimeout(() => {
       if (this.pending.get(entry.job.requestId) !== entry) return;
       this.settle(entry, { ok: false, error: "The browser did not process the image in time.", timedOut: true });
-    }, this.timeoutMs);
+    }, entry.timeoutMs);
     (entry.timer as { unref?: () => void }).unref?.();
   }
 

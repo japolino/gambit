@@ -49,6 +49,17 @@ export const CARD_CSS = `
 .gb details > summary { cursor: pointer; font-size: 12px; opacity: .75; }
 `;
 
+/** The voice switch (docs/DESIGN.md 6.4): read live each render. */
+export interface VoiceUi {
+  available: boolean;
+  on: boolean;
+  connectionId: string;
+  connections: { id: string; name: string }[];
+  error: string | null;
+  set(p: { on?: boolean; connectionId?: string }): void;
+  test(): void;
+}
+
 export interface CardActions {
   enable(on: boolean): void;
   reread(): void;
@@ -57,6 +68,7 @@ export interface CardActions {
   module(id: ModuleId, on: boolean): void;
   chips(on: boolean): void;
   play(): void;
+  voice?: () => VoiceUi;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -117,12 +129,26 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
         .join("") || `<div class="f">None yet.</div>`}</div></details>`,
     );
     parts.push(`<div class="switch"><span>Offer contests under replies</span><button class="tog${s.chips ? " on" : ""}" data-chips></button></div>`);
+    const v = a.voice?.();
+    if (v?.available) {
+      parts.push(`<div class="switch"><span>Speak Gambit's scenes and replies</span><button class="tog${v.on ? " on" : ""}" data-voice aria-pressed="${v.on}"></button></div>`);
+      if (v.on) {
+        parts.push(
+          `<div class="switch"><select data-voice-conn aria-label="Voice connection"><option value="">Your default voice</option>${v.connections.map((c) => `<option value="${esc(c.id)}"${c.id === v.connectionId ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select><button data-voice-test>Test</button></div>`,
+        );
+        if (v.error) parts.push(`<div class="note">${esc(v.error)}</div>`);
+      }
+    }
     parts.push(`<button data-reread>Read the card again</button>`);
   }
   root.innerHTML = parts.join("");
   root.querySelector("[data-enable]")?.addEventListener("click", () => a.enable(!s.enabled));
   root.querySelector("[data-play]")?.addEventListener("click", () => a.play());
   root.querySelector("[data-chips]")?.addEventListener("click", () => a.chips(!s.chips));
+  const v = a.voice?.();
+  root.querySelector("[data-voice]")?.addEventListener("click", () => v?.set({ on: !v.on }));
+  root.querySelector<HTMLSelectElement>("[data-voice-conn]")?.addEventListener("change", (e) => v?.set({ connectionId: (e.target as HTMLSelectElement).value }));
+  root.querySelector("[data-voice-test]")?.addEventListener("click", () => v?.test());
   root.querySelectorAll("[data-reread]").forEach((b) =>
     b.addEventListener("click", (e) => {
       e.preventDefault();

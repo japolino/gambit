@@ -43,7 +43,7 @@ function setup() {
     },
     chat: { appendMessage: async (_chatId: string, m: { content: string }) => void posted.push(m.content) },
   };
-  const art = { request: () => ({ key: "", state: "queued" }) };
+  const art = { request: () => ({ key: "", state: "queued" }), status: () => null, whenDone: () => new Promise(() => {}) };
   const cards = {
     sheetFor: async () => sheet as never,
     armory: async () => sheet as never,

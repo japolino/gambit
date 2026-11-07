@@ -10,10 +10,16 @@ import { advance, createBattle } from "../engine/battle.js";
 import { chooseAction } from "../engine/ai.js";
 import { encounterFrom, foeFromCast, partyFromSheet } from "../engine/card/foes.js";
 import { kitClass } from "../engine/card/kits.js";
-import type { CardSheet } from "../engine/card/types.js";
+import type { CardSheet, CardSources } from "../engine/card/types.js";
+import { camp as boardCamp, dealBoard, moveTo as boardMove, openLore, skip as boardSkip, winFight, type Board, type BoardEvent, type LoreCard } from "../engine/world/board.js";
+import { boardLore, glimpse, loreScenePrompt, parseLoreScene } from "../meaning/board-deck.js";
+
+export type BoardOp = "move" | "lore" | "camp" | "skip" | "leave";
 import type { BattleState, MonsterDef } from "../engine/types.js";
 import { clearRoom, enterDelve, generateDelve, stepDelve, type DelveMove } from "../engine/world/delve.js";
-import { addPlace, buildWorld, moveScene, newScene, searchScene, sleepScene, TIMES } from "../engine/world/places.js";
+import { addPlace, applyTraits, buildWorld, moveScene, newScene, searchScene, sleepScene, TIMES, unjudged } from "../engine/world/places.js";
+import { createSenses } from "./senses.js";
+import { PLACE_TRAITS as PLACE_FLAGS, type CompanionLike } from "../meaning/senses.js";
 import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
 import { fallbackPlaceFromChat, parsePlaceFromChat, placeFromChatPrompt, type Bible } from "../meaning/bible.js";
 import { fallbackVignettes, meanwhilePrompt, meanwhileText, parseMeanwhile, type Vignette } from "../meaning/meanwhile.js";
@@ -29,7 +35,6 @@ import {
   deedsFromBattle,
   deedsFromParley,
   MAX_PARTY,
-  mentions,
   NOTICE,
   profileOf,
   readyToPromote,
@@ -45,12 +50,15 @@ import type { ForgeOp } from "../shared/forge-view.js";
 import type { ClassDef } from "../engine/types.js";
 import { solveSkill } from "../engine/budget.js";
 import type { CastMember } from "../engine/card/types.js";
+import { figureCaption, figureTagsPrompt, hasCharacterTag, parseFigureTags, withReaderTags } from "../meaning/figure-tags.js";
 import type { ParleyScenario, ParleyState } from "../engine/parley/types.js";
 import type { InterceptorContextDTO, LlmMessageDTO } from "lumiverse-spindle-types";
-import { npcArtKey } from "../shared/art-keys.js";
+import { figureArtKey, npcArtKey } from "../shared/art-keys.js";
+import type { CharacterDNA } from "../art/specs.js";
+import { createFigurePrints } from "./figure-prints.js";
 import type { ToFrontend } from "../shared/protocol.js";
 import type { ThemeId } from "../shared/scene-view.js";
-import { buildSceneView, cardTag, menuFor, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
+import { boardMapKey, buildSceneView, cardTag, menuFor, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
 
@@ -63,6 +71,9 @@ export interface CardsPort {
   /** The lorebook's text about a name, for promotions (meaning/lore-pick.ts loreAbout). */
   loreFor?(userId: string, chatId: string, name: string): Promise<string>;
   markKnown?(userId: string, chatId: string, factId: string): Promise<void>;
+  /** The card's sources with its lorebook, for an expedition board's deck. */
+  sourcesFor?(userId: string, chatId: string): Promise<CardSources | null>;
+  inlayLook?(userId: string, sheet: CardSheet, m: CastMember): Promise<{ tags: string; sex?: "girl" | "boy" | "other" } | null>;
   /** The World Bible (M5): compiled on the JAOT queue, or the stored one. */
   bible?(userId: string, chatId: string, priority?: Priority): Promise<Bible | null>;
   storedBible?(userId: string, cardKey: string, sheet?: Pick<CardSheet, "readAt" | "shape">): Promise<Bible | null>;
@@ -76,6 +87,15 @@ export interface BattlesPort {
 
 const path = (chatId: string) => `play/${chatId}.json`;
 const tag = cardTag;
+
+/** How a Parley ended, as the moment its CG shows. */
+const PARLEY_END_SCENE: Record<"won" | "final_offer" | "deal" | "walked" | "refused", string> = {
+  won: "they give in and agree, won over",
+  final_offer: "they make one last offer, arms folded",
+  deal: "they strike a deal and shake on it",
+  walked: "one of them turns and walks away",
+  refused: "they refuse flatly, the door closing",
+};
 const view = buildSceneView;
 
 export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: CardsPort, battles: BattlesPort) {
@@ -95,6 +115,16 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       await spindle.chat.appendMessage(chatId, { role: "assistant", content: `*${text}*`, metadata: { gambit: { aside: true } } } as never, { triggerGeneration: false });
     } catch (err) {
       log(`could not post to ${chatId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** A finished CG goes into the chat as a picture with its caption (an aside, no reply). */
+  async function picture(chatId: string, imageId: string, caption: string): Promise<void> {
+    const alt = caption.replace(/[\[\]\n]/g, " ").slice(0, 120);
+    try {
+      await spindle.chat.appendMessage(chatId, { role: "assistant", content: `![${alt}](/api/v1/images/${imageId})\n\n*${caption}*`, metadata: { gambit: { aside: true, cg: true } } } as never, { triggerGeneration: false });
+    } catch (err) {
+      log(`could not post a picture to ${chatId}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -156,7 +186,58 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     else growLater(userId, chatId);
     changed = ensureHex(r, chatId) || changed;
     if (changed) await save(userId, chatId, r);
+    judgeLater(userId, chatId, sheet, r);
     return r;
+  }
+
+  /* --------------- decision models (backend/senses.ts, DESIGN 9) --------------- */
+  const senses = createSenses(spindle, log);
+  const judging = new Map<string, number>();
+  /**
+   * Places still on the word rules are judged by the Decision model once,
+   * in the background; the menu updates when the answer lands. Without a
+   * Decision model the word flags stay (tried again after a while).
+   */
+  function judgeLater(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord): void {
+    const k = `${userId}:${chatId}`;
+    const todo = unjudged(r.world);
+    if (!todo.length || (judging.get(k) ?? 0) > Date.now()) return;
+    judging.set(k, Date.now() + 5 * 60_000);
+    void senses
+      .classifyPlaces(userId, `${sheet.cardName} (${sheet.skin.genre}): ${sheet.premise}`, todo)
+      .then(async (traits) => {
+        if (!traits || !Object.keys(traits).length) return;
+        const fresh = await load(userId, chatId);
+        if (!fresh || fresh.cardKey !== sheet.cardKey) return;
+        fresh.world = applyTraits(fresh.world, sheet, traits);
+        await save(userId, chatId, fresh);
+        // New places (the Bible, the chat) are judged soon; failures wait the full cooldown.
+        judging.set(k, Date.now() + 30_000);
+        log(`places: judged ${Object.keys(traits).length} (${Object.entries(traits).map(([id, t]) => `${fresh.world.places[id]?.name ?? id}: ${PLACE_FLAGS.filter((f) => t[f]).join("/") || "plain"}`).join("; ")})`);
+        if (!fresh.battleId) await show(userId, chatId, sheet, fresh);
+      })
+      .catch((err) => log(`places: ${err instanceof Error ? err.message : String(err)}`));
+  }
+
+  /** Who reacts to deeds: the card's main cast and the recruits. */
+  const companionsOf = (sheet: CardSheet, m: MemoryRecord): CompanionLike[] => [
+    ...sheet.cast.filter((c) => c.main).map((c) => ({ id: c.id, name: c.name, role: c.role, warmth: c.temperament?.warmth ?? 2, wants: c.wants, fears: c.fears })),
+    ...m.recruits.map((x) => ({ id: x.id, name: x.name, role: x.role, warmth: 2 })),
+  ];
+
+  /** Companions react to a fight's deeds: the Decision model reads who they are; the warmth rule covers the rest. */
+  function reactLater(userId: string, chatId: string, sheet: CardSheet, deeds: Deed[]): void {
+    void (async () => {
+      const r0 = await load(userId, chatId);
+      if (!r0) return;
+      const companions = companionsOf(sheet, mem(r0));
+      const judged = await senses.reactions(userId, companions, deeds).catch(() => ({}));
+      const r = await load(userId, chatId);
+      if (!r) return;
+      const m = mem(r);
+      m.npc = companionsReact(m.npc, deeds, companions, judged);
+      await save(userId, chatId, r);
+    })().catch((err) => log(`reactions: ${err instanceof Error ? err.message : String(err)}`));
   }
 
   /** The chat's memory, created on first use. */
@@ -168,16 +249,15 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return extra.length ? { ...sheet, cast: [...sheet.cast, ...extra] } : sheet;
   }
 
-  /** Add deeds to the ledger and let people remember them. */
-  function record_(sheet: CardSheet, r: PlayRecord, deeds: Deed[]): void {
+  /** Add deeds to the ledger and let people remember them. `react: false` leaves companions to reactLater. */
+  function record_(sheet: CardSheet, r: PlayRecord, deeds: Deed[], react = true): void {
     if (!deeds.length) return;
     const m = mem(r);
     m.deeds = [...m.deeds, ...deeds].slice(-300);
     m.nightAt = Math.min(m.nightAt, m.deeds.length);
     const cast = new Set([...sheet.cast.map((c) => c.id), ...m.promoted.map((p) => p.castId).filter((x): x is string => !!x)]);
     m.npc = remember(m.npc, deeds, cast, sheet.player.name);
-    const companions = [...sheet.cast.filter((c) => c.main).map((c) => ({ id: c.id, warmth: c.temperament?.warmth ?? 2 })), ...m.recruits.map((x) => ({ id: x.id, warmth: 2 }))];
-    m.npc = companionsReact(m.npc, deeds, companions);
+    if (react) m.npc = companionsReact(m.npc, deeds, companionsOf(sheet, m));
   }
 
   /** Notice: interest in a person or place goes up. */
@@ -191,6 +271,134 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     r.log = [...r.log, text].slice(-6);
   };
 
+
+  /** What keeps a card character the same person in every picture Gambit draws of them. */
+  function castDna(sheet: CardSheet, m: CastMember): CharacterDNA {
+    const id = `${sheet.cardKey}:${m.id}`;
+    return {
+      id,
+      name: m.name,
+      tags: m.look,
+      description: `${m.name}: ${m.look || m.role}`,
+      seed: [...id].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0,
+      sex: m.pronoun === "she" ? "girl" : m.pronoun === "he" ? "boy" : "other",
+    };
+  }
+
+  /**
+   * Tags for a cast member, looked up once per card and person: Inlay's
+   * (character tag, body, outfit) when its library knows them, else the
+   * reader model's (their Danbooru character tag and appearance), kept in
+   * the ledger.
+   */
+  const inlayTags = new Map<string, Promise<{ tags: string; sex?: "girl" | "boy" | "other" } | null>>();
+  function inlayFor(userId: string, sheet: CardSheet, m: CastMember) {
+    const k = `${userId}:${sheet.cardKey}:${m.id}`;
+    let p = inlayTags.get(k);
+    if (!p) {
+      p = (async () => {
+        const look = cards.inlayLook ? await cards.inlayLook(userId, sheet, m).catch(() => null) : null;
+        if (look?.tags && hasCharacterTag(look.tags)) return look;
+        const reader = cards.compile ? ((await cards.compile(userId, "figure-tags", figureTagsPrompt(sheet, m), 400, parseFigureTags, () => null, { tries: 2 }).catch(() => null))?.value ?? null) : null;
+        // Inlay's traits without a character tag draw a generic person: the reader's character tag goes in front.
+        if (look?.tags) return { ...look, tags: withReaderTags(look.tags, reader) };
+        return reader ? { tags: figureCaption(reader), ...(reader.sex !== "other" ? { sex: reader.sex } : {}) } : null;
+      })();
+      inlayTags.set(k, p);
+      // A miss is asked again later (Inlay may get a document for them).
+      void p.then((x) => !x && setTimeout(() => inlayTags.delete(k), 5 * 60_000));
+    }
+    return p;
+  }
+
+  /** castDna with Inlay's tags as the caption when Inlay knows them. */
+  async function tagDna(userId: string, sheet: CardSheet, m: CastMember): Promise<CharacterDNA> {
+    const dna = castDna(sheet, m);
+    const look = await inlayFor(userId, sheet, m);
+    return look?.tags ? { ...dna, booru: look.tags, ...(look.sex ? { sex: look.sex } : {}) } : dna;
+  }
+
+  /**
+   * A cast member's full figure, drawn by V5 from their tags (Inlay's when
+   * there, else the reader's; no reference image), transparent. It replaces
+   * their framed card art, or the old bust portrait. Returns its key.
+   */
+  function requestFigure(userId: string, sheet: CardSheet, m: CastMember, priority: 0 | 1 | 2): string | null {
+    const key = figureArtKey(sheet.cardKey, m.id);
+    // Ready: asking again re-sends it (a reloaded page has no other way to learn it); the spec is not used.
+    const ready = art.status(key, userId)?.state === "ready";
+    if (ready) art.request(key, { kind: "figure", character: castDna(sheet, m) }, priority, userId);
+    void tagDna(userId, sheet, m)
+      .then((character) => figures.request(userId, key, character, priority, log))
+      .catch(() => undefined);
+    return key;
+  }
+  const figures = createFigurePrints(spindle, art);
+
+  /**
+   * A key moment as a CG: a wide illustration with the people in it drawn
+   * from their own figures (or card art) as references, set where it
+   * happens. It joins the album, and when chatId is given the finished
+   * picture is posted to the chat. Returns its art key.
+   */
+  function requestCg(userId: string, sheet: CardSheet, r: PlayRecord, o: { moment: string; caption: string; cast?: string[]; placeId?: string; chatId?: string; priority?: 0 | 1 | 2 }): string {
+    const h = [...`${o.moment}|${r.scene.day}`].reduce((x, ch) => Math.imul(x ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
+    const key = `cg:${tag(sheet.cardKey)}.${h.toString(36)}`;
+    const people = withPromoted(sheet, r).cast;
+    const members = [...new Set(o.cast ?? [])]
+      .map((id) => people.find((c) => c.id === id))
+      .filter((m): m is CastMember => !!m)
+      .slice(0, 3);
+    const placeId = o.placeId ?? r.scene.placeId;
+    const wild = placeId.startsWith("wild_") ? (placeId.slice(5) as keyof typeof WILD_TEXT) : null;
+    const p = wild ? null : r.world.places[placeId];
+    const location = wild
+      ? { id: `${tag(sheet.cardKey)}.${placeId}`, name: TERRAIN_NAME[wild], description: `${WILD_TEXT[wild]}. The land of ${sheet.cardName}` }
+      : p
+        ? { id: `${tag(sheet.cardKey)}.${p.id}`, name: p.name, description: p.description, timeOfDay: TIMES[r.scene.time] }
+        : undefined;
+    const before = art.status(key, userId);
+    if (!(r.album ?? []).some((x) => x.key === key)) r.album = [...(r.album ?? []), { key, caption: o.caption, day: r.scene.day }].slice(-48);
+    if (before?.state === "ready") return key;
+    const chatId = o.chatId;
+    // Each person by their tags (Inlay's when there); their figure rides along only for a GPT edit.
+    void Promise.all(
+      members.map(async (m) => {
+        const fig = art.status(figureArtKey(sheet.cardKey, m.id), userId);
+        return { character: await tagDna(userId, sheet, m), ...(fig?.state === "ready" && fig.imageId ? { ref: { imageId: fig.imageId } } : {}) };
+      }),
+    )
+      .then((cast) => {
+        art.request(key, { kind: "cg", moment: `${o.moment}. From ${sheet.cardName} (${sheet.skin.genre})`, cast, ...(location ? { location } : {}) }, o.priority ?? 1, userId);
+        return chatId ? art.whenDone(key, userId) : null;
+      })
+      .then((st) => (chatId && st?.state === "ready" && st.imageId ? picture(chatId, st.imageId, o.caption) : undefined))
+      .catch(() => {});
+    return key;
+  }
+
+  /** The board's map (the place from above, in the painting's style) and its party's figures. */
+  function requestBoardArt(userId: string, sheet: CardSheet, r: PlayRecord): void {
+    const b = r.board!;
+    const wild = b.placeId.startsWith("wild_") ? (b.placeId.slice(5) as keyof typeof WILD_TEXT) : null;
+    const p = wild ? null : r.world.places[b.placeId];
+    const paintingKey = wild ? placeKey(sheet, b.placeId) : placeArt(sheet, r, b.placeId);
+    const painting = art.status(paintingKey, userId);
+    art.request(
+      boardMapKey(sheet, b.placeId),
+      {
+        kind: "map",
+        location: { id: `${tag(sheet.cardKey)}.${b.placeId}.map`, name: wild ? TERRAIN_NAME[wild] : (p?.name ?? "the way"), description: wild ? `${WILD_TEXT[wild]}. The land of ${sheet.cardName}` : `${p?.description ?? ""}. ${sheet.premise.slice(0, 120)}` },
+        ...(painting?.state === "ready" && painting.imageId ? { painting: { imageId: painting.imageId } } : {}),
+      },
+      0,
+      userId,
+    );
+    for (const m of b.party) {
+      const c = sheet.cast.find((x) => `p_${x.id}` === m.id);
+      if (c) requestFigure(userId, sheet, c, 1);
+    }
+  }
 
   /** Ask for the place's painting and the art of anyone here without art of their own. */
   function requestSceneArt(userId: string, sheet: CardSheet, r: PlayRecord): void {
@@ -207,10 +415,9 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       const q = r.world.places[id];
       if (q) art.request(placeKey(sheet, q.id), { kind: "background", location: { id: `${tag(sheet.cardKey)}.${q.id}`, name: q.name, description: q.description } }, 2, userId);
     }
-    for (const m of sheet.cast.filter((c) => p.people.includes(c.id) && !c.faces?.base && !c.avatarImageId)) {
-      const seed = [...m.id].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
-      art.request(npcArtKey(`${sheet.cardKey}:${m.id}`), { kind: "portrait", character: { id: `${sheet.cardKey}:${m.id}`, name: m.name, tags: "", description: `${m.look || m.role}. A character from ${sheet.cardName} (${sheet.skin.genre}): ${sheet.premise.slice(0, 120)}`, seed, sex: m.pronoun === "she" ? "girl" : m.pronoun === "he" ? "boy" : "other" } }, 1, userId);
-    }
+    // Everyone here gets their own full figure from their tags (Inlay's character library first).
+    for (const m of sheet.cast.filter((c) => p.people.includes(c.id))) requestFigure(userId, sheet, m, 1);
+    if (r.board) requestBoardArt(userId, sheet, r);
     if (r.delve) {
       const d = r.delve;
       art.request(wallKey(sheet, d.placeId), { kind: "background", location: { id: `${tag(sheet.cardKey)}.${d.placeId}.wall`, name: `${r.world.places[d.placeId]?.name ?? "delve"} wall`, description: `seamless tileable texture of a stone wall inside ${r.world.places[d.placeId]?.description ?? "a dungeon"}, flat, front view, no perspective, no objects` } }, 2, userId);
@@ -246,7 +453,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
 
   /* ------------------------------ fights ------------------------------- */
 
-  async function fight(userId: string, chatId: string, opts: { lead?: string; boss?: boolean; room?: string; title?: string } = {}): Promise<void> {
+  async function fight(userId: string, chatId: string, opts: { lead?: string; boss?: boolean; room?: string; title?: string; initiative?: "party" | "foes"; board?: boolean } = {}): Promise<void> {
     const ctx = await context(userId, chatId);
     if (!ctx) return;
     let { sheet, r } = ctx;
@@ -305,12 +512,15 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const party = slots.map((p) => {
       const kit = kits.get(p.id);
       const m = p.castId ? sheet.cast.find((c) => c.id === p.castId) : undefined;
-      const img = m?.faces?.base ?? m?.avatarImageId ?? null;
+      // Their own cut-out figure once it is drawn; the card art until then.
+      const figure = m ? requestFigure(userId, sheet, m, 0) : null;
+      const figureReady = figure ? art.status(figure, userId)?.state === "ready" : false;
+      const img = figureReady ? null : (m?.faces?.base ?? m?.avatarImageId ?? null);
       if (img) faces[p.id] = img;
       const cls = kit ? kitClass(p.classDef, kit, p.id) : p.classDef;
       // A kit replaces the class skills: keep a combo skill the player earned.
       const combo = p.classDef.skills.filter((sk) => sk.id.startsWith("combo_"));
-      return { classDef: kit && combo.length ? { ...cls, skills: [...cls.skills, ...combo] } : cls, level: 5, id: p.id, name: p.name, art: img ? `face:${img}` : `class:${p.classDef.id}:${t}.${p.id}` };
+      return { classDef: kit && combo.length ? { ...cls, skills: [...cls.skills, ...combo] } : cls, level: 5, id: p.id, name: p.name, art: figureReady && figure ? figure : img ? `face:${img}` : `class:${p.classDef.id}:${t}.${p.id}` };
     });
     // The player fights as the class picked in the class book (M7): the card's kit, a base class, or one they made.
     const mine = party.find((p) => p.id === "p_player");
@@ -331,8 +541,15 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     let state = createBattle({ id: `${t}.${enc.id}.${Date.now().toString(36)}`, seed, party, enemies });
     // Vigor carries between fights: a tired party starts hurt.
     for (const c of state.combatants) if (c.side === "party") c.hp = Math.max(1, Math.round(c.maxHp * Math.max(0.35, r.scene.vigor)));
+    // Who has the jump (the expedition board): the side that struck first all act before the other's first turn.
+    if (opts.initiative) {
+      const first = state.combatants.filter((c) => (c.side === "party") === (opts.initiative === "party"));
+      const rest = state.combatants.filter((c) => (c.side === "party") !== (opts.initiative === "party"));
+      const lead = Math.min(...rest.map((c) => c.next));
+      first.sort((a, b) => a.next - b.next).forEach((c, i) => (c.next = Math.min(c.next, lead - first.length + i)));
+    }
     const wildHere = wildCell(r);
-    state.meta = { title: enc.name, chatId, ...(enc.boss ? { boss: true } : {}), ...(Object.keys(classes).length ? { classes } : {}), backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : wildHere ? placeKey(sheet, `wild_${wildHere}`) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}) };
+    state.meta = { title: enc.name, chatId, ...(enc.boss ? { boss: true } : {}), ...(Object.keys(classes).length ? { classes } : {}), backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : wildHere ? placeKey(sheet, `wild_${wildHere}`) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}), ...(opts.board ? { board: true } : {}) };
     state = advance(state, { enemyPolicy: chooseAction }).state;
     r = (await load(userId, chatId)) ?? r;
     if (cardDef) forge.playerClass(sheet, r, cardDef);
@@ -372,6 +589,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       ].filter(Boolean).join(" and ");
       line = `${state.meta?.title ?? "The fight"} is over. ${party.map((c) => c.name).join(" and ")} ${how}${loot - bribes ? ` (${loot - bribes > 0 ? "+" : ""}${loot - bribes} ${cur})` : ""}.`;
       if (r.delve && state.meta?.room) r.delve.state = clearRoom(r.delve.map, r.delve.state, state.meta.room);
+      if (r.board && state.meta?.board) {
+        const w = winFight(r.board);
+        r.board = w.board;
+        r.boardFx = [{ text: "The way is clear", kind: "foe" }, ...applyBoard(sheet, r, w.events)];
+        if (r.board.done) line += ` ${finishBoard(sheet, r)}`;
+      }
       if (r.delve?.state.done) {
         line += ` The depths of ${r.world.places[r.delve.placeId]?.name ?? "the delve"} fall quiet, and a catalyst waits at the bottom.`;
         bookOf(r).catalysts++;
@@ -380,6 +603,10 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       // Story difficulty (4.2): lose, retreat, take a consequence. The model never rescues anyone.
       r.scene = { ...r.scene, vigor: 0.35, coin: Math.max(0, Math.round(r.scene.coin * 0.8)), placeId: r.world.start };
       if (r.delve) r.delve = undefined;
+      if (r.board) {
+        r.board = undefined;
+        r.boardFx = undefined;
+      }
       if (r.hex) {
         const home = cellOf(r.hex.map, r.world.start);
         if (home) r.hex.state = reveal(r.hex.map, { ...r.hex.state, q: home.q, r: home.r });
@@ -413,9 +640,11 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         line += ` ${d.name} joins the party.`;
       }
     }
-    record_(sheet, r, deeds);
+    record_(sheet, r, deeds, false);
     note(r, line);
     await save(userId, chatId, r);
+    // Companions' feelings about the fight: judged in the background (a Decision model, else their warmth).
+    reactLater(userId, chatId, sheet, deeds);
     await aside(chatId, line);
     await show(userId, chatId, sheet, r);
   }
@@ -461,8 +690,11 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const items = vs.map((v) => {
       const m = v.who ? cast.get(v.who) : undefined;
       const imageId = m ? (m.faces?.base ?? m.avatarImageId ?? null) : null;
-      return { text: v.text, ...(v.where ? { art: placeKey(sheet, v.where) } : m && !imageId ? { art: npcArtKey(`${sheet.cardKey}:${m.id}`) } : {}), ...(imageId ? { imageId } : {}) };
+      // Each vignette that shows someone or somewhere is drawn as its own scene.
+      const cg = v.who || v.where ? requestCg(userId, sheet, r, { moment: v.text, caption: v.text, ...(v.who ? { cast: [v.who] } : {}), ...(v.where ? { placeId: v.where } : {}), priority: 1 }) : undefined;
+      return { text: v.text, ...(v.where ? { art: placeKey(sheet, v.where) } : m && !imageId ? { art: npcArtKey(`${sheet.cardKey}:${m.id}`) } : {}), ...(imageId ? { imageId } : {}), ...(cg ? { cg } : {}) };
     });
+    await save(userId, chatId, r);
     send({ type: "scene.meanwhile", chatId, day, vignettes: items }, userId);
     await aside(chatId, meanwhileText(vs));
   }
@@ -588,19 +820,20 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       m.promoted = [...m.promoted, promo];
       const line = companion ? `${name} trusts you now. They have something to ask of you.` : `${name} has caught your attention. There is more to them than it seemed.`;
       note(r, line);
+      if (castId) requestCg(userId, sheet, r, { moment: `${name} confides in the traveller: ${draft.dossier.replace(/\s+/g, " ").slice(0, 240)}`, caption: line, cast: [castId], ...(placeId ? { placeId } : {}), chatId, priority: 2 });
       await save(userId, chatId, r);
       log(`promoted ${key} (${draft.steps.length} steps${placeId ? `, place ${placeId}` : ""})`);
     }
   }
 
-  /** Searching where a quest step points completes it; the last step gives the item. */
-  function questStep(r: PlayRecord, placeId: string): string | null {
+  /** Searching where a quest step points completes it (or the chat did, by promotion `key`); the last step gives the item. */
+  function questStep(r: PlayRecord, placeId: string, key?: string): string | null {
     const m = r.memory;
     if (!m) return null;
     for (const p of m.promoted) {
       if (p.done) continue;
       const step = p.steps.find((s) => !s.done);
-      if (!step || step.where !== placeId) continue;
+      if (!step || (key ? p.key !== key : step.where !== placeId)) continue;
       step.done = true;
       if (p.steps.every((s) => s.done)) {
         p.done = true;
@@ -617,8 +850,30 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return null;
   }
 
-  /** The narrator hears what people here remember (4.6): a short background note before the reply. */
-  function memoryNote(sheet: CardSheet, r: PlayRecord): string | null {
+  /**
+   * Memories the note leaves out (people elsewhere, older notes, older
+   * rumours, other places' scars), as lines: the ones the player's latest
+   * line is about are recalled by meaning (senses.recall) and added.
+   */
+  function recallPool(sheet: CardSheet, r: PlayRecord): string[] {
+    const m = r.memory;
+    if (!m) return [];
+    const p = r.world.places[r.scene.placeId];
+    const s = withPromoted(sheet, r);
+    const here = new Set([...(p?.people ?? []), ...s.cast.filter((c) => c.main).map((c) => c.id), ...m.recruits.map((x) => x.id)]);
+    const out: string[] = [];
+    for (const [id, n] of Object.entries(m.npc)) {
+      const who = s.cast.find((c) => c.id === id)?.name ?? m.recruits.find((x) => x.id === id)?.name;
+      if (!who) continue;
+      for (const x of here.has(id) ? n.notes.slice(0, -3) : n.notes) out.push(`${who} remembers: ${x.text}`);
+    }
+    for (const x of m.rumors.slice(0, -2)) out.push(`Rumour: ${x}`);
+    for (const [id, sc] of Object.entries(m.scars)) if (id !== p?.id && r.world.places[id]) out.push(`${r.world.places[id]!.name} is ${sc.flag}: ${sc.note}`);
+    return out.slice(-200);
+  }
+
+  /** The narrator hears what people here remember (4.6): a short background note before the reply, plus recalled lines. */
+  function memoryNote(sheet: CardSheet, r: PlayRecord, recalled: readonly string[] = []): string | null {
     const m = r.memory;
     if (!m) return null;
     const p = r.world.places[r.scene.placeId];
@@ -636,6 +891,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     if (scar && p) out.push(`- ${p.name} is ${scar.flag}: ${scar.note}`);
     for (const x of m.rumors.slice(-2)) out.push(`- Rumour: ${x}`);
     for (const x of m.recruits) out.push(`- ${x.name} travels with the party now (once a foe).`);
+    for (const x of recalled) out.push(`- Recalled: ${x}`);
     return out.length ? `[World memory from the game, for continuity. Background only; do not recite it.]\n${out.join("\n")}` : null;
   }
 
@@ -677,8 +933,234 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
   }
 
+  /* --------------------------- expedition board -------------------------- */
+
+  /** How the board's events land on the chat's world (coin, vigor), and the pops they leave. */
+  function applyBoard(sheet: CardSheet, r: PlayRecord, events: BoardEvent[]): NonNullable<PlayRecord["boardFx"]> {
+    const fx: NonNullable<PlayRecord["boardFx"]> = [];
+    const cur = sheet.skin.currency || "coin";
+    for (const e of events) {
+      switch (e.kind) {
+        case "flip":
+          fx.push({ cell: e.cell, text: "+1 supply", kind: "supply" });
+          break;
+        case "cache":
+          r.scene = { ...r.scene, coin: r.scene.coin + e.coin };
+          fx.push({ text: `+${e.coin} ${cur}`, kind: "coin" });
+          note(r, `A cache: ${e.coin} ${cur}.`);
+          break;
+        case "forage":
+          fx.push({ text: `+${e.got} supplies`, kind: "supply" });
+          note(r, `Food and water to be had here: +${e.got} supplies.`);
+          break;
+        case "spring":
+          r.scene = { ...r.scene, vigor: Math.min(1, r.scene.vigor + e.heal) };
+          fx.push({ text: "Refreshed", kind: "heal" });
+          note(r, "A clear spring. Everyone drinks and feels better.");
+          break;
+        case "hazard":
+          if (e.what === "hurt") {
+            r.scene = { ...r.scene, vigor: Math.max(0.2, r.scene.vigor - e.amount) };
+            fx.push({ text: "Hurt", kind: "hurt" });
+            note(r, "Bad footing and worse luck: everyone takes a knock.");
+          } else {
+            fx.push({ text: `-${e.amount} supplies`, kind: "hurt" });
+            note(r, e.amount ? `Something spoils the packs: -${e.amount} supplies.` : "A close call; nothing lost.");
+          }
+          break;
+        case "shortcut":
+          fx.push({ text: "A view of the way ahead", kind: "info" });
+          note(r, `A high point: ${e.opened.length} tiles around come clear.`);
+          break;
+        case "lore":
+          fx.push({ cell: e.cell, text: e.card.title, kind: "lore" });
+          break;
+        case "camp":
+          fx.push({ cell: e.cell, text: "A place to camp", kind: "info" });
+          break;
+        case "contact":
+          fx.push({ text: e.first === "party" ? "You have the jump on them!" : "Ambush!", kind: "foe" });
+          break;
+        case "goal":
+          fx.push({ text: e.here === e.of ? "Everyone is here" : `${e.here}/${e.of} at the way on`, kind: "goal" });
+          break;
+        default:
+          break;
+      }
+    }
+    return fx;
+  }
+
+  const boardPlace = (r: PlayRecord, b: Board) => (b.placeId.startsWith("wild_") ? "the wild" : (r.world.places[b.placeId]?.name ?? "the way"));
+
+  /** The whole party crossed: leftover supplies become coin, the place counts as known, and the board closes. */
+  function finishBoard(sheet: CardSheet, r: PlayRecord): string {
+    const b = r.board!;
+    const bonus = 10 + b.supplies * 3;
+    r.scene = { ...r.scene, coin: r.scene.coin + bonus, time: Math.min(r.scene.time + 1, TIMES.length - 1) };
+    if (!b.placeId.startsWith("wild_")) interest(r, `place:${b.placeId}`, NOTICE.search);
+    const line = `${sheet.player.name || "You"} and company make it across ${boardPlace(r, b)} (+${bonus} ${sheet.skin.currency || "coin"}).`;
+    r.board = undefined;
+    r.boardFx = undefined;
+    r.boardStory = undefined;
+    note(r, line);
+    return line;
+  }
+
+  /** Deal a board for where you stand: the card's lore face down among the road's luck. */
+  async function explore(userId: string, chatId: string, sheet: CardSheet, r0: PlayRecord): Promise<void> {
+    const wild = wildCell(r0);
+    const placeId = wild ? `wild_${wild}` : r0.scene.placeId;
+    const p = r0.world.places[r0.scene.placeId];
+    await show(userId, chatId, sheet, r0, "Laying out the way ahead…");
+    const sources = (await cards.sourcesFor?.(userId, chatId).catch(() => null)) ?? null;
+    const r = (await load(userId, chatId)) ?? r0;
+    const met = new Set([...Object.keys(r.memory?.npc ?? {}), ...sheet.cast.filter((c) => c.main).map((c) => c.id)]);
+    const revelation = r.thread?.revelations.find((x) => !r.revealed?.includes(x.id)) ?? null;
+    const party = partyFromSheet(sheet).slice(0, 3).map((s) => ({ id: s.id, name: s.name }));
+    const danger = wild ? wild !== "plain" : !!p?.danger;
+    const lore = boardLore({ sheet, sources, met, spent: new Set(r.loreSpent ?? []), revelation, found: r.scene.found, room: 12 });
+    r.board = dealBoard({ seed: `${chatId}:${placeId}:${r.scene.day}:${r.scene.time}:${(r.loreSpent ?? []).length}`, placeId, party, lore, radius: 3, foes: sheet.modules.encounters ? (danger ? 2 : 1) : 0 });
+    r.boardFx = [{ text: "Blue is safe, green is chance, violet is the story, gold is the way on", kind: "info" }];
+    const name = wild ? `the ${TERRAIN_NAME[wild].toLowerCase()}` : (p?.name ?? "the way");
+    note(r, `You set out across ${name}.`);
+    await save(userId, chatId, r);
+    await aside(chatId, `${sheet.player.name || "You"} set${sheet.player.name ? "s" : ""} out across ${name}.`);
+    if (sheet.modules.encounters) void cards.armory(userId, chatId).catch(() => {});
+    await show(userId, chatId, sheet, r);
+  }
+
+  /** Open a lore tile: a glimpse by code, or a scene by the model, and at three stars what it changes. */
+  async function resolveLore(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord, card: LoreCard, tier: 1 | 2 | 3): Promise<void> {
+    r.loreSpent = [...new Set([...(r.loreSpent ?? []), card.id])].slice(-400);
+    if (tier === 1) {
+      const g = glimpse(card);
+      note(r, card.kind === "entry" ? `${card.title}: ${g}` : g);
+      r.boardFx = [{ text: card.title, kind: "lore" }];
+      r.boardStory = { title: card.title, text: g, stars: 1 };
+      return;
+    }
+    await save(userId, chatId, r);
+    await show(userId, chatId, sheet, r, "Writing what you find…");
+    const party = r.board?.party.map((p) => p.name) ?? [sheet.player.name || "You"];
+    const recent = (await cards.recent?.(userId, chatId, 3).catch(() => [])) ?? [];
+    const prompt = loreScenePrompt(sheet, card, tier, r.board ? boardPlace(r, r.board) : "the way", party, recent);
+    const fallback = () => card.text.replace(/\s+/g, " ").slice(0, 600);
+    const text = cards.compile ? (await cards.compile(userId, "board-scene", prompt, 700, parseLoreScene, fallback, { tries: 1 })).value : fallback();
+    const effects: string[] = [];
+    if (tier === 3) {
+      if (card.kind === "fact") {
+        r.scene = { ...r.scene, found: [...new Set([...r.scene.found, card.ref])] };
+        await cards.markKnown?.(userId, chatId, card.ref);
+        effects.push("You know this now, and can use it when you talk.");
+      } else if (card.kind === "person") {
+        interest(r, `cast:${card.ref}`, NOTICE.talk * 2);
+        effects.push(`${card.title} is on your mind.`);
+      } else if (card.kind === "entry") {
+        const m = mem(r);
+        m.rumors = [...m.rumors, `${card.title}: ${card.text.replace(/\s+/g, " ").slice(0, 140)}`].slice(-20);
+        effects.push("Noted in the journal.");
+      }
+    }
+    if (card.kind === "thread") {
+      r.revealed = [...new Set([...(r.revealed ?? []), card.ref])];
+      effects.push("A piece of the larger story falls into place.");
+    }
+    r.boardFx = [{ text: card.title, kind: "lore" }, ...effects.map((t) => ({ text: t, kind: "info" as const }))];
+    note(r, `${card.title}${effects.length ? `: ${effects.join(" ")}` : ""}`);
+    const partyCast = (r.board?.party ?? []).map((p) => p.id.replace(/^p_/, "")).filter((id) => sheet.cast.some((c) => c.id === id));
+    const cg = requestCg(userId, sheet, r, {
+      moment: text.replace(/\s+/g, " ").slice(0, 360),
+      caption: card.title,
+      cast: [...(card.kind === "person" ? [card.ref] : []), ...partyCast],
+      ...(r.board ? { placeId: r.board.placeId } : {}),
+      chatId,
+      priority: 0,
+    });
+    r.boardStory = { title: card.title, text: effects.length ? `${text}
+
+${effects.join(" ")}` : text, stars: tier, art: cg };
+    await aside(chatId, text);
+  }
+
+  /** One action on the board: a move, a depth for a lore tile, camp, skip, or turning back. */
+  async function boardAct(userId: string, chatId: string, op: BoardOp, cell?: string, tier?: number): Promise<void> {
+    const ctx = await context(userId, chatId);
+    if (!ctx?.r.board || ctx.r.battleId) return;
+    const { sheet, r } = ctx;
+    const b = r.board!;
+    r.boardStory = undefined;
+    try {
+      let events: BoardEvent[] = [];
+      switch (op) {
+        case "move": {
+          if (!cell) return;
+          const res = boardMove(b, cell);
+          r.board = res.board;
+          events = res.events;
+          r.boardFx = applyBoard(sheet, r, events);
+          break;
+        }
+        case "skip": {
+          const res = boardSkip(b);
+          r.board = res.board;
+          events = res.events;
+          r.boardFx = applyBoard(sheet, r, events);
+          break;
+        }
+        case "camp": {
+          const res = boardCamp(b);
+          r.scene = { ...r.scene, vigor: Math.min(1, r.scene.vigor + res.healed) };
+          r.board = res.board;
+          events = res.events;
+          r.boardFx = [{ text: "Rested", kind: "heal" }, ...applyBoard(sheet, r, events)];
+          note(r, "You make camp for a while. Everyone rests.");
+          break;
+        }
+        case "lore": {
+          const t = Math.max(0, Math.min(3, Math.round(tier ?? 0))) as 0 | 1 | 2 | 3;
+          const res = openLore(b, t);
+          r.board = res.board;
+          events = res.events;
+          r.boardFx = applyBoard(sheet, r, events);
+          if (res.card && res.tier) await resolveLore(userId, chatId, sheet, r, res.card, res.tier);
+          else note(r, "You leave it for now. You can come back to it.");
+          break;
+        }
+        case "leave": {
+          note(r, `You turn back from ${boardPlace(r, b)}.`);
+          r.board = undefined;
+          r.boardFx = undefined;
+          r.boardStory = undefined;
+          await save(userId, chatId, r);
+          await show(userId, chatId, sheet, r);
+          return;
+        }
+      }
+      if (r.board?.done) {
+        const line = finishBoard(sheet, r);
+        await save(userId, chatId, r);
+        await aside(chatId, line);
+        await show(userId, chatId, sheet, r);
+        return;
+      }
+      await save(userId, chatId, r);
+      // A foe met: on to the battle, with whoever struck first acting first.
+      const contact = events.find((e): e is Extract<BoardEvent, { kind: "contact" }> => e.kind === "contact");
+      if (contact) {
+        await show(userId, chatId, sheet, r);
+        return fight(userId, chatId, { board: true, initiative: contact.first, title: contact.first === "party" ? "Caught unawares" : "An ambush" });
+      }
+    } catch (err) {
+      note(r, err instanceof Error ? err.message : String(err));
+      await save(userId, chatId, r);
+    }
+    await show(userId, chatId, sheet, r);
+  }
+
   return {
     onBattleEnd,
+    boardAct,
     /** The class panel (M7). */
     forgeAct: (userId: string, chatId: string, op: ForgeOp, arg?: string, arg2?: string, text?: string) => forge.act(userId, chatId, op, arg, arg2, text),
 
@@ -694,26 +1176,48 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       const tactics = state.exchanges.map((e) => e.read.tactic);
       const bluffed = state.exchanges.some((e) => e.bluff && !e.bluff.fact);
       record_(sheet, r, deedsFromParley(castId, name, state.end.kind, tactics, bluffed, r.scene.day, r.scene.placeId));
+      // How it ended, as a picture: the two of you at the talk's last beat.
+      const how = PARLEY_END_SCENE[state.end.kind] ?? "the talk ends";
+      requestCg(userId, sheet, r, { moment: `${name} and ${sheet.player.name || "the traveller"} face to face as ${how}`, caption: `${name}: ${how}.`, cast: [castId], chatId, priority: 1 });
       await save(userId, chatId, r);
     },
 
-    /** Notice (4.6): the player's latest line raises interest in what it names. */
+    /**
+     * After a reply (4.6, 9): the names the player's line mentions raise
+     * interest, hidden facts that came up in the chat count as known, and
+     * quest steps the chat accomplished are done. One Decision request
+     * (backend/senses.ts); without it, the code rules (names) and close
+     * meaning or rule words (facts) decide.
+     */
     async notice(userId: string, chatId: string, lines: { name: string; content: string; isUser: boolean }[]) {
-      const last = [...lines].reverse().find((l) => l.isUser);
-      if (!last) return;
       const sheet = await cards.sheetFor(userId, chatId);
-      const r = await load(userId, chatId);
-      if (!sheet || !r) return;
-      const s = withPromoted(sheet, r);
-      const known = [...s.cast.map((c) => ({ key: `cast:${c.id}`, name: c.name })), ...Object.values(r.world.places).map((p) => ({ key: `place:${p.id}`, name: p.name }))];
-      const hits = mentions(last.content, known, [sheet.player.name, sheet.cardName]);
-      if (!hits.length) return;
-      for (const k of hits) {
+      const r0 = await load(userId, chatId);
+      if (!sheet || !r0) return;
+      const last = [...lines].reverse().find((l) => l.isUser);
+      const s = withPromoted(sheet, r0);
+      const known = [...s.cast.map((c) => ({ key: `cast:${c.id}`, name: c.name })), ...Object.values(r0.world.places).map((p) => ({ key: `place:${p.id}`, name: p.name }))];
+      const steps = (r0.memory?.promoted ?? []).flatMap((p) => {
+        const st = p.done ? undefined : p.steps.find((x) => !x.done);
+        return st ? [{ key: p.key, text: st.text, who: p.name }] : [];
+      });
+      const hidden = sheet.facts.filter((f) => !f.known && !r0.scene.found.includes(f.id));
+      const sense = await senses.afterReply(userId, { line: last?.content ?? "", lines: lines.map((l) => l.content), known, skip: [sheet.player.name, sheet.cardName], facts: hidden, steps });
+      if (!sense.mentions.length && !sense.facts.length && !sense.quests.length) return;
+      // Reload: the reply detector may have moved the scene meanwhile.
+      const r = (await load(userId, chatId)) ?? r0;
+      for (const k of sense.mentions) {
         // A name that is now someone promoted counts for them.
         const promoted = k.startsWith("name:") ? s.cast.find((c) => c.name === k.slice(5)) : undefined;
         interest(r, promoted ? `cast:${promoted.id}` : k, NOTICE.mention);
       }
+      const done = sense.quests.map((key) => questStep(r, r.scene.placeId, key)).filter((x): x is string => !!x);
+      for (const line of done) note(r, line);
+      for (const id of sense.facts) note(r, `Noted: ${sheet.facts.find((f) => f.id === id)?.text ?? id}`);
       await save(userId, chatId, r);
+      // A fact met in the chat counts as known: Parley Leverage can use it (4.0).
+      for (const id of sense.facts) await cards.markKnown?.(userId, chatId, id);
+      for (const line of done) await aside(chatId, line);
+      if (sense.facts.length || done.length) log(`after reply (${sense.by}): ${sense.facts.length} fact${sense.facts.length === 1 ? "" : "s"} known, ${done.length} quest step${done.length === 1 ? "" : "s"} done`);
       if (readyToPromote(mem(r).interest, mem(r).promoted, new Set(sheet.cast.filter((c) => c.main).map((c) => `cast:${c.id}`))).length) void promote(userId, chatId, sheet, 3).catch(() => {});
     },
 
@@ -729,7 +1233,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       const r = await load(ctx.userId, ctx.chatId).catch(() => null);
       if (!r?.memory) return messages;
       const sheet = await cards.sheetFor(ctx.userId, ctx.chatId).catch(() => null);
-      const text = sheet ? memoryNote(sheet, r) : null;
+      // Memories the latest line is about, by meaning (embeddings); a short wait at most, never past the deadline.
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      const query = typeof lastUser?.content === "string" ? lastUser.content : "";
+      const ms = Math.min(2500, (ctx.interceptorDeadlineAt ?? Date.now() + 10_000) - Date.now() - 4000);
+      const recalled = sheet && query ? await senses.recall(ctx.userId, query, recallPool(sheet, r), ms).catch(() => []) : [];
+      const text = sheet ? memoryNote(sheet, r, recalled) : null;
       if (!text) return messages;
       let at = messages.length;
       for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.role === "user") {
@@ -925,6 +1434,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
           return fight(userId, chatId);
         case "delve":
           return enter(userId, chatId, sheet, r);
+        case "explore":
+          return explore(userId, chatId, sheet, r);
       }
       await show(userId, chatId, sheet, r);
     },

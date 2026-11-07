@@ -44,3 +44,18 @@ export function repetition(text: string, earlier: readonly string[]): number {
   for (const e of earlier) max = Math.max(max, similarity(text, e));
   return max;
 }
+
+/**
+ * Repetition by meaning: the closest earlier line's cosine (from the user's
+ * embedding model, backend/referee-host.ts) as 0..1. Lines in one Parley all
+ * share a topic, so only a near-paraphrase counts: at or below FLOOR is new,
+ * CEIL and up is the same point again.
+ */
+export const MEANING_FLOOR = 0.86;
+export const MEANING_CEIL = 0.97;
+export function meaningRepetition(sims: readonly (number | null)[]): number {
+  let max = -1;
+  for (const s of sims) if (s !== null && Number.isFinite(s)) max = Math.max(max, s);
+  if (max <= MEANING_FLOOR) return 0;
+  return Math.min(1, (max - MEANING_FLOOR) / (MEANING_CEIL - MEANING_FLOOR));
+}

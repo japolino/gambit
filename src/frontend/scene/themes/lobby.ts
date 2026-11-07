@@ -16,6 +16,7 @@
  * become an inked chart table and a brass orienter of WASD paddles; on a
  * frontier the honeycomb is a brass-bound map among the cards.
  */
+import { BOARD_SKINS } from "../board-skins.js";
 import { esc, seedOf, type DelveView, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import * as A from "./lobby/art.js";
 import { lobbyCss } from "./lobby/css.js";
@@ -720,6 +721,7 @@ ${fight ? `<span class="gauge">VIGOR</span><span class="gauge2">${vig}%</span>` 
   }
 
   return {
+    boardSkin: BOARD_SKINS.lobby,
     render(v) {
       view = v;
       // The resize observer stays quiet in a hidden tab: settle the layout here too.

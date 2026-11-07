@@ -37,7 +37,8 @@ export function questionHash(...parts: (string | number)[]): string {
 
 const kindSegment = (k: string) => k.replace(/[^a-z0-9_-]/gi, "_").slice(0, 40) || "answer";
 
-export function createLedger(store: LedgerStore, ask: (userId: string) => AskModel, log: (m: string) => void = () => {}) {
+/** `ask` gets the answer's kind too, so each kind goes to its own model (meaning/models.ts roleForKind). */
+export function createLedger(store: LedgerStore, ask: (userId: string, kind: string) => AskModel, log: (m: string) => void = () => {}) {
   const path = (kind: string, hash: string) => `ledger/${kindSegment(kind)}/${hash}.json`;
 
   /**
@@ -66,7 +67,7 @@ export function createLedger(store: LedgerStore, ask: (userId: string) => AskMod
     const tries = Math.max(1, opts.tries ?? 2);
     let why = "no answer";
     for (let i = 1; i <= tries; i++) {
-      const res = await ask(userId)(prompt, maxTokens);
+      const res = await ask(userId, kind)(prompt, maxTokens);
       if (!res.raw) {
         why = res.why ?? "no readable JSON";
         log(`${kind}: ask ${i} failed (${why})`);

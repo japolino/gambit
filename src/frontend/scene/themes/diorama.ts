@@ -15,6 +15,7 @@
  * layer), the 2.5D build (diorama/flat.ts) draws the same shop with CSS and
  * canvas: a perspective-painted counter, angled props and parallax layers.
  */
+import { BOARD_SKINS } from "../board-skins.js";
 import type { SceneView, ThemeCtx, ThemeFactory, ThemeRenderer } from "./contract.js";
 import * as A from "./diorama/art.js";
 import { flatDiorama, type Mode } from "./diorama/flat.js";
@@ -42,6 +43,7 @@ export const diorama: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   let cur: Mode | null = null;
 
   return {
+    boardSkin: BOARD_SKINS.diorama,
     render(v: SceneView) {
       const want = room && !v.delve ? room : flat;
       if (cur !== want) {

@@ -250,15 +250,34 @@ export function remember(mem: Record<string, NpcMemory>, deeds: readonly Deed[],
   return out;
 }
 
-/** Companions with warm hearts like mercy and dislike slaughter of those who would talk. */
-export function companionsReact(mem: Record<string, NpcMemory>, deeds: readonly Deed[], companions: { id: string; warmth: number }[]): Record<string, NpcMemory> {
+/**
+ * How much the deeds could move a companion either way: mercy counts more
+ * than one kill, and a big fight is capped so one battle never swings a bond.
+ */
+export function reactionWeight(deeds: readonly Deed[]): number {
+  let w = 0;
+  for (const d of deeds) {
+    if (d.kind === "spared" || d.kind === "recruited" || d.kind === "bargained") w += 0.5;
+    if (d.kind === "killed") w += 0.1 * (d.n ?? 1);
+  }
+  return Math.min(1.5, w);
+}
+
+/**
+ * Companions with warm hearts like mercy and dislike slaughter of those who
+ * would talk. `judged` (-1, 0, 1 per companion id, from a Decision model that
+ * read who they are: backend/senses.ts) replaces the warmth rule for them.
+ */
+export function companionsReact(mem: Record<string, NpcMemory>, deeds: readonly Deed[], companions: { id: string; warmth: number }[], judged: Readonly<Record<string, number>> = {}): Record<string, NpcMemory> {
   const out = { ...mem };
   for (const c of companions) {
     let delta = 0;
-    for (const d of deeds) {
-      if (d.kind === "spared" || d.kind === "recruited") delta += c.warmth >= 3 ? 0.5 : c.warmth <= 1 ? -0.25 : 0.25;
-      if (d.kind === "killed") delta += c.warmth >= 3 ? -0.1 * (d.n ?? 1) : c.warmth <= 1 ? 0.1 * (d.n ?? 1) : 0;
-    }
+    if (c.id in judged) delta = Math.sign(judged[c.id]!) * reactionWeight(deeds);
+    else
+      for (const d of deeds) {
+        if (d.kind === "spared" || d.kind === "recruited") delta += c.warmth >= 3 ? 0.5 : c.warmth <= 1 ? -0.25 : 0.25;
+        if (d.kind === "killed") delta += c.warmth >= 3 ? -0.1 * (d.n ?? 1) : c.warmth <= 1 ? 0.1 * (d.n ?? 1) : 0;
+      }
     if (!delta) continue;
     const m = out[c.id] ?? { notes: [], affinity: 0 };
     out[c.id] = { notes: m.notes, affinity: Math.max(-10, Math.min(10, Math.round((m.affinity + delta) * 100) / 100)) };

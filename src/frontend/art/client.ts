@@ -17,6 +17,9 @@ import { bytesToBase64 } from "../../art/png.js";
 import { validGrid } from "../../art/sheet-geometry.js";
 import type { InsetComposeRequest, PixelJob, ToBackend } from "../../shared/protocol.js";
 import { composeInset, cropImageBlob, sliceSheet, type PixelResult } from "./canvas.js";
+import { cutSprite } from "./cutout/index.js";
+import { CUTOUT_MODEL_F16_URL, CUTOUT_MODEL_URL, FACE_MODEL_URL } from "./cutout/models.js";
+import type { CutMeta } from "../../shared/protocol.js";
 
 /** Largest source image fetched for canvas work. */
 export const ART_SOURCE_MAX_BYTES = 32 * 1024 * 1024;
@@ -30,6 +33,19 @@ export interface ArtFrontendDeps {
   compose?: (reference: Blob, layout: InsetLayout) => Promise<{ image: Blob; mask: Blob }>;
   crop?: typeof cropImageBlob;
   slice?: typeof sliceSheet;
+  cut?: (image: Blob, face: boolean) => Promise<PixelResult & { cut: CutMeta }>;
+}
+
+/** The figure cut out of its background by the segmentation model (Cue's cut-out), with what it found. */
+async function cutFigure(image: Blob, face: boolean): Promise<PixelResult & { cut: CutMeta }> {
+  const r = await cutSprite(image, { quality: "best", modelUrl: CUTOUT_MODEL_URL, modelUrlF16: CUTOUT_MODEL_F16_URL, ...(face ? { faceModelUrl: FACE_MODEL_URL } : {}) });
+  return {
+    png: r.png,
+    width: r.width,
+    height: r.height,
+    preCut: true,
+    cut: { bbox: r.bbox, ...(r.face !== undefined ? { face: r.face } : {}), quality: r.quality, twoFigures: r.twoFigures, ...(r.scenery !== undefined ? { scenery: r.scenery } : {}) },
+  };
 }
 
 export async function blobToBase64(blob: Blob): Promise<string> {
@@ -48,6 +64,7 @@ export function registerArtFrontend(deps: ArtFrontendDeps): () => void {
   const compose = deps.compose ?? composeInset;
   const crop = deps.crop ?? cropImageBlob;
   const slice = deps.slice ?? sliceSheet;
+  const cut = deps.cut ?? cutFigure;
   const controller = new AbortController();
   const inFlight = new Set<string>();
 
@@ -80,7 +97,7 @@ export function registerArtFrontend(deps: ArtFrontendDeps): () => void {
     try {
       const image = await source(job.sourceUrl);
       if (controller.signal.aborted) return;
-      let results: PixelResult[];
+      let results: (PixelResult & { cut?: CutMeta })[];
       if (job.kind === "crop") {
         const rect = normalizePixelRect(job.rect);
         if (!rect) throw new Error("Invalid crop rectangle.");
@@ -89,6 +106,14 @@ export function registerArtFrontend(deps: ArtFrontendDeps): () => void {
         const grid = { cols: job.cols, rows: job.rows };
         if (!validGrid(grid)) throw new Error("Invalid sheet grid.");
         results = await slice(image, grid, Math.max(1, Math.min(job.count, job.cols * job.rows)), Number(job.margin) || 0, job.trim === true);
+      } else if (job.kind === "cut") {
+        let src = image;
+        if (job.crop) {
+          const rect = normalizePixelRect(job.crop);
+          if (!rect) throw new Error("Invalid crop rectangle.");
+          src = (await crop(image, rect)).png;
+        }
+        results = [await cut(src, job.face === true)];
       } else {
         throw new Error("Unknown pixel job.");
       }
@@ -106,7 +131,7 @@ export function registerArtFrontend(deps: ArtFrontendDeps): () => void {
             index,
             total: chunks.length,
             chunk,
-            ...(index === 0 ? { width: r.width, height: r.height, preCut: r.preCut } : {}),
+            ...(index === 0 ? { width: r.width, height: r.height, preCut: r.preCut, ...(r.cut ? { cut: r.cut } : {}) } : {}),
           }),
         );
       }

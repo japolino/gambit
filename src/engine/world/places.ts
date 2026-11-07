@@ -6,7 +6,7 @@
  */
 import type { CardSheet, Evidence, ShapeId } from "../card/types.js";
 
-export type HotspotKind = "talk" | "search" | "exit" | "rest" | "shop" | "fight" | "delve" | "wait";
+export type HotspotKind = "talk" | "search" | "exit" | "rest" | "shop" | "fight" | "delve" | "wait" | "explore";
 
 export interface Hotspot {
   id: string;
@@ -30,6 +30,10 @@ export interface WorldPlace {
   danger: boolean;
   /** An entrance to a room-by-room delve. */
   delve: boolean;
+  /** Indoors (under a roof): set when a Decision model judged the place; else scene code guesses from words. */
+  indoor?: boolean;
+  /** The flags came from a Decision model (backend/senses.ts), not the word rules. */
+  judged?: boolean;
   /** Added by Gambit (not quoted from the card). */
   added: boolean;
   evidence: Evidence;
@@ -191,6 +195,49 @@ export function addPlace(
   }
   if (near) link(near, p.id);
   return { ...world, shape, places, route };
+}
+
+/** What a Decision model said about a place (meaning/senses.ts); the word rules above are the fallback. */
+export interface PlaceTraits {
+  indoor: boolean;
+  rest: boolean;
+  shop: boolean;
+  danger: boolean;
+  delve: boolean;
+}
+
+/** Places whose flags still come from the word rules. */
+export const unjudged = (world: World): WorldPlace[] => Object.values(world.places).filter((p) => !p.judged);
+
+/**
+ * Judged traits replace the word rules' flags, inside the same limits: the
+ * modules gate shops, danger and delves, the start is always a place to
+ * rest, and a delve-shaped world keeps a delve somewhere.
+ */
+export function applyTraits(world: World, sheet: Pick<CardSheet, "modules">, traits: Readonly<Record<string, PlaceTraits>>): World {
+  let changed = false;
+  const places: Record<string, WorldPlace> = { ...world.places };
+  for (const [id, t] of Object.entries(traits)) {
+    const p = places[id];
+    if (!p) continue;
+    changed = true;
+    places[id] = {
+      ...p,
+      indoor: t.indoor,
+      rest: t.rest || id === world.start,
+      shop: sheet.modules.economy && t.shop,
+      danger: sheet.modules.encounters && t.danger,
+      delve: sheet.modules.delves && t.delve,
+      judged: true,
+    };
+  }
+  if (!changed) return world;
+  if (world.shape === "delve" && sheet.modules.delves && !Object.values(places).some((p) => p.delve)) {
+    const ids = Object.keys(places);
+    const last = ids[ids.length - 1]!;
+    places[last] = { ...places[last]!, delve: true };
+  }
+  return { ...world, places };
 }
 
 /** The menu of a place (6.1): talk, look around, go, rest, shop, fight, delve, wait. */

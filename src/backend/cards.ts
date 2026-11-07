@@ -13,10 +13,10 @@
  * on/off switch, chip setting, and journal are per chat. Gambit never edits
  * the card, its lorebooks, or the persona.
  */
-import type { DecisionAnswer, GenerationResponseDTO, SpindleAPI, WorldBookEntryDTO } from "lumiverse-spindle-types";
+import type { DecisionAnswer, DecisionQuestion, SpindleAPI, WorldBookEntryDTO } from "lumiverse-spindle-types";
 import { scenarioFromSheet } from "../engine/card/sizing.js";
 import { DEMO_CARD, DEMO_LORE } from "../engine/content/saltgate-card.js";
-import type { CardSheet, CardSources, ContestChip, ModuleId, SourceLore } from "../engine/card/types.js";
+import type { CardSheet, CardSources, CastMember, ContestChip, ModuleId, SourceLore } from "../engine/card/types.js";
 import type { ContestKind, SocialStat } from "../engine/parley/types.js";
 import {
   cardKey as cardKeyOf,
@@ -42,7 +42,9 @@ import { matchCardPrompt, describeLookPrompt, describedLookId, validateLook, typ
 import type { CardStatus, ToFrontend } from "../shared/protocol.js";
 import { createFaceFinder } from "./card-faces.js";
 import { createInlayLibrary } from "./inlay-library.js";
-import { preferredConnection } from "./referee-host.js";
+import { figureTagsPrompt, hasCharacterTag, parseFigureTags, withReaderTags } from "../meaning/figure-tags.js";
+import { modelsFor } from "./models.js";
+import { roleForKind, type ModelRole } from "../meaning/models.js";
 import { createLedger } from "./ledger.js";
 import { loreAbout } from "../meaning/lore-pick.js";
 import { cosine, entryText, packVectors, quantize, semanticScores, textHash, unpackVectors, type PackedVec } from "../meaning/lore-vectors.js";
@@ -105,12 +107,12 @@ const FACES_TTL_MS = 10 * 60_000;
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const stripThink = (t: string) => t.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
-const contentOf = (res: unknown): string => (typeof res === "string" ? res : ((res as GenerationResponseDTO | null)?.content ?? ""));
 const permissionHint = (msg: string) =>
   /permission|not granted|forbidden|denied/i.test(msg) ? "Gambit needs the characters, personas, and world books permissions to read this card. Grant them on the Extensions page, then try again." : msg;
 
 export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPort) {
   const reading = new Map<string, Promise<CardSheet>>();
+  const models = modelsFor(spindle);
   const chips = new Map<string, ContestChip>();
   const log = (m: string) => {
     try {
@@ -124,6 +126,46 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
   const setConf = async (userId: string, chatId: string, patch: ChatConf) => spindle.userStorage.setJson(chatPath(chatId), { ...(await conf(userId, chatId)), ...patch }, { userId });
   const inlay = createInlayLibrary(spindle, log);
   const faces = createFaceFinder(spindle, log, inlay);
+
+  /**
+   * One profile request per card at a time: the cast Inlay lacks is asked for
+   * together, then Inlay's library is re-read until they show up (or 5 min).
+   */
+  const profiling = new Map<string, Promise<void>>();
+  function profiled(userId: string, sheet: CardSheet): Promise<void> {
+    const characterId = sheet.characterIds[0];
+    if (!characterId) return Promise.resolve();
+    const k = `${userId}:${characterId}`;
+    let p = profiling.get(k);
+    if (!p) {
+      p = (async () => {
+        const looks = await Promise.all(sheet.cast.map((m) => inlay.lookFor(userId, m.name, [m.characterId, ...sheet.characterIds]).catch(() => null)));
+        const missing = sheet.cast.filter((_, i) => !looks[i]?.tags);
+        if (!missing.length) return;
+        const people = missing.map((m) => ({
+          name: m.name,
+          description: [`${m.name}: ${m.role}.`, m.look, `A character in ${sheet.cardName} (${sheet.skin.genre}). ${sheet.premise.slice(0, 300)}`].filter(Boolean).join(" "),
+        }));
+        const answer = await inlay.requestProfiles(userId, characterId, people);
+        if (!answer || (answer.status !== "started" && answer.status !== "running")) return;
+        // Inlay's pending list names its roster rows; wait on our own names.
+        const waitFor = new Set(missing.map((m) => m.name).filter((n) => !answer.ready?.includes(n)));
+        for (const at = Date.now(); Date.now() - at < 5 * 60_000 && waitFor.size; ) {
+          await new Promise((r) => setTimeout(r, 15_000));
+          for (const id of new Set([...missing.map((m) => m.characterId), characterId])) if (id) inlay.forget(userId, id);
+          for (const m of missing) if ((await inlay.lookFor(userId, m.name, [m.characterId, ...sheet.characterIds]).catch(() => null))?.tags) waitFor.delete(m.name);
+          if (!waitFor.size) break;
+          // Inlay says when its run ended (and how): no point waiting on a run that is over.
+          const now = await inlay.requestProfiles(userId, characterId, people.filter((p) => waitFor.has(p.name)));
+          if (!now || now.status === "ready") break;
+        }
+      })().catch((err) => log(`inlay: profile request failed: ${err instanceof Error ? err.message : String(err)}`));
+      profiling.set(k, p);
+      // A later request may find more (or a retry of what Inlay could not do).
+      void p.finally(() => setTimeout(() => profiling.delete(k), 10 * 60_000));
+    }
+    return p;
+  }
   const loadSheet = (userId: string, key: string) => spindle.userStorage.getJson<CardSheet | null>(sheetPath(key), { fallback: null, userId });
   const saveSheet = (userId: string, sheet: CardSheet) => spindle.userStorage.setJson(sheetPath(sheet.cardKey), sheet, { userId });
 
@@ -257,9 +299,9 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     const status = (v: Record<string, unknown>) => spindle.userStorage.setJson("lore-vec/last.json", { at: Date.now(), ...v }, { userId }).catch(() => {});
     if (!src.lore.length) return void (await status({ ok: false, why: "no lorebook entries" }));
     try {
-      const conns = await spindle.embeddings.listConnections({ userId });
-      const conn = conns.find((c) => c.is_primary && c.enabled) ?? null;
-      if (!conn) return void (await status({ ok: false, why: "no primary embedding connection" }));
+      // The embedding connection picked in the drawer (Models), else the primary one; "off" keeps keyword ranking.
+      const conn = await models.embeddingConnection(userId);
+      if (!conn) return void (await status({ ok: false, why: "no embedding connection (or embeddings are off)" }));
       const model = `${conn.id}-${conn.model}-${conn.dimensions ?? "n"}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
       const texts = src.lore.map((l) => entryText(l));
       const hashes = texts.map(textHash);
@@ -391,7 +433,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
    * is nearly done, so "gone quiet" only counts after the first chunk; before
    * that only the overall cap applies.
    */
-  async function architect(userId: string, prompt: { system: string; user: string }, maxTokens: number): Promise<{ raw: Record<string, unknown> | null; ms: number; chars: number; why?: string }> {
+  async function architect(userId: string, prompt: { system: string; user: string }, maxTokens: number, role: ModelRole = "reader"): Promise<{ raw: Record<string, unknown> | null; ms: number; chars: number; why?: string }> {
     const ctl = new AbortController();
     const cap = setTimeout(() => ctl.abort(new Error(`no answer within ${READ_MS / 1000} s`)), READ_MS);
     let idle: ReturnType<typeof setTimeout> | null = null;
@@ -402,22 +444,23 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     const started = Date.now();
     let text = "";
     try {
-      const stream = spindle.generate.quietStream({
-        type: "quiet",
-        messages: [
-          { role: "system", content: prompt.system },
-          { role: "user", content: prompt.user },
-        ],
-        reasoning: { source: "off" },
-        parameters: { temperature: 0.4, max_tokens: maxTokens },
+      // The role's connection and reasoning (meaning/models.ts); a picked connection that fails falls back to the default.
+      text = await models.stream(
         userId,
-        signal: ctl.signal,
-      } as never);
-      for await (const chunk of stream) {
-        poke();
-        if (chunk.type === "token") text += chunk.token;
-        else if (chunk.type === "done" && chunk.content) text = chunk.content;
-      }
+        role,
+        {
+          messages: [
+            { role: "system", content: prompt.system },
+            { role: "user", content: prompt.user },
+          ],
+          parameters: { temperature: 0.4, max_tokens: maxTokens },
+          signal: ctl.signal,
+        },
+        (t) => {
+          poke();
+          text = t;
+        },
+      );
       const raw = firstJson(stripThink(text));
       return { raw, ms: Date.now() - started, chars: text.length, ...(raw ? {} : { why: `no readable JSON in ${text.length} characters` }) };
     } catch (err) {
@@ -431,7 +474,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
   /** Every Architect answer is kept by question (4.5): a re-read of an unchanged card costs no model call. */
   const jaot = createJaot({ concurrency: 2, log });
   let placeHook: PlaceHook | null = null;
-  const ledger = createLedger(spindle.userStorage as never, (userId) => (prompt, max) => architect(userId, prompt, max), log);
+  const ledger = createLedger(spindle.userStorage as never, (userId, kind) => (prompt, max) => architect(userId, prompt, max, roleForKind(kind)), log);
   type Raw = Record<string, unknown>;
   const askRaw = async (userId: string, kind: string, prompt: { system: string; user: string }, max: number, fresh: boolean) => {
     const started = Date.now();
@@ -526,30 +569,20 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
   }
 
   /** Typed answers from the Decision model, else the helper model imitating them. */
-  async function ask(userId: string, state: Record<string, unknown>, questions: ReturnType<typeof detectorQuestions>): Promise<Record<string, DecisionAnswer | undefined> | null> {
-    if (spindle.decisions?.evaluate) {
-      try {
-        const connection_id = await preferredConnection(spindle, userId);
-        const r = await spindle.decisions.evaluate({ state: state as never, questions, userId, ...(connection_id ? { connection_id } : {}) }, { signal: AbortSignal.timeout(DETECT_MS) });
-        return r.answers as Record<string, DecisionAnswer | undefined>;
-      } catch (err) {
-        log(`detector: decision model unavailable (${errText(err).slice(0, 120)}); trying the helper`);
-      }
-    }
+  async function ask(userId: string, state: Record<string, unknown>, questions: Record<string, DecisionQuestion>): Promise<Record<string, DecisionAnswer | undefined> | null> {
+    const typed = await models.decide(userId, state, questions, DETECT_MS, "detector");
+    if (typed) return typed;
     try {
       const { system, user } = typedPrompt(state, questions);
-      const res = await spindle.generate.quiet({
-        type: "quiet",
+      const res = await models.quiet(userId, "helper", {
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        reasoning: { source: "off" },
         parameters: { temperature: 0.1 },
-        userId,
         signal: AbortSignal.timeout(DETECT_MS + 6000),
-      } as never);
-      const raw = firstJson(stripThink(contentOf(res)));
+      });
+      const raw = firstJson(stripThink(res));
       return raw ? typedAnswers(raw, questions) : null;
     } catch (err) {
       log(`detector: helper failed (${errText(err).slice(0, 120)})`);
@@ -561,18 +594,15 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     const lines = await recent(userId, chatId, 8);
     const { system, user } = framePrompt(sheet, castId, lines, kind);
     try {
-      const res = await spindle.generate.quiet({
-        type: "quiet",
+      const res = await models.quiet(userId, roleForKind("frame"), {
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        reasoning: { source: "off" },
         parameters: { temperature: 0.5, max_tokens: 600 },
-        userId,
         signal: AbortSignal.timeout(FRAME_MS),
-      } as never);
-      const raw = firstJson(stripThink(contentOf(res)));
+      });
+      const raw = firstJson(stripThink(res));
       if (raw) return parseFrame(raw, sheet, castId, kind);
     } catch (err) {
       log(`framing failed (${errText(err).slice(0, 120)}); using the fallback`);
@@ -675,6 +705,21 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     saveSheet,
     recent,
     loreFor,
+    /** The card's sources with its lorebook ranked by meaning against the chat (stored vectors), for an expedition board's deck. */
+    sourcesFor: (userId: string, chatId: string) => gather(userId, chatId, { semantic: true }).catch(() => null),
+    /**
+     * A cast member's look in Inlay's character library (character tag, body,
+     * outfit). When Inlay lacks them, Inlay is asked to profile the card's
+     * missing people with its own analysis, and this waits (a few minutes at
+     * most) for their profiles. Null when Inlay has nothing.
+     */
+    inlayLook: async (userId: string, sheet: CardSheet, m: CastMember) => {
+      const ids = [m.characterId, ...sheet.characterIds];
+      const now = await inlay.lookFor(userId, m.name, ids).catch(() => null);
+      if (now?.tags) return now;
+      await profiled(userId, sheet);
+      return inlay.lookFor(userId, m.name, ids).catch(() => null);
+    },
 
     /** "Match the card" (5.2a): the strong model writes a look file for this card's world; code validates it. */
     async matchLook(userId: string, chatId: string): Promise<{ look: LookFile; warnings: string[] } | { error: string }> {
@@ -801,7 +846,15 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       // Their art, looked up fresh: sprites become moods, the base is the reference for the rest.
       const [art, look] = await Promise.all([
         faces.facesFor(userId, sheet, who).catch(() => null).then((f) => f ?? who.faces ?? null),
-        inlay.lookFor(userId, who.name, [who.characterId, ...sheet.characterIds]).catch(() => null),
+        inlay
+          .lookFor(userId, who.name, [who.characterId, ...sheet.characterIds])
+          .catch(() => null)
+          // Inlay's traits without a character tag draw a generic person: the reader's character tag goes in front (5.3a).
+          .then(async (l) =>
+            l?.tags && !hasCharacterTag(l.tags)
+              ? { ...l, tags: withReaderTags(l.tags, (await ledger.compile(userId, "figure-tags", figureTagsPrompt(sheet, who), 400, parseFigureTags, () => null, { tries: 2 }).catch(() => null))?.value ?? null) }
+              : l,
+          ),
       ]);
       if (art && scenario.card) scenario.card.faces = art;
       if (look && scenario.card) scenario.card.inlay = look;
@@ -810,6 +863,8 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       // The art key follows the reference (and Inlay's tags), so a new avatar, sprite set, or look is never shown old renders.
       const tagged = look?.tags ? `i${hash8(look.tags)}` : "";
       if (ref) scenario.npc = { ...scenario.npc, id: `${scenario.npc.id}~${ART_REV}${ref.slice(0, 8)}${tagged}` };
+      // No art of their own: they stand as their figure, which follows their tags; so do the moods drawn from it.
+      else scenario.npc = { ...scenario.npc, id: `${scenario.npc.id}~${ART_REV}f${tagged || "0"}` };
       log(`scene with ${who.name}: ${f.kind} over "${f.stake}" (${f.by}), DC ${scenario.contest.dc}`);
       await parleys.startScenario(userId, scenario, chatId);
     },
@@ -825,9 +880,10 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       const wantChip = c.chips !== false;
       // Where the scene is now: asked in the same call when this chat has a scene (places from play).
       const where = placeHook ? await placeHook.where(userId, chatId).catch(() => null) : null;
-      if (!wantChip && !where) return;
       const lines = await recent(userId, chatId, 4);
+      // Names, facts and quest steps (play, backend/senses.ts): their own Decision request, in the background.
       if (placeHook?.notice) void placeHook.notice(userId, chatId, lines).catch((err) => log(`notice: ${errText(err).slice(0, 160)}`));
+      if (!wantChip && !where) return;
       const t0 = Date.now();
       const questions = { ...(wantChip ? detectorQuestions(sheet) : {}), ...(where ? whereQuestion(where.here, where.places) : {}) };
       const state = { ...detectorState(sheet, lines), ...(where ? { scene_was_at: where.here.name, known_places: where.places.map((p) => p.name) } : {}) };

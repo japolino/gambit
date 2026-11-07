@@ -17,6 +17,7 @@ import { mountParley, type ParleyView } from "./frontend/parley/view.js";
 import type { CardStatus, ParleyNarrator, ParleyViewMode } from "./shared/protocol.js";
 import { mountScene, type SceneHandle } from "./frontend/scene/view.js";
 import type { SceneView } from "./shared/scene-view.js";
+import { createVoice } from "./frontend/voice.js";
 
 type StageHandle = ReturnType<typeof mountBattleStage>;
 type Step = { state: BattleState; events: BattleEvent[] };
@@ -37,6 +38,28 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let parleyState: { state: ParleyState; scenario: ParleyScenario; journal: string[] } | null = null;
   /** The card status of the chat on screen. */
   let card: CardStatus | null = null;
+  // Voice (6.4): the host's TTS, off until the player turns it on.
+  const voice = createVoice((ctx as unknown as { tts?: Parameters<typeof createVoice>[0] }).tts);
+  let ttsConnections: { id: string; name: string }[] = [];
+  let ttsListed = false;
+  async function listTts(): Promise<void> {
+    if (ttsListed) return;
+    ttsListed = true;
+    try {
+      const res = await fetch("/api/v1/tts-connections", { credentials: "same-origin" });
+      const body = (await res.json()) as unknown;
+      const rows = (Array.isArray(body) ? body : ((body as { data?: unknown[]; connections?: unknown[] }).data ?? (body as { connections?: unknown[] }).connections ?? [])) as { id?: string; name?: string }[];
+      ttsConnections = rows.filter((c) => c.id).map((c) => ({ id: c.id!, name: c.name || c.id! }));
+      if (card) panel.setCard(card, true);
+    } catch {
+      /* the default voice still works */
+    }
+  }
+  let spokenStory = "";
+  const spokenParley = new Map<string, number>();
+  voice.onChange(() => {
+    if (card) panel.setCard(card, true);
+  });
   let wantParley = false;
   /** The Scene on screen (6.1), the last view the backend sent, and whether a click asked for it. */
   let scene: SceneHandle | null = null;
@@ -47,12 +70,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let parleyMode: ParleyViewMode = "immersive";
   let parleyNarrator: ParleyNarrator = "gambit";
   /** Ready art by key (Combatant.art), kept for stages mounted later. */
-  const artReady = new Map<string, { url: string; cutout?: boolean }>();
+  const artReady = new Map<string, { url: string; cutout?: boolean; face?: [number, number, number, number] | null }>();
   const disposeArt = registerArtFrontend({ sendToBackend: send, onBackendMessage: (h) => ctx.onBackendMessage(h) });
   const pushArt = () => {
     for (const [key, a] of artReady) stage?.setArt(key, a.url, { cutout: a.cutout });
     for (const [key, a] of artReady) parley?.setArt(key, a.url, a.cutout);
-    for (const [key, a] of artReady) scene?.setArt(key, a.url, a.cutout);
+    for (const [key, a] of artReady) scene?.setArt(key, a.url, a.cutout, a.face);
   };
   const activeChatId = (): string | null => {
     try {
@@ -100,10 +123,27 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       module: (id, on) => withChat((chatId) => send({ type: "card.edit", chatId, modules: { [id]: on } })),
       chips: (on) => withChat((chatId) => send({ type: "card.chips", chatId, on })),
       play: () => withChat((chatId) => openScene(chatId)),
+      voice: () => {
+        const p = voice.prefs();
+        if (p.on) void listTts();
+        return {
+          available: voice.available,
+          on: p.on,
+          connectionId: p.connectionId,
+          connections: ttsConnections,
+          error: voice.lastError(),
+          set: (x) => voice.set(x),
+          test: () => voice.say("The road ahead is quiet. For now."),
+        };
+      },
     },
     demo: () => {
       panel.setStatus("Adding the demo card…");
       send({ type: "card.demo" });
+    },
+    models: {
+      get: () => send({ type: "models.get" }),
+      set: (patch) => send({ type: "models.set", patch }),
     },
   });
 
@@ -149,6 +189,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         fight: () => send({ type: "play.fight", chatId }),
         close: () => ov.hide(),
         hex: (q, r) => send({ type: "hex.step", chatId, q, r }),
+        board: (op, cell, tier) => send({ type: "board.act", chatId, op, ...(cell ? { cell } : {}), ...(tier !== undefined ? { tier } : {}) }),
         forge: (op, arg, arg2, text) => send({ type: "forge.act", chatId, op, ...(arg !== undefined ? { arg } : {}), ...(arg2 !== undefined ? { arg2 } : {}), ...(text !== undefined ? { text } : {}) }),
         cite: (personId, text) => {
           pendingCite = `I know this: ${text.replace(/\.?$/, ".")}`;
@@ -203,6 +244,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     const granted = await ctx.permissions.getGranted().catch(() => [] as string[]);
     overlay = createOverlay(ctx, granted.includes("app_manipulation"));
     overlay.onClose(() => {
+      voice.stop();
       stage?.destroy();
       stage = null;
       scene?.destroy();
@@ -302,10 +344,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
             panel.setProbeImage(item.key, item.url);
             continue;
           }
-          artReady.set(item.key, { url: item.url, cutout: item.cutout });
+          artReady.set(item.key, { url: item.url, cutout: item.cutout, ...(item.face !== undefined ? { face: item.face } : {}) });
           stage?.setArt(item.key, item.url, { cutout: item.cutout });
           parley?.setArt(item.key, item.url, item.cutout);
-          scene?.setArt(item.key, item.url, item.cutout);
+          scene?.setArt(item.key, item.url, item.cutout, item.face);
         }
         break;
       case "battle.state": {
@@ -336,6 +378,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       }
       case "scene.state": {
         sceneView = msg.view;
+        {
+          // A story tile's scene is read aloud as its card opens.
+          const st = msg.view.board?.story;
+          const sig = st ? `${st.title}|${st.text.length}` : "";
+          if (st && sig !== spokenStory && !msg.view.board?.pending) voice.say(`${st.title}. ${st.text}`);
+          spokenStory = sig;
+        }
         panel.setStatus("");
         if (scene && scene.chatId === msg.view.chatId) {
           scene.setView(msg.view);
@@ -351,6 +400,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       }
       case "scene.meanwhile": {
         if (scene && scene.chatId === msg.chatId) scene.meanwhile(msg.day, msg.vignettes);
+        if (msg.vignettes?.length && scene?.chatId === msg.chatId) voice.queue(msg.vignettes.map((x) => x.text));
         break;
       }
       case "scene.suggest": {
@@ -369,6 +419,15 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       }
       case "parley.state": {
         parleyState = { state: msg.state, scenario: msg.scenario, journal: msg.journal };
+        {
+          // Speak each NPC reply once, when it is written.
+          const ex = msg.state.exchanges;
+          const last = ex[ex.length - 1];
+          if (last?.reply && (spokenParley.get(msg.state.id) ?? 0) < ex.length) {
+            spokenParley.set(msg.state.id, ex.length);
+            voice.say(last.reply);
+          }
+        }
         parleyMode = msg.view;
         parleyNarrator = msg.narrator;
         panel.setNarrator(msg.narrator);
@@ -391,6 +450,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "parley.reply":
         if (parley?.parleyId === msg.parleyId) parley.reply(msg.index, msg.text, msg.final);
+        if (msg.final && msg.text && (spokenParley.get(msg.parleyId) ?? 0) < msg.index + 1) {
+          spokenParley.set(msg.parleyId, msg.index + 1);
+          voice.say(msg.text);
+        }
         break;
       case "parley.view":
         parleyMode = msg.mode;
@@ -418,6 +481,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "card.starting":
         panel.setStatus(`Setting the scene with ${msg.castName}…`);
+        break;
+      case "models.state":
+        panel.setModels(msg.state);
         break;
       case "battle.error":
         panel.setStatus(msg.error);

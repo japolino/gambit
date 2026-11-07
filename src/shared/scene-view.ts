@@ -18,7 +18,52 @@ export const THEMES: readonly { id: ThemeId; label: string }[] = [
   { id: "command", label: "Command" },
 ];
 
-export type Movement = "scene" | "lobby" | "stops" | "hex" | "delve";
+export type Movement = "scene" | "lobby" | "stops" | "hex" | "delve" | "board";
+
+/** The expedition board (engine/world/board.ts) as the frontend draws it. Face-down tiles show their ring, not what they are. */
+export interface BoardView {
+  name: string;
+  /** Art key of the place seen from above, drawn for the board: the tiles lie on it, and turning one shows the ground beneath. */
+  map: string;
+  /** Art key of the place's painting (the board's backdrop while its map is drawn). */
+  painting: string;
+  cells: {
+    k: string;
+    q: number;
+    r: number;
+    ring: "safe" | "chance" | "lore" | "goal";
+    open: boolean;
+    /** What the tile is, once it is face up (the way in and the way on are always known). */
+    kind: "start" | "goal" | "camp" | "spring" | "cache" | "forage" | "hazard" | "shortcut" | "lore" | "quiet" | null;
+    used: boolean;
+    stars?: number;
+    /** A face-up lore tile: what it holds. */
+    title?: string;
+    lore?: "fact" | "person" | "entry" | "thread";
+    /** The member whose move it is can go here. */
+    reach: boolean;
+  }[];
+  foes: { id: string; q: number; r: number }[];
+  /** `art`: their cut-out figure (or drawn portrait) key, shown cropped to the face once ready; `imageId` until then. */
+  party: { id: string; name: string; q: number; r: number; imageId: string | null; art?: string; active: boolean }[];
+  supplies: number;
+  cap: number;
+  round: number;
+  /** All of the party must stand here to finish. */
+  goal: string;
+  start: string;
+  /** A lore tile waits for a depth: its title, kind, stars, and what each depth costs. */
+  pending?: { cell: string; title: string; kind: "fact" | "person" | "entry" | "thread"; stars: 1 | 2 | 3; costs: number[] };
+  /** A battle with a foe is under way. */
+  fight: boolean;
+  done: boolean;
+  /** The active member stands on an unused camp. */
+  camp: { here: boolean; cost: number };
+  /** What a lore tile just showed: the glimpse or the scene, until the next action. */
+  story?: { title: string; text: string; stars: number; /** A CG of the find (2★ and up), drawn while you read. */ art?: string };
+  /** What the last action did, for the pops: a gain or loss at a tile. */
+  fx: { cell?: string; text: string; kind: "supply" | "coin" | "hurt" | "heal" | "lore" | "foe" | "goal" | "info" }[];
+}
 
 export interface ScenePerson {
   id: string;
@@ -28,6 +73,8 @@ export interface ScenePerson {
   imageId: string | null;
   /** Art key Gambit draws them under when they have none. */
   art: string;
+  /** Their own full figure, drawn from their card art and cut out (preferred once it is ready). */
+  figure?: string;
 }
 
 export interface DelveView {
@@ -83,6 +130,8 @@ export interface SceneView {
     quests: { name: string; dossier: string; steps: { text: string; where: string; done: boolean }[]; item: string; done: boolean }[];
     items: { name: string; description: string; from: string }[];
     companions: { id: string; name: string; affinity: number; bonded: boolean; recruit: boolean }[];
+    /** The CGs this playthrough drew, newest first: art keys with a caption. */
+    album: { key: string; caption: string; day: number }[];
   };
   people: ScenePerson[];
   menu: Hotspot[];
@@ -95,6 +144,7 @@ export interface SceneView {
   /** Latest happenings, newest last. */
   log: string[];
   delve?: DelveView;
+  board?: BoardView;
   /** Something is being prepared (a read, an encounter). */
   busy?: string;
 }

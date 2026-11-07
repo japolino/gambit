@@ -12,6 +12,9 @@
  * | background_variant  | GPT edit of the original (fidelity high), then plain           |
  * | icon_sheet          | GPT only (gate anchor); none -> placeholder icons              |
  * | style_probe         | the probed look's provider, then the other; no anchor          |
+ * | figure              | consistency.ts from the card art, then cut out in the browser  |
+ * | cg                  | V4.5 reference on the cast's figures / GPT edit, then plain    |
+ * | map                 | GPT edit of the painting, then the look's provider             |
  *
  * The seed is the spec's, else the character DNA's, else derived from the key.
  */
@@ -22,6 +25,7 @@ import { lookById, providerOrder } from "./looks.js";
 import { gptEditPlan, gptPlainPlan, naiPlainPlan, withUser, type PlanContext } from "./plan-kit.js";
 import type { Plan } from "./queue.js";
 import { buildPrompt, type ArtSpec } from "./specs.js";
+import { buildNaiCall } from "./providers.js";
 
 export function seedFor(key: string, spec: ArtSpec): number {
   if (typeof spec.seed === "number" && Number.isFinite(spec.seed)) return Math.abs(Math.floor(spec.seed)) % 4294967296;
@@ -44,6 +48,19 @@ function plainPlans(ctx: PlanContext, spec: ArtSpec, seed: number, priority: Art
   return out;
 }
 
+/**
+ * A CG: drawn from the cast's tags (one caption per person, Inlay's
+ * character tags when there). A GPT edit with their figures comes first
+ * when GPT is connected.
+ */
+function cgPlans(ctx: PlanContext, spec: Extract<ArtSpec, { kind: "cg" }>, seed: number, priority: ArtPriority): Plan[] {
+  const refs = spec.cast.flatMap((x) => (x.ref ? [x.ref.imageId] : [])).slice(0, 2);
+  const out: Plan[] = [];
+  if (refs.length && ctx.providers.gpt) out.push(gptEditPlan(ctx, ctx.providers.gpt, buildPrompt(spec, ctx.look), priority, refs, "high", "gpt-cg-cast"));
+  out.push(...plainPlans(ctx, spec, seed, priority));
+  return out;
+}
+
 /** Every route for a spec, best first. Empty when no connection can draw it. */
 export function plansFor(ctx: PlanContext, key: string, spec: ArtSpec, priority: ArtPriority): Plan[] {
   const seed = seedFor(key, spec);
@@ -61,6 +78,18 @@ export function plansFor(ctx: PlanContext, key: string, spec: ArtSpec, priority:
     case "expression":
     case "pose":
       plans = variantPlans(ctx, spec, seed, priority);
+      break;
+    case "figure":
+      // Drawn fresh from their tags (Inlay's character tags when there), transparent on V5.
+      plans = plainPlans(ctx, spec, seed, priority);
+      break;
+    case "cg":
+      plans = cgPlans(ctx, spec, seed, priority);
+      break;
+    case "map":
+      plans = [];
+      if (spec.painting && ctx.providers.gpt) plans.push(gptEditPlan(ctx, ctx.providers.gpt, buildPrompt(spec, ctx.look), priority, [spec.painting.imageId], "low", "gpt-map-from-painting"));
+      plans.push(...plainPlans(ctx, spec, seed, priority, gate));
       break;
     case "monster":
       plans = plainPlans(ctx, spec, seed, priority, gate);

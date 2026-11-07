@@ -5,7 +5,7 @@
 import type { SpindleFrontendContext } from "lumiverse-spindle-types";
 import { ENCOUNTERS } from "../../engine/content/index.js";
 import { PARLEYS } from "../../engine/content/parleys.js";
-import type { CardStatus, ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
+import type { CardStatus, ModelsPatch, ModelsState, ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
 import { CARD_CSS, renderCard, type CardActions } from "./card-panel.js";
 
 const ICON = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z"/></svg>`;
@@ -39,6 +39,11 @@ const CSS = `
 .gb .seg { display: flex; border: 1px solid var(--lumiverse-border, rgba(127,127,127,.25)); border-radius: 999px; overflow: hidden; width: max-content; }
 .gb .seg button { border: 0; border-radius: 0; padding: 4px 12px; font-size: 12px; background: none; text-align: center; }
 .gb .seg button.on { background: var(--lumiverse-primary, #c8a26a); color: var(--lumiverse-primary-contrast, #111); }
+.gb .models { display: grid; gap: 10px; padding-top: 8px; }
+.gb .model-row { display: grid; gap: 4px; }
+.gb .model-row .lbl { font-size: 12px; font-weight: 600; }
+.gb .model-row .ctl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.gb .model-row select { flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--lumiverse-border, rgba(127,127,127,.25)); background: var(--lumiverse-fill-subtle, rgba(127,127,127,.06)); color: inherit; }
 ${CARD_CSS}`;
 
 export interface Panel {
@@ -50,6 +55,8 @@ export interface Panel {
   /** The open Parley's name (null when none), the view mode, and how many facts the journal holds. */
   setParley(open: string | null, mode: ParleyViewMode, journalSize: number): void;
   setNarrator(mode: ParleyNarrator): void;
+  /** Which connection each kind of model call uses (the Models section). */
+  setModels(state: ModelsState): void;
   /** The active chat's card status (null while asking), and whether a chat is open at all. */
   setCard(status: CardStatus | null, hasChat: boolean): void;
   destroy(): void;
@@ -69,6 +76,7 @@ export function createPanel(
     setNarrator(mode: ParleyNarrator): void;
     card: CardActions;
     demo(): void;
+    models: { get(): void; set(patch: ModelsPatch): void };
   },
 ): Panel {
   const tab = ctx.ui.registerDrawerTab({
@@ -91,6 +99,8 @@ export function createPanel(
       <div class="describe"><textarea data-describe rows="2" maxlength="800" placeholder="Describe a look: &quot;ukiyo-e woodblock with gold leaf&quot;, &quot;90s OVA cel, film grain&quot;…"></textarea><button data-describe-go>Make this look</button></div>
       <div class="hint">Art is kept per look: switching back shows what was drawn before, and the new look is drawn as it is needed.</div>
       <div class="looks" data-looks></div></div></details>
+    <details data-models-sec><summary>Models: which connection does what</summary><div class="models" data-models>
+      <div class="hint">Loading your connections…</div></div></details>
     <details><summary>Saltgate demo, encounters, and art</summary><div class="gb" style="padding:8px 0 0">
     <div class="row"><button data-demo>Add the Saltgate demo card to my library<span class="sub">A small harbor town with a lorebook, played through the Card Reader like any card</span></button>
       <button class="primary" data-open>Open the Stage</button></div>
@@ -124,6 +134,39 @@ export function createPanel(
   const narratorBtns = [...root.querySelectorAll<HTMLButtonElement>("[data-parley-narrator] button")];
   narratorBtns.forEach((b) => b.addEventListener("click", () => actions.setNarrator(b.dataset.n as ParleyNarrator)));
   const paintNarrator = (m: ParleyNarrator) => narratorBtns.forEach((b) => b.classList.toggle("on", b.dataset.n === m));
+
+  // Models (docs/DESIGN.md 9): a connection and a reasoning switch per role, the Decision model, and embeddings.
+  const modelsEl = root.querySelector<HTMLElement>("[data-models]")!;
+  root.querySelector("[data-models-sec]")!.addEventListener("toggle", (e) => {
+    if ((e.target as HTMLDetailsElement).open) actions.models.get();
+  });
+  const renderModels = (st: ModelsState) => {
+    const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+    const opt = (value: string, label: string, on: boolean) => `<option value="${esc(value)}"${on ? " selected" : ""}>${esc(label)}</option>`;
+    const named = (c: ModelsState["llm"][number]) => `${c.name}${c.model && c.model !== c.name ? ` (${c.model})` : ""}`;
+    const roles: [keyof ModelsState["roles"], string, string][] = [
+      ["reader", "Reader", "Reads the card, writes the World Bible and the armory, forges classes. Careful; may think first."],
+      ["narrator", "Narrator", "Voices Parley replies, board and lore scenes, Meanwhile, promotions, the night."],
+      ["helper", "Helper", "Small background answers: where the chat went, framing a contest, typed answers."],
+    ];
+    const def = st.llm.find((c) => c.isDefault);
+    const rows = roles.map(([id, label, sub]) => {
+      const r = st.roles[id];
+      const missing = r.connectionId && !st.llm.some((c) => c.id === r.connectionId);
+      return `<div class="model-row"><span class="lbl">${label}</span><span class="hint">${sub}</span><div class="ctl">
+        <select data-role="${id}">${opt("", `Default connection${def ? `: ${named(def)}` : ""}`, !r.connectionId)}${st.llm.map((c) => opt(c.id, named(c), c.id === r.connectionId)).join("")}${missing ? opt(r.connectionId!, "(a removed connection: the default is used)", true) : ""}</select>
+        <div class="seg" data-reason="${id}" title="Reasoning: Auto thinks for the Reader when its model can">${(["auto", "on", "off"] as const).map((v) => `<button data-v="${v}" class="${r.reasoning === v ? "on" : ""}">${v === "auto" ? "Auto" : v === "on" ? "Think" : "No thinking"}</button>`).join("")}</div></div></div>`;
+    });
+    const dec = `<div class="model-row"><span class="lbl">Decision model</span><span class="hint">Quick yes/no checks: places, names in the chat, facts that came up, quest steps, companions' reactions, the Parley referee. Without one, code rules decide.</span><div class="ctl"><select data-decision>${opt("auto", "Auto (Jev or TypeSafe first)", st.decision === "auto")}${opt("off", "Off: code rules only", st.decision === "off")}${st.decisions.map((c) => opt(c.id, `${c.name}${c.isDefault ? " (default)" : ""}`, c.id === st.decision)).join("")}</select></div></div>`;
+    const emb = `<div class="model-row"><span class="lbl">Embeddings</span><span class="hint">Matching by meaning: lorebook entries, card facts in the chat, repeated Parley arguments, memories worth recalling.</span><div class="ctl"><select data-embedding>${opt("auto", "Auto (your primary embedding connection)", st.embedding === "auto")}${opt("off", "Off: words only", st.embedding === "off")}${st.embeddings.map((c) => opt(c.id, `${c.name} (${c.model})${c.isDefault ? ", primary" : ""}`, c.id === st.embedding)).join("")}</select></div></div>`;
+    modelsEl.innerHTML = `${rows.join("")}${dec}${emb}<div class="hint">A connection that fails falls back to the default one.${st.llm.length ? "" : " No connections could be listed; everything uses the default."}</div>`;
+    modelsEl.querySelectorAll<HTMLSelectElement>("[data-role]").forEach((s) => s.addEventListener("change", () => actions.models.set({ role: s.dataset.role as keyof ModelsState["roles"], connectionId: s.value || null })));
+    modelsEl.querySelectorAll<HTMLElement>("[data-reason]").forEach((g) =>
+      g.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.addEventListener("click", () => actions.models.set({ role: g.dataset.reason as keyof ModelsState["roles"], reasoning: b.dataset.v as "auto" | "on" | "off" }))),
+    );
+    modelsEl.querySelector<HTMLSelectElement>("[data-decision]")!.addEventListener("change", (e) => actions.models.set({ decision: (e.target as HTMLSelectElement).value }));
+    modelsEl.querySelector<HTMLSelectElement>("[data-embedding]")!.addEventListener("change", (e) => actions.models.set({ embedding: (e.target as HTMLSelectElement).value }));
+  };
   paintNarrator("gambit");
 
   const looksEl = root.querySelector<HTMLElement>("[data-looks]")!;
@@ -205,6 +248,7 @@ export function createPanel(
     setStatus: (t) => (status.textContent = t),
     setResumable: (on) => (openBtn.textContent = on ? "Resume the fight" : "Open the Stage"),
     setNarrator: (m) => paintNarrator(m),
+    setModels: (st) => renderModels(st),
     setCard: (st, hasChat) => renderCard(cardEl, st, hasChat, actions.card),
     setParley: (open, mode, journalSize) => {
       parleyResume.hidden = !open;

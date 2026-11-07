@@ -36,8 +36,9 @@ export function placeArt(sheet: CardSheet, r: PlayRecord, placeId: string): stri
   const scar = r.memory?.scars[placeId];
   return scar ? `${placeKey(sheet, placeId)}~${scar.flag}` : placeKey(sheet, placeId);
 }
-import { npcArtKey, placeArtKey } from "./art-keys.js";
-import type { DelveView, Movement, SceneView, ThemeId } from "./scene-view.js";
+import { figureArtKey, npcArtKey, placeArtKey } from "./art-keys.js";
+import type { BoardView, DelveView, Movement, SceneView, ThemeId } from "./scene-view.js";
+import { type Board, CAMP_COST, key as boardKey, reachable, SUPPLY_CAP as BOARD_SUPPLY_CAP, TIER_COST } from "../engine/world/board.js";
 
 export interface PlayRecord {
   v: 1;
@@ -59,6 +60,14 @@ export interface PlayRecord {
   memory?: MemoryRecord;
   /** The class book (M7): classes, ranks, crests, catalysts, awakenings. */
   forge?: ClassBook;
+  /** An expedition board under way (engine/world/board.ts), and what its last action did. */
+  board?: Board;
+  boardFx?: BoardView["fx"];
+  boardStory?: BoardView["story"];
+  /** CGs drawn for key moments (art keys), newest last. */
+  album?: { key: string; caption: string; day: number }[];
+  /** Lore ids opened on boards so far, so new boards deal fresh ones. */
+  loreSpent?: string[];
 }
 
 const INDOOR = /(inn|tavern|shop|store|room|rooms|bar|cafe|café|parlou?r|hall|kitchen|library|office|apartment|bedroom|chamber|study|salon|lounge|club|pub|smithy|forge|bakery|apothecary|mess|quarters|house|home|manor|mansion|palace|castle)/i;
@@ -79,10 +88,20 @@ export function wildCell(r: PlayRecord): Terrain | null {
 
 /** The menu for where you are: a place's hotspots, or the wild's (camp, forage, fight). */
 export function menuFor(sheet: CardSheet, r: PlayRecord): Hotspot[] {
-  if (r.delve) return [];
+  if (r.delve || r.board) return [];
   const t = wildCell(r);
-  if (!t) return hotspotsOf(r.world, r.scene.placeId, sheet);
+  if (!t) {
+    const out = hotspotsOf(r.world, r.scene.placeId, sheet);
+    const p = r.world.places[r.scene.placeId];
+    // Out of doors, a place can be crossed on an expedition board; a delve has its own crawl.
+    if (p && sheet.modules.places !== false && !p.delve && (p.danger || !(p.indoor ?? INDOOR.test(`${p.name} ${p.description}`)))) {
+      const at = out.findIndex((h) => h.kind === "search");
+      out.splice(at + 1, 0, { id: "explore", kind: "explore", label: `Explore ${p.name}` });
+    }
+    return out;
+  }
   const out: Hotspot[] = [{ id: "forage", kind: "search", label: "Forage for supplies" }];
+  if (t !== "water") out.push({ id: "explore", kind: "explore", label: `Explore the ${TERRAIN_NAME[t].toLowerCase()}` });
   if (sheet.modules.encounters && (t === "wood" || t === "ruin" || t === "hill")) out.push({ id: "fight", kind: "fight", label: fightLabel(sheet.skin.fight) });
   out.push({ id: "camp", kind: "rest", label: "Make camp" }, { id: "wait", kind: "wait", label: "Wait a while" });
   return out;
@@ -144,8 +163,8 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
   const people = (wild ? [] : p.people)
     .map((id) => cast.get(id))
     .filter((m): m is NonNullable<typeof m> => !!m)
-    .map((m) => ({ id: m.id, name: m.name, role: m.role, imageId: m.faces?.base ?? m.avatarImageId ?? null, art: npcArtKey(`${sheet.cardKey}:${m.id}`) }));
-  const movement: Movement = r.delve ? "delve" : r.hex ? "hex" : (MOVEMENT[r.world.shape] ?? "scene");
+    .map((m) => ({ id: m.id, name: m.name, role: m.role, imageId: m.faces?.base ?? m.avatarImageId ?? null, art: npcArtKey(`${sheet.cardKey}:${m.id}`), figure: figureArtKey(sheet.cardKey, m.id) }));
+  const movement: Movement = r.board ? "board" : r.delve ? "delve" : r.hex ? "hex" : (MOVEMENT[r.world.shape] ?? "scene");
   const others = Object.values(r.world.places).filter((q) => q.id !== p.id);
   return {
     chatId,
@@ -167,12 +186,64 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     vigor: r.scene.vigor,
     log: r.log,
     ...(r.delve ? { delve: delveView(sheet, r)! } : {}),
+    ...(r.board ? { board: boardView(sheet, r) } : {}),
     ...(r.hex ? { hex: hexView(r) } : {}),
     ...(r.thread ? { thread: { goal: r.thread.goal, found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text), total: r.thread.revelations.length } } : {}),
     hand: sheet.facts.filter((f) => f.known || r.scene.found.includes(f.id)).map((f) => ({ id: f.id, text: f.text })),
-    indoor: !wild && !r.delve && (p.shop || INDOOR.test(`${p.name} ${p.description}`)),
+    // A Decision model's verdict when the place was judged (backend/senses.ts), else the word rule.
+    indoor: !wild && !r.delve && (p.indoor ?? (p.shop || INDOOR.test(`${p.name} ${p.description}`))),
     journal: journalView(sheet, r),
     ...(busy ? { busy } : {}),
+  };
+}
+
+/** Art key of a place seen from above as a board map (art kind "map"). */
+export const boardMapKey = (sheet: CardSheet, placeId: string) => `map:${tag(sheet.cardKey)}.${placeId}`;
+
+/** The board as the frontend sees it: rings on face-down tiles, the rest once they are turned. */
+export function boardView(sheet: CardSheet, r: PlayRecord): BoardView {
+  const b = r.board!;
+  const reach = reachable(b);
+  const m = b.party[b.active];
+  const here = m ? b.cells[boardKey(m.q, m.r)] : undefined;
+  const cast = new Map(sheet.cast.map((c) => [c.id, c]));
+  const pend = b.pending ? b.cells[b.pending]?.lore : undefined;
+  return {
+    name: b.placeId.startsWith("wild_") ? (TERRAIN_NAME[b.placeId.slice(5) as Terrain] ?? "The wild") : (r.world.places[b.placeId]?.name ?? "The way"),
+    map: boardMapKey(sheet, b.placeId),
+    painting: b.placeId.startsWith("wild_") ? placeKey(sheet, b.placeId) : placeArt(sheet, r, b.placeId),
+    cells: Object.entries(b.cells).map(([k, c]) => {
+      const known = c.open || c.kind === "goal";
+      return {
+        k,
+        q: c.q,
+        r: c.r,
+        ring: c.ring,
+        open: c.open,
+        kind: known ? c.kind : null,
+        used: c.used,
+        ...(c.open && c.stars ? { stars: c.stars } : {}),
+        ...(c.open && c.lore ? { title: c.lore.title, lore: c.lore.kind, stars: c.lore.stars } : {}),
+        reach: reach.has(k),
+      };
+    }),
+    foes: b.foes.map((f) => ({ id: f.id, q: f.q, r: f.r })),
+    party: b.party.map((p, i) => {
+      const c = cast.get(p.id.replace(/^p_/, ""));
+      const card = c?.faces?.base ?? c?.avatarImageId ?? null;
+      return { id: p.id, name: p.name, q: p.q, r: p.r, imageId: card, ...(c ? { art: figureArtKey(sheet.cardKey, c.id) } : {}), active: i === b.active && !b.done };
+    }),
+    supplies: b.supplies,
+    cap: BOARD_SUPPLY_CAP,
+    round: b.round,
+    goal: b.goal,
+    start: b.start,
+    ...(pend && b.pending ? { pending: { cell: b.pending, title: pend.title, kind: pend.kind, stars: pend.stars, costs: [TIER_COST[1], TIER_COST[2], TIER_COST[3]].slice(0, pend.stars) } } : {}),
+    fight: !!b.fight,
+    done: b.done,
+    camp: { here: !!here && here.kind === "camp" && !here.used && !b.pending && !b.fight, cost: CAMP_COST },
+    ...(r.boardStory ? { story: r.boardStory } : {}),
+    fx: r.boardFx ?? [],
   };
 }
 
@@ -201,7 +272,8 @@ const feel = (a: number) => (a >= BOND_AT ? "devoted" : a >= 2 ? "warm" : a <= -
 /** The Journal: what you did, what people remember, rumours, quests, items, and your companions. */
 function journalView(sheet: CardSheet, r: PlayRecord): SceneView["journal"] {
   const m = r.memory;
-  if (!m) return { deeds: [], rumors: [], people: [], quests: [], items: [], companions: [] };
+  const album = (r.album ?? []).slice(-24).reverse();
+  if (!m) return { deeds: [], rumors: [], people: [], quests: [], items: [], companions: [], album };
   const name = (id: string) => sheet.cast.find((c) => c.id === id)?.name ?? m.promoted.find((p) => p.castId === id)?.name ?? id;
   const main = sheet.cast.filter((c) => c.main);
   return {
@@ -216,5 +288,6 @@ function journalView(sheet: CardSheet, r: PlayRecord): SceneView["journal"] {
       ...main.map((c) => ({ id: c.id, name: c.name, affinity: m.npc[c.id]?.affinity ?? 0, bonded: (m.npc[c.id]?.affinity ?? 0) >= BOND_AT, recruit: false })),
       ...m.recruits.map((x) => ({ id: x.id, name: x.name, affinity: m.npc[x.id]?.affinity ?? 0, bonded: (m.npc[x.id]?.affinity ?? 0) >= BOND_AT, recruit: true })),
     ],
+    album,
   };
 }

@@ -19,6 +19,7 @@
  * is the busy light, a taped quick-reference card and a desk lamp, all on a
  * walnut desk in a dark room lit by the screen.
  */
+import { BOARD_SKINS } from "../board-skins.js";
 import { esc, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import { drawCorridor } from "./command/corridor.js";
 import { canvas, coverDraw, cursorUrl, ditherToPalette, frameSvg, loadImage, PALETTE_LABEL, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "./command/pixels.js";
@@ -1092,6 +1093,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   relayout();
 
   return {
+    boardSkin: BOARD_SKINS.command,
     render,
     key(e, v) {
       const k = e.key.toLowerCase();

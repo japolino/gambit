@@ -8,6 +8,7 @@ import { registerArt } from "./art/controller.js";
 import { requestBattleArt } from "./backend/battle-art.js";
 import { createBattles } from "./backend/battles.js";
 import { createCards } from "./backend/cards.js";
+import { modelsFor } from "./backend/models.js";
 import { createParleys } from "./backend/parleys.js";
 import { createPlay } from "./backend/play.js";
 import type { ToBackend, ToFrontend } from "./shared/protocol.js";
@@ -114,6 +115,12 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
       case "card.chips":
         await cards.setChips(userId, msg.chatId, msg.on);
         break;
+      case "models.get":
+        send({ type: "models.state", state: await modelsFor(spindle).state(userId) }, userId);
+        break;
+      case "models.set":
+        send({ type: "models.state", state: await modelsFor(spindle).update(userId, msg.patch) }, userId);
+        break;
       case "journal.reset":
         await parleys.resetJournal(userId);
         break;
@@ -138,6 +145,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         break;
       case "hex.step":
         await play!.hexStep(userId, msg.chatId, msg.q, msg.r);
+        break;
+      case "board.act":
+        await play!.boardAct(userId, msg.chatId, msg.op, msg.cell, msg.tier);
         break;
       case "forge.act":
         await play!.forgeAct(userId, msg.chatId, msg.op, msg.arg, msg.arg2, msg.text);

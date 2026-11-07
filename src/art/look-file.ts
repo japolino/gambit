@@ -32,7 +32,7 @@ export interface LookFile {
 
 export type LookSource = "preset" | "user" | "inlay" | "card";
 
-const ART_KINDS: readonly ArtKind[] = ["portrait", "expression", "pose", "monster", "monster_phase2", "background", "background_variant", "icon_sheet", "style_probe"];
+const ART_KINDS: readonly ArtKind[] = ["portrait", "expression", "pose", "monster", "monster_phase2", "background", "background_variant", "icon_sheet", "style_probe", "figure", "cg", "map"];
 /** Tags that ask the image model for writing: images never carry text (5.3). */
 const TEXT_TAGS = /(^|,)\s*(text|english text|japanese text|speech bubble|signature|watermark|logo|title|caption|subtitles?|username|artist name|letters?|lettering|typography)\s*(?=,|$)/i;
 const TEXT_ASK = /\b(with (the )?(words?|text|caption|title)|labell?ed|lettering|written on|typography|logo)\b/i;

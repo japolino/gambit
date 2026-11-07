@@ -150,7 +150,8 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
     if (tactic === "insult" && !stance.likesTactics?.includes("insult")) tier = Math.min(tier, 1);
     tier = clampTier(tier);
   }
-  const rep = repetition(text, prev.exchanges.map((e) => e.text));
+  // Word overlap, or the meaning-level repeat measured when the line was judged (stored on the read, so replays agree).
+  const rep = Math.max(repetition(text, prev.exchanges.map((e) => e.text)), read.meaningRepeat ?? 0);
   if (!nonsense) tier -= rep >= 0.8 ? 2 : rep >= 0.5 ? 1 : 0;
 
   // 2. Claims, verified in code: known facts are Leverage, the rest are bluffs.

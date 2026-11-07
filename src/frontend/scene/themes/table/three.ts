@@ -56,6 +56,7 @@ import {
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { rng, type Stage3D } from "../contract.js";
 import { leatherUrl, matCanvas, paperUrl, slateUrl, tabletop } from "./tex.js";
+import { createPuppetMeshes, type PuppetMeshes } from "../../puppet-mesh.js";
 
 /** What the 3D board shows; drawn in chalk on its slate. */
 export interface Board3D {
@@ -164,6 +165,11 @@ export class Table3D {
   private coinUnit = "";
   private backdropUrl = "";
   private personTex = new Map<string, Promise<CanvasTexture | null>>();
+  /** People who are cut-outs breathe and sway through Cue's rig (made on first use: `reduced` is set in the constructor). */
+  private puppetMeshes: PuppetMeshes | null = null;
+  private get puppets(): PuppetMeshes {
+    return (this.puppetMeshes ??= createPuppetMeshes(this.reduced));
+  }
   private hover: PickId | null = null;
   private ring = 0;
   private busy = false;
@@ -1216,6 +1222,7 @@ export class Table3D {
           if (!t || this.disposed || plane.parent !== g) return;
           const img = t.image as HTMLCanvasElement;
           this.applyFigure(plane, t, img.width / img.height);
+          if (p.art!.cutout) this.puppets.warp(plane, img);
           g.userData.ar = img.width / img.height;
           this.layoutPeople();
           this.onReady?.();
@@ -1562,6 +1569,7 @@ export class Table3D {
 
   frame(t: number, dt: number, pointer: { x: number; y: number }): void {
     this.t = t;
+    this.puppetMeshes?.tick(t, Math.min(0.1, dt));
     const cam = this.st.camera;
     const z = this.zoom;
     // Seated: lean toward the pointer and breathe. Zoomed: glide to the object.
@@ -1603,6 +1611,7 @@ export class Table3D {
 
   dispose(): void {
     this.disposed = true;
+    this.puppetMeshes?.dispose();
     for (const t of this.textures) t.dispose();
     this.textures = [];
     this.env?.dispose();

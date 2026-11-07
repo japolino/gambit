@@ -5,6 +5,21 @@
  * Art that cannot be keyed stays opaque, and the view frames it.
  */
 import { figureStats, keyFlatBackground } from "./key-background.js";
+import { cutSprite } from "./cutout/index.js";
+import { CUTOUT_MODEL_F16_URL, CUTOUT_MODEL_URL } from "./cutout/models.js";
+
+/** The figure cut out by the model, or null when it cannot run or its cut is not clean. */
+async function modelCut(url: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(url, { credentials: "same-origin" });
+    if (!res.ok) return null;
+    const r = await cutSprite(await res.blob(), { quality: "best", modelUrl: CUTOUT_MODEL_URL, modelUrlF16: CUTOUT_MODEL_F16_URL });
+    if (r.quality !== "best" || r.twoFigures || r.scenery) return null;
+    return r.png;
+  } catch {
+    return null;
+  }
+}
 
 export type FigureStats = ReturnType<typeof figureStats>;
 export interface PreparedArt {
@@ -42,6 +57,13 @@ export async function prepareArtFresh(url: string, key: boolean): Promise<Prepar
     data = ctx.getImageData(0, 0, c.width, c.height);
   } catch {
     return { url, cutout: false, stats: { coverage: 1, saturation: 1 } };
+  }
+  if (key) {
+    // The segmentation model first (Cue's cut-out): it cuts figures off busy
+    // backgrounds too. A cut that kept scenery or looks like two figures is
+    // not trusted, and the flat-background key below gets its turn.
+    const cut = await modelCut(url);
+    if (cut) return { url: URL.createObjectURL(cut), cutout: true, stats: figureStats(data.data) };
   }
   if (!key || !keyFlatBackground(data.data, c.width, c.height)) return { url, cutout: false, stats: figureStats(data.data) };
   const stats = figureStats(data.data);

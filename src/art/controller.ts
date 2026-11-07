@@ -191,7 +191,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
         // Rebuilt from the id: early entries saved crops under a route that does not serve them.
         const fixed = { ...entry, url: imageUrl(entry.imageId) };
         created.indexMem.set(key, fixed);
-        created.queue.restore({ key, state: "ready", imageId: fixed.imageId, url: fixed.url, cutout: fixed.cutout });
+        created.queue.restore({ key, state: "ready", imageId: fixed.imageId, url: fixed.url, cutout: fixed.cutout, ...(fixed.face !== undefined ? { face: fixed.face } : {}) });
       }
     });
     created.looksLoaded = loadLooks(created);
@@ -263,7 +263,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
 
   function onStatus(s: UserState, status: ArtStatus): void {
     if (status.state === "ready" && status.imageId && status.url) {
-      const entry: IndexEntry = { imageId: status.imageId, url: status.url, cutout: status.cutout === true, at: Date.now(), ...(status.via ? { via: status.via } : {}) };
+      const entry: IndexEntry = { imageId: status.imageId, url: status.url, cutout: status.cutout === true, at: Date.now(), ...(status.via ? { via: status.via } : {}), ...(status.face !== undefined ? { face: status.face } : {}) };
       s.indexMem.set(status.key, entry);
       void s.index.set(status.key, entry);
       const sheet = s.sheetIcons.get(status.key);
@@ -304,7 +304,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     const live = s.queue.status(key);
     if (live && live.state !== "failed") return live;
     const entry = s.indexMem.get(key);
-    if (entry) return { key, state: "ready", imageId: entry.imageId, url: entry.url, cutout: entry.cutout, via: entry.via };
+    if (entry) return { key, state: "ready", imageId: entry.imageId, url: entry.url, cutout: entry.cutout, via: entry.via, ...(entry.face !== undefined ? { face: entry.face } : {}) };
     return live ?? s.local.get(key) ?? null;
   }
 
@@ -353,6 +353,25 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     return stored;
   }
 
+  /**
+   * Cut a figure out of its plain background in the browser (Cue's cut-out
+   * model). The uncut render is deleted like a cropped canvas: a variant
+   * drawn from the cut composes it on white again (the inset canvas is
+   * white). Falls back to the render as it is when no browser could cut it.
+   */
+  async function cutImage(s: UserState, source: GenOutput, crop?: PixelRect): Promise<GenOutput> {
+    const outcome = await s.pixels.run({ kind: "cut", sourceUrl: source.url, ...(crop ? { crop } : {}), face: true });
+    if (!outcome.ok) {
+      log("warn", `cut-out failed (${outcome.error}); keeping the render as drawn`);
+      return crop ? cropImage(s, source, crop) : source;
+    }
+    const item = outcome.items[0]!;
+    if (item.cut?.twoFigures) log("info", `cut of ${source.imageId}: looks like two figures`);
+    const stored = await upload(s, item, `cut-${source.imageId}`);
+    void Promise.resolve(spindle.images.delete(source.imageId, s.userId)).catch(() => undefined);
+    return { ...stored, cutout: true, ...(item.cut?.face !== undefined ? { face: item.cut.face } : {}) };
+  }
+
   function context(s: UserState): PlanContext {
     const look = currentLook(s);
     return {
@@ -364,6 +383,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       readImage: (id) => readImage(s, id),
       composeInset: (layout, url) => s.inset.compose(layout, url),
       cropImage: (source, rect) => cropImage(s, source, rect),
+      cutImage: (source, crop) => cutImage(s, source, crop),
       insetOff: s.insetOff,
     };
   }

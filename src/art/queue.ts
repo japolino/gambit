@@ -54,6 +54,8 @@ export interface GenOutput {
   cutout: boolean;
   /** The plan label that drew it. */
   via?: string;
+  /** A figure cut out in the browser: its face (normalized x, y, w, h), null when none was found. */
+  face?: [number, number, number, number] | null;
 }
 
 /** Thrown by `Plan.prepare` when the route cannot run now (no canvas, missing reference): next plan. */
@@ -252,7 +254,7 @@ export class ArtQueue {
       }
       if (hit) {
         job.state = "ready";
-        this.emit({ key: job.key, state: "ready", imageId: hit.imageId, url: hit.url, cutout: hit.cutout });
+        this.emit({ key: job.key, state: "ready", imageId: hit.imageId, url: hit.url, cutout: hit.cutout, ...(hit.face !== undefined ? { face: hit.face } : {}) });
         return;
       }
     }
@@ -305,7 +307,7 @@ export class ArtQueue {
       const cached = await this.opts.cache.get(hash).catch(() => null);
       if (cached) {
         job.state = "ready";
-        this.emit({ key: job.key, state: "ready", imageId: cached.imageId, url: cached.url, cutout: cached.cutout, via: cached.via });
+        this.emit({ key: job.key, state: "ready", imageId: cached.imageId, url: cached.url, cutout: cached.cutout, via: cached.via, ...(cached.face !== undefined ? { face: cached.face } : {}) });
         return;
       }
       const call = await plan.prepare();
@@ -314,7 +316,7 @@ export class ArtQueue {
       await this.opts.cache.set(hash, final).catch((error) => log?.("warn", `art cache write failed: ${errorMessage(error)}`));
       job.state = "ready";
       log?.("info", `art ${job.key} drawn by ${plan.label}${job.planIndex ? ` (route ${job.planIndex + 1} of ${plans.length})` : ""}`);
-      this.emit({ key: job.key, state: "ready", imageId: final.imageId, url: final.url, cutout: final.cutout, via: final.via });
+      this.emit({ key: job.key, state: "ready", imageId: final.imageId, url: final.url, cutout: final.cutout, via: final.via, ...(final.face !== undefined ? { face: final.face } : {}) });
     } catch (error) {
       const message = `${plan.label}: ${errorMessage(error)}`;
       log?.(error instanceof PlanUnavailable ? "info" : "warn", `art ${job.key} ${message}`);

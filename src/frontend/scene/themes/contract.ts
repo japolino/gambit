@@ -29,6 +29,7 @@ import type { DelveMove } from "../../../engine/world/delve.js";
 import type { Hotspot } from "../../../engine/world/places.js";
 import type { DelveView, SceneView, ThemeId } from "../../../shared/scene-view.js";
 import type { PostFx, Stage3D } from "../layer3d.js";
+import type { BoardSkin } from "../board.js";
 
 export type { SceneView, ThemeId, DelveView, Hotspot, DelveMove, PostFx, Stage3D };
 
@@ -191,6 +192,8 @@ export interface ThemeCtx {
 
 export interface ThemeRenderer {
   render(v: SceneView): void;
+  /** How the expedition board (a shared overlay, ../board.ts) looks over this theme. */
+  boardSkin?: BoardSkin;
   /** Theme keys (numbers, letters). Return true when handled. Delve arrows/WASD are the host's. */
   key?(e: KeyboardEvent, v: SceneView): boolean;
   destroy(): void;

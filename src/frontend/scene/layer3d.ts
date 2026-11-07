@@ -21,6 +21,7 @@ import {
   AmbientLight,
   BoxGeometry,
   CylinderGeometry,
+  DataTexture,
   MeshLambertMaterial,
   PointLight,
   Raycaster,
@@ -48,6 +49,7 @@ import {
   type Intersection,
   type Object3D,
 } from "three";
+import { plateDepthFor } from "../art/depth/plate-depth-service.js";
 
 /** A theme's own 3D stage on the layer (see SceneLayer3D.customStage). */
 export interface Stage3D {
@@ -577,7 +579,7 @@ export class SceneLayer3D {
     };
   }
 
-  /** The place's painting, displaced by a depth guess. */
+  /** The place's painting, displaced by its depth (a guess at once, the model's estimate when ready). */
   async showBackdrop(url: string | null): Promise<void> {
     if (this.mode !== "backdrop") {
       this.clearRoom();
@@ -607,6 +609,39 @@ export class SceneLayer3D {
     this.backdrop = new Mesh(geo, mat);
     this.room.add(this.backdrop);
     this.resize();
+    void this.realDepth(url, mat);
+  }
+
+  /**
+   * The painting's real depth (Depth Anything V2 in a worker, vendored from
+   * Cue) replaces the guess once it is estimated; the guess stays when the
+   * model cannot run here. Estimated once per painting and kept in the
+   * browser store.
+   */
+  private async realDepth(url: string, mat: ShaderMaterial): Promise<void> {
+    const key = `d:${url}`;
+    let t = this.textures.get(key);
+    if (!t) {
+      const map = await plateDepthFor(url).catch(() => null);
+      if (!map || this.disposed) return;
+      // The model says 0 = nearest; the mesh lifts by brightness (1 = nearest). Rows bottom-up for the texture.
+      const data = new Uint8Array(map.width * map.height * 4);
+      for (let y = 0; y < map.height; y++) {
+        const row = (map.height - 1 - y) * map.width;
+        for (let x = 0; x < map.width; x++) {
+          const v = 255 - map.depth[y * map.width + x]!;
+          const i = (row + x) * 4;
+          data[i] = data[i + 1] = data[i + 2] = v;
+          data[i + 3] = 255;
+        }
+      }
+      t = new DataTexture(data, map.width, map.height);
+      t.minFilter = t.magFilter = LinearFilter;
+      t.needsUpdate = true;
+      this.textures.set(key, t);
+    }
+    if (this.disposed || this.backdrop?.material !== mat) return;
+    mat.uniforms.depth!.value = t;
   }
 
   /**
@@ -911,6 +946,8 @@ export class SceneLayer3D {
     this.target.dispose();
     this.post.mat.dispose();
     this.renderer.dispose();
+    // Free the context now: a page only gets ~16, and the scene is mounted again on every visit.
+    this.renderer.forceContextLoss();
     this.canvas.remove();
   }
 }

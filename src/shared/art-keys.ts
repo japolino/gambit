@@ -19,4 +19,8 @@ export const isCutinArtKey = (key: string): boolean => key.endsWith("#determined
 export const isExpressionArtKey = (key: string): boolean => EXPRESSIONS.some((e) => key.endsWith(`#${e}`));
 
 export const npcArtKey = (npcId: string): string => `npc:${npcId}`;
+
+/** A card character's own full figure, drawn on-model from their card art and cut out (art kind "figure"). */
+export const figureArtKey = (cardKey: string, castId: string): string => `figure:${cardKey}:${castId}`;
+export const isFigureArtKey = (key: string): boolean => key.startsWith("figure:");
 export const placeArtKey = (placeId: string): string => `place:${placeId}`;

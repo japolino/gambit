@@ -141,6 +141,8 @@ export interface RefereeRead {
   /** Probability it asserts some other specific fact about the NPC (a possible bluff). */
   otherClaim: number;
   by: "jev" | "helper" | "rules";
+  /** 0..1 repetition by meaning, measured with embeddings when the line was judged (kept so a replay gives the same tier). */
+  meaningRepeat?: number;
 }
 
 export interface ExchangeRoll {

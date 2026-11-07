@@ -32,6 +32,8 @@ export const PARLEY_CSS = `
   background: linear-gradient(to top, rgba(8,6,5,.55), transparent 32%), radial-gradient(120% 80% at 50% 30%, transparent 60%, rgba(8,6,5,.35)); }
 .scene:has(.fig.framed) .plate { filter: blur(3px) brightness(.78); transition: filter .8s ease; }
 .face:not([src]), .plate-img:not([src]) { display: none; }
+/* The puppet canvas beside each face (scene/puppet-dom.ts follow()) carries the face's classes but has no src. */
+canvas.face:not([hidden]) { display: block; }
 .silhouette { position: absolute; left: 18%; right: 18%; bottom: 0; height: 78%; border-radius: 45% 45% 8% 8% / 30% 30% 4% 4%;
   background: radial-gradient(60% 40% at 50% 22%, rgba(201,168,101,.18), rgba(23,19,15,.85) 70%); display: grid; place-items: center;
   align-content: center; gap: 6px; color: rgba(236,227,207,.45); transition: opacity .6s; }

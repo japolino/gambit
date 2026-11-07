@@ -8,7 +8,7 @@ import type { ArtApi } from "../art/controller.js";
 import { dnaFromClass, monsterBrief, type MonsterBrief } from "../art/specs.js";
 import { CLASSES, MONSTERS } from "../engine/content/index.js";
 import type { BattleState } from "../engine/types.js";
-import { cutinArtKey } from "../shared/art-keys.js";
+import { cutinArtKey, isFigureArtKey } from "../shared/art-keys.js";
 
 const seedOf = (s: string): number => {
   let h = 2166136261;
@@ -38,6 +38,14 @@ export function requestBattleArt(art: ArtApi, state: BattleState, userId: string
     } else {
       // Card art is shown as it is (play.ts sends it); only the rest is drawn.
       if (state.meta?.faces?.[c.id]) continue;
+      // A card character's own figure (play.ts): its cut-in is drawn from it.
+      if (isFigureArtKey(c.art)) {
+        const dna = { id: c.id, name: c.name, tags: "", description: c.name, seed: seedOf(c.art) };
+        void art.whenDone(c.art, userId).then((figure) => {
+          if (figure.state === "ready" && figure.imageId) art.request(cutinArtKey(c.art), { kind: "expression", character: dna, expression: "determined", canonical: { imageId: figure.imageId } }, 2, userId);
+        });
+        continue;
+      }
       const cls = CLASSES[c.defId] ?? CLASSES[c.defId.split("~")[0]!] ?? state.meta?.classes?.[c.defId];
       if (cls) {
         const dna = dnaFromClass(cls, { id: c.id, name: c.name, seed: seedOf(c.art) });

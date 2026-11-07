@@ -7,7 +7,7 @@ import { clearRoom, enterDelve, generateDelve, stepDelve } from "../src/engine/w
 import { buildWorld, moveScene, newScene, TIMES } from "../src/engine/world/places.js";
 import { buildHex, cellOf, hexKey, newHex, stepHex } from "../src/engine/world/hex.js";
 import { fallbackMeanwhile } from "../src/meaning/fallbacks.js";
-import { buildSceneView, placeKey, wallKey, type PlayRecord } from "../src/shared/scene-build.js";
+import { boardMapKey, buildSceneView, placeKey, wallKey, type PlayRecord } from "../src/shared/scene-build.js";
 import { npcArtKey } from "../src/shared/art-keys.js";
 import type { ThemeId } from "../src/shared/scene-view.js";
 import { mountScene } from "../src/frontend/scene/view.js";
@@ -15,6 +15,8 @@ import { addToCodex, awakenedSkill, balance, classFromDraft, fallbackAwakenings,
 import { buildForgeView } from "../src/shared/forge-view.js";
 import { baseClassFor } from "../src/engine/card/foes.js";
 import { CLASSES } from "../src/engine/content/classes.js";
+import { camp as boardCamp, dealBoard, moveTo as boardMove, openLore, skip as boardSkip, winFight, type BoardEvent, type LoreCard } from "../src/engine/world/board.js";
+import { boardLore, glimpse } from "../src/meaning/board-deck.js";
 
 // The class panel (M7) on a local book: no model, so every answer is the code fallback.
 const book = newBook();
@@ -59,7 +61,7 @@ const sheet = {
 
 let r: PlayRecord = (() => {
   const world = buildWorld(sheet, "preview");
-  const base: PlayRecord = { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: (new URLSearchParams(location.search).get("theme") ?? "storybook") as ThemeId, log: ["You arrive by the morning ferry."] };
+  const base: PlayRecord = { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: (new URLSearchParams(location.search).get("theme") ?? "storybook") as ThemeId, log: ["You arrive by the morning ferry."], album: [{ key: "cg:preview.a1", caption: "The ferry docks at dawn.", day: 1 }, { key: "cg:preview.a2", caption: "A deal struck at the fish market.", day: 1 }] };
   base.thread = { goal: "Find out why the lighthouse went dark", revelations: [1, 2, 3, 4].map((i) => ({ id: `rev${i}`, text: `Revelation ${i}` })), by: "fallback" };
   base.revealed = ["rev1"];
   base.memory = {
@@ -157,6 +159,7 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
       setTimeout(() => handle.meanwhile(r.scene.day, vs.map((v) => ({ text: v.text, ...(v.where ? { art: placeKey(sheet, v.where) } : {}) }))), 1200);
     }
     else if (id === "wait") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "wait" }), log: [...r.log, `Time passes: ${TIMES[r.scene.time]}.`].slice(-6) };
+    else if (id === "explore") dealPreviewBoard();
     else if (id === "delve") {
       const map = generateDelve(`preview:${r.scene.placeId}`);
       r = { ...r, delve: { placeId: r.scene.placeId, map, state: enterDelve(map) }, theme: r.theme === "storybook" ? "onebit" : r.theme };
@@ -188,6 +191,49 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   },
   fight() {},
   close() {},
+  board(op, cell, tier) {
+    const b = r.board;
+    if (!b) return;
+    let events: BoardEvent[] = [];
+    let story: NonNullable<PlayRecord["boardStory"]> | undefined;
+    try {
+      if (op === "leave") {
+        r = { ...r, board: undefined, boardFx: undefined, boardStory: undefined, log: [...r.log, "You turn back."].slice(-6) };
+        return refresh();
+      }
+      let nb = b;
+      if (op === "move") ({ board: nb, events } = boardMove(b, cell!));
+      if (op === "skip") ({ board: nb, events } = boardSkip(b));
+      if (op === "camp") ({ board: nb, events } = boardCamp(b));
+      if (op === "lore") {
+        const res = openLore(b, (tier ?? 0) as 0 | 1 | 2 | 3);
+        nb = res.board;
+        events = res.events;
+        if (res.card && res.tier) story = { title: res.card.title, text: res.tier === 1 ? glimpse(res.card) : `${res.card.text}
+
+(In Lumiverse the model writes this as a ${res.tier === 3 ? "full" : "partial"} scene.)`, stars: res.tier, ...(res.tier >= 2 ? { art: `cg:preview.${res.card.id}` } : {}) };
+        // The CG arrives while you read, as it does in Lumiverse.
+        const cgKey = story?.art;
+        if (cgKey) setTimeout(() => handle.setArt(cgKey, REAL ? "/localart/place2.png" : paint(cgKey.length * 37, "place"), false), 1500);
+      }
+      r = { ...r, board: nb, boardFx: previewFx(events), boardStory: story };
+      if (nb.done) r = { ...r, board: undefined, boardFx: undefined, boardStory: undefined, log: [...r.log, "You make it across."].slice(-6) };
+      const contact = events.find((e) => e.kind === "contact");
+      if (contact) {
+        // The battle stage runs in Lumiverse; here the fight is won after a beat.
+        r = { ...r, log: [...r.log, "(A fight runs on the battle stage.)"].slice(-6) };
+        setTimeout(() => {
+          if (!r.board) return;
+          const w = winFight(r.board);
+          r = { ...r, board: w.board, boardFx: [{ text: "The way is clear", kind: "foe" }, ...previewFx(w.events)] };
+          refresh();
+        }, 1200);
+      }
+    } catch (err) {
+      r = { ...r, log: [...r.log, String((err as Error).message)].slice(-6) };
+    }
+    refresh();
+  },
   hex(q, rr) {
     if (!r.hex) return;
     try {
@@ -252,6 +298,31 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   },
 });
 
+/** The fx a board action leaves (the backend's applyBoard, without the coin and vigor). */
+function previewFx(events: BoardEvent[]): NonNullable<PlayRecord["boardFx"]> {
+  const out: NonNullable<PlayRecord["boardFx"]> = [];
+  for (const e of events) {
+    if (e.kind === "flip") out.push({ cell: e.cell, text: "+1 supply", kind: "supply" });
+    if (e.kind === "cache") out.push({ text: `+${e.coin} crowns`, kind: "coin" });
+    if (e.kind === "forage") out.push({ text: `+${e.got} supplies`, kind: "supply" });
+    if (e.kind === "spring") out.push({ text: "Refreshed", kind: "heal" });
+    if (e.kind === "hazard") out.push({ text: e.what === "hurt" ? "Hurt" : `-${e.amount} supplies`, kind: "hurt" });
+    if (e.kind === "shortcut") out.push({ text: "A view of the way ahead", kind: "info" });
+    if (e.kind === "lore") out.push({ cell: e.cell, text: e.card.title, kind: "lore" });
+    if (e.kind === "contact") out.push({ text: e.first === "party" ? "You have the jump on them!" : "Ambush!", kind: "foe" });
+    if (e.kind === "goal") out.push({ text: e.here === e.of ? "Everyone is here" : `${e.here}/${e.of} at the way on`, kind: "goal" });
+  }
+  return out;
+}
+
+function dealPreviewBoard(): void {
+  const extra: LoreCard[] = ["The Drowned Bell", "Smugglers' Stair", "The Wardens", "Fog Season", "Old Lantern Law"].map((t, i) => ({ id: `entry:p${i}`, kind: "entry", ref: `p${i}`, title: t, text: `${t}: an entry from the card's lorebook, as the deck would deal it. The harbor remembers what the town forgets.`, stars: (3 - (i % 3)) as 1 | 2 | 3 }));
+  const lore = [...boardLore({ sheet: sheet as never, sources: null, met: new Set(), spent: new Set(), revelation: { id: "r1", text: "The bell rings for the drowned, and someone in town rings it." }, room: 12 }), ...extra].slice(0, 12);
+  const party = [{ id: "p_player", name: "Wren" }, { id: "p_mara", name: "Mara" }];
+  r = { ...r, board: dealBoard({ seed: `preview:${r.scene.placeId}:${Date.now() % 1000}`, placeId: r.scene.placeId, party, lore, foes: 2 }), boardFx: [{ text: "Blue is safe, green is chance, violet is the story, gold is the way on", kind: "info" }], boardStory: undefined, log: [...r.log, "You set out."].slice(-6) };
+  refresh();
+}
+
 /**
  * ?real=1: real generated art served by the preview server from the folder in
  * GAMBIT_PREVIEW_ART (place1-4.png, opaque1-2.png, cut1-3.png), so themes can
@@ -280,6 +351,10 @@ function refresh(): void {
   // With real art there is no generated wall texture, as in a fresh Lumiverse delve: the layer draws stone.
   if (r.delve && !REAL) handle.setArt(wallKey(sheet, r.delve.placeId), paint(5, "wall"), false);
   for (const t of ["plain", "wood", "hill", "ruin"]) handle.setArt(placeKey(sheet, `wild_${t}`), paint(t.length * 91 + 7, "place"), false);
+  // ?map=0 leaves the board without its map (as while it is being drawn).
+  handle.setArt("cg:preview.a1", REAL ? "/localart/place1.png" : paint(11, "place"), false);
+  handle.setArt("cg:preview.a2", REAL ? "/localart/place4.png" : paint(23, "place"), false);
+  if (r.board && new URLSearchParams(location.search).get("map") !== "0") handle.setArt(boardMapKey(sheet, r.board.placeId), REAL ? "/localart/place3.png" : paint(77, "place"), false);
   (window as unknown as { gambitScene: unknown }).gambitScene = { r, v, handle };
 }
 /*
@@ -293,6 +368,7 @@ function refresh(): void {
   if (q.get("crowd") === "1") (r.world.places[r.scene.placeId] as { people: string[] }).people = ["mara", "tobin", "ilse"];
   if (CROWD > 3) (r.world.places[r.scene.placeId] as { people: string[] }).people = sheet.cast.map((m) => m.id);
   if (q.get("log") === "1") r = { ...r, log: ["You arrive by the morning ferry.", "Mara eyes your satchel and says nothing.", "You found: a torn wharf ticket.", "Tobin pours you something that might be rum.", "Time passes: afternoon."] };
+  if (q.get("board") === "1") setTimeout(dealPreviewBoard, 0);
   if (q.get("delve") === "1") {
     const map = generateDelve(`preview:${r.scene.placeId}`);
     r = { ...r, delve: { placeId: r.scene.placeId, map, state: enterDelve(map) } };

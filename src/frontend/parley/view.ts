@@ -19,6 +19,8 @@ import { figureStats, usableExpression } from "../art/key-background.js";
 import { prepareArtFresh as prepareArt } from "../art/prepare.js";
 import { paintBackground } from "../stage/placeholder.js";
 import { PARLEY_CSS } from "./style.js";
+import { createPuppetDom } from "../scene/puppet-dom.js";
+import { PUPPET_ACT } from "./acting.js";
 
 export interface ParleyCallbacks {
   say(text: string): void;
@@ -52,6 +54,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 /** Narration can carry light markdown; show *actions* in italics and keep paragraphs. */
+
 function renderProse(target: HTMLElement, text: string): void {
   target.textContent = "";
   // Presets sometimes add markdown headings ("## Response", "### Chapter 1"); they are not the NPC talking.
@@ -121,6 +124,10 @@ export function mountParley(
   const silhouette = el("div", "silhouette");
   silhouette.append(el("span", undefined, npc.name.replace(/^Sergeant /, "").charAt(0)), el("small", undefined, `Drawing ${npc.name}…`));
   fig.append(silhouette, imgA, imgB);
+  // The figure breathes, sways and turns its head through Cue's rig when it is a cut-out.
+  const puppets = createPuppetDom();
+  puppets.follow(imgA);
+  puppets.follow(imgB);
   figure.append(fig);
   const plaque = el("div", "plaque");
   plaque.append(el("div", "who", npc.name), el("div", "role", npc.role));
@@ -243,7 +250,7 @@ export function mountParley(
     silhouette.classList.add("gone");
   }
   function setMood(mood: Mood | null) {
-    fig.classList.remove("m-irritated", "m-afraid", "m-moved", "m-tempted", "m-confused", "m-amused", "m-suspicious");
+    for (const c of [...fig.classList]) if (c.startsWith("m-")) fig.classList.remove(c);
     void fig.offsetWidth;
     if (mood) fig.classList.add(`m-${mood}`);
     const ex = mood ? EXPRESSION_FOR_MOOD[mood] : null;
@@ -354,6 +361,7 @@ export function mountParley(
     return box;
   }
 
+  let hush: ReturnType<typeof setTimeout> | undefined;
   function showReply(index: number) {
     const b = blocks.get(index);
     const r = replies.get(index);
@@ -361,6 +369,12 @@ export function mountParley(
     const prose = b.npc.querySelector<HTMLElement>(".prose")!;
     prose.classList.remove("waiting");
     renderProse(prose, r.text);
+    // The head moves with the line while it streams in, and settles a beat after.
+    if (index === state.exchanges.length - 1) {
+      clearTimeout(hush);
+      puppets.talk(1);
+      hush = setTimeout(() => puppets.talk(0), r.final ? 1400 : 2500);
+    }
     if (r.final && index === state.exchanges.length - 1) {
       status.textContent = "";
       busy = false;
@@ -429,6 +443,8 @@ export function mountParley(
     }
     const last = state.exchanges.at(-1);
     setMood(last ? last.mood : null);
+    const settled = last ? PUPPET_ACT[last.mood] : undefined;
+    puppets.act(settled?.[0] ?? null, settled?.[1]);
     tellLine.textContent = "";
     scrollDown();
   }
@@ -485,6 +501,10 @@ export function mountParley(
         paintHead();
         bumpValue(from, next.value);
         setMood(ex.mood);
+        // A caught bluff: a startle, then the step back; otherwise the mood's own gesture.
+        const [expr, k, gesture] = PUPPET_ACT[ex.mood] ?? [null, 3];
+        puppets.act(expr, k, ex.bluff?.caught ? "startle" : gesture);
+        if (ex.bluff?.caught) setTimeout(() => puppets.act(expr, k, "step_back"), 450);
         tellLine.textContent = viewMode === "immersive" ? immersiveRead(scenario, ex) : "";
         tellLine.classList.remove("show");
         void tellLine.offsetWidth;
@@ -551,6 +571,7 @@ export function mountParley(
       paintFoot();
     },
     destroy() {
+      puppets.destroy();
       objectUrls.forEach((u) => URL.revokeObjectURL(u));
       style.remove();
       wrap.remove();

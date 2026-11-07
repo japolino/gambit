@@ -31,6 +31,36 @@ export interface CardStatus {
   error?: string;
 }
 
+/* ---------------------------- models -------------------------------- */
+
+/** Which connection each kind of model call uses (docs/DESIGN.md 9; meaning/models.ts). */
+export type ModelRoleId = "reader" | "narrator" | "helper";
+export type ReasoningChoice = "auto" | "on" | "off";
+export interface ModelConnOption {
+  id: string;
+  name: string;
+  model: string;
+  /** The default LLM connection, or the primary embedding connection. */
+  isDefault: boolean;
+}
+export interface ModelsState {
+  roles: Record<ModelRoleId, { connectionId: string | null; reasoning: ReasoningChoice }>;
+  /** "auto", "off", or a decision connection id. */
+  decision: string;
+  /** "auto", "off", or an embedding connection id. */
+  embedding: string;
+  llm: ModelConnOption[];
+  decisions: ModelConnOption[];
+  embeddings: ModelConnOption[];
+}
+export interface ModelsPatch {
+  role?: ModelRoleId;
+  connectionId?: string | null;
+  reasoning?: ReasoningChoice;
+  decision?: string | null;
+  embedding?: string | null;
+}
+
 /* ---------------------------- parley -------------------------------- */
 
 /** How the Referee's read is shown (docs/DESIGN.md 4.1.4). */
@@ -47,7 +77,7 @@ export interface ParleyMessageMeta {
 
 /* ---------------------------- art ---------------------------------- */
 
-export type ArtKind = "portrait" | "expression" | "pose" | "monster" | "monster_phase2" | "background" | "background_variant" | "icon_sheet" | "style_probe";
+export type ArtKind = "portrait" | "expression" | "pose" | "monster" | "monster_phase2" | "background" | "background_variant" | "icon_sheet" | "style_probe" | "figure" | "cg" | "map";
 export type ArtPriority = 0 | 1 | 2 | 3;
 
 /** What the frontend shows for an asset key at any moment. */
@@ -61,6 +91,8 @@ export interface ArtStatus {
   cutout?: boolean;
   /** The route that drew it (a plan label such as "nai-v5-inset"), for logs and debugging. */
   via?: string;
+  /** A figure cut out in the browser: its face (normalized x, y, w, h), for portrait crops and tokens. */
+  face?: [number, number, number, number] | null;
   error?: string;
 }
 
@@ -80,6 +112,12 @@ export interface InsetComposeRequest {
  */
 export type PixelJob =
   | { requestId: string; kind: "crop"; sourceUrl: string; rect: { x: number; y: number; width: number; height: number } }
+  /**
+   * Cut a figure out of its plain background with the segmentation model
+   * (frontend/art/cutout, from Cue), optionally after a crop. The first cut
+   * in a browser downloads the model, so the backend waits longer for it.
+   */
+  | { requestId: string; kind: "cut"; sourceUrl: string; crop?: { x: number; y: number; width: number; height: number }; face?: boolean }
   | {
       requestId: string;
       kind: "slice";
@@ -93,6 +131,16 @@ export type PixelJob =
       /** Trim each icon to its opaque pixels (transparent sheets) and pad to a square. */
       trim: boolean;
     };
+
+/** What a browser cut-out found: the figure's box and face (normalized 0..1), and its checks. */
+export interface CutMeta {
+  bbox: [number, number, number, number];
+  face?: [number, number, number, number] | null;
+  /** "best": the model made the mask; "basic": no model could run (flood fill only). */
+  quality: "best" | "basic";
+  twoFigures: boolean;
+  scenery?: boolean;
+}
 
 /** Style-probe key of one look and subject (also sent as `art.update` items). */
 export type StyleProbeKey = `style_probe:${string}:${"gate" | "bust"}`;
@@ -121,6 +169,9 @@ export type ToBackend =
   | { type: "card.talk"; chatId: string; castId: string; kind?: ContestChip["kind"]; chipId?: string }
   | { type: "card.chips"; chatId: string; on: boolean }
   | { type: "card.demo" }
+  // models: which connection each kind of call uses
+  | { type: "models.get" }
+  | { type: "models.set"; patch: ModelsPatch }
   // art
   | { type: "scene.open"; chatId: string }
   | { type: "scene.act"; chatId: string; hotspot: string }
@@ -128,6 +179,8 @@ export type ToBackend =
   | { type: "delve.step"; chatId: string; move: DelveMove }
   | { type: "delve.leave"; chatId: string }
   | { type: "hex.step"; chatId: string; q: number; r: number }
+  /** The expedition board: move to a tile, open a lore tile at a depth (0 passes), camp, hold still, or turn back. */
+  | { type: "board.act"; chatId: string; op: "move" | "lore" | "camp" | "skip" | "leave"; cell?: string; tier?: number }
   | { type: "play.fight"; chatId: string; lead?: string; boss?: boolean }
   // classes (M7): the book, the Forge, fusion, awakening, the codex
   | { type: "forge.act"; chatId: string; op: ForgeOp; arg?: string; arg2?: string; text?: string }
@@ -160,6 +213,8 @@ export type ToBackend =
       width?: number;
       height?: number;
       preCut?: boolean;
+      /** Sent with chunk 0 of a cut: what the cut-out found. */
+      cut?: CutMeta;
     }
   | { type: "art.pixels.error"; requestId: string; error: string };
 
@@ -187,13 +242,15 @@ export type ToFrontend =
   | { type: "card.chip"; chip: ContestChip }
   /** Framing a contest the player asked for (the Parley follows). */
   | { type: "card.starting"; chatId: string; castName: string }
+  // models
+  | { type: "models.state"; state: ModelsState }
   // art
   | { type: "scene.state"; view: SceneView }
   | { type: "forge.state"; chatId: string; view: ForgeView }
   /** Drop a suggested action into the chat input (6.1: the menu and the roleplay never fight). */
   | { type: "scene.suggest"; chatId: string; text: string }
   /** "Meanwhile…" (4.5): sent with null vignettes when the night starts, then again with them. */
-  | { type: "scene.meanwhile"; chatId: string; day: number; vignettes: { text: string; art?: string; imageId?: string | null }[] | null }
+  | { type: "scene.meanwhile"; chatId: string; day: number; vignettes: { text: string; art?: string; imageId?: string | null; cg?: string }[] | null }
   | { type: "art.update"; items: ArtStatus[] }
   | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus; source?: "preset" | "user" | "inlay" | "card"; description?: string }[] }
   /** A look file to save (export). */

@@ -96,6 +96,12 @@ export type ArtSpec = SpecBase &
     | { kind: "background_variant"; location: LocationBrief; original: ImageRef; change: string }
     | { kind: "icon_sheet"; icons: IconBrief[] }
     | { kind: "style_probe"; subject: ProbeSubject; lookId: string }
+    /** A character's own full figure, drawn from their tags (Inlay's character tags when there), transparent: what scenes, tokens and cut-ins show. */
+    | { kind: "figure"; character: CharacterDNA }
+    /** A moment as a wide illustration (a CG): who is in it (with their figures as references), where, and what happens. */
+    | { kind: "cg"; moment: string; tags?: string; cast: { character: CharacterDNA; ref?: ImageRef }[]; location?: LocationBrief }
+    /** A place seen from above as a tabletop map, for the expedition board (its painting rides along as a style reference). */
+    | { kind: "map"; location: LocationBrief; painting?: ImageRef }
   );
 
 /** Most icons one GPT sheet holds (4x4, DESIGN 5.3). */
@@ -238,6 +244,9 @@ const NAI_SIZE: Readonly<Record<ArtKind, { width: number; height: number }>> = {
   background_variant: { width: 1216, height: 832 },
   icon_sheet: { width: 1024, height: 1024 },
   style_probe: { width: 832, height: 1216 },
+  figure: { width: 832, height: 1216 },
+  cg: { width: 1216, height: 832 },
+  map: { width: 1024, height: 1024 },
 };
 
 /** GPT Image sizes (openai.ts capability options). */
@@ -251,6 +260,9 @@ const GPT_SIZE: Readonly<Record<ArtKind, string>> = {
   background_variant: "1536x1024",
   icon_sheet: "1024x1024",
   style_probe: "1024x1536",
+  figure: "1024x1536",
+  cg: "1536x1024",
+  map: "1024x1024",
 };
 
 /** Kinds that ask for a transparent figure. */
@@ -262,6 +274,7 @@ export function wantsTransparency(spec: ArtSpec): boolean {
     case "monster":
     case "monster_phase2":
     case "icon_sheet":
+    case "figure":
       return true;
     default:
       return false;
@@ -364,6 +377,34 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
               ? `The same character as in the reference image, same outfit, framing and pose, now ${EXPRESSION_TEXT[spec.expression]}. ${c.description}`
               : `The same character as in the reference image, full body in a dynamic action pose: ${spec.pose}. Keep their face, outfit and colours exactly. ${c.description}`;
       return out(prompt, negative, [charCaption], sentences(subject, gptPaletteSentence(c.palette), gptTail));
+    }
+    case "figure": {
+      // The character's own standing figure, whole and transparent (V5 alpha), so
+      // later variants get a clean V5 reference for the inset.
+      const c = spec.character;
+      // Library tags (Inlay: the character tag, then head, eyes, body, outfit) say who they are.
+      const charCaption = join(c.sex ?? "other", c.booru || c.tags.slice(0, 260), "light smile");
+      const prompt = join(countTag(c.sex), style, "solo, full body, standing, centered, front view, straight-on, facing viewer, looking at viewer, arms at sides", naiPaletteTags(c.palette), bg.pos);
+      const negative = baseNeg(join(FIGURE_NEGATIVE.replace(", cropped, out of frame", ""), "cropped, out of frame, cowboy shot, upper body, portrait, close-up"));
+      const subject = `A full-body standing figure from head to toe, facing the viewer, arms relaxed: ${c.description}`;
+      return out(prompt, negative, [charCaption], sentences(subject, gptPaletteSentence(c.palette), gptTail));
+    }
+    case "cg": {
+      // An event illustration: wide, with a background, the characters acting in it.
+      const where = spec.location ? `${spec.location.name}, ${spec.location.description}` : "";
+      const counts = spec.cast.map((x) => countTag(x.character.sex)).filter((t) => t !== "solo focus");
+      const prompt = join(counts.join(", ") || "no humans", style, spec.tags, where, spec.location?.timeOfDay, "cinematic composition, detailed background, dynamic angle, event illustration");
+      const negative = baseNeg("multiple views, split screen, border, comic, panels, text, speech bubble");
+      const captions = spec.cast.map((x) => join(x.character.sex ?? "other", x.character.booru || x.character.tags.slice(0, 200)));
+      const people = spec.cast.map((x) => `${x.character.name}: ${x.character.description}`).join(" ");
+      return out(prompt, negative, captions, sentences(`A cinematic illustration of a story moment: ${spec.moment}.`, where ? `Setting: ${where}.` : "", people, spec.cast.some((x) => x.ref) ? "Keep each character exactly as in their reference image." : "", gptTail));
+    }
+    case "map": {
+      const l = spec.location;
+      const prompt = join("no humans, scenery", style, "map, top-down view, from above, overhead view, tabletop game board, terrain, paths", l.name, l.description, naiPaletteTags(l.palette), "detailed, full frame");
+      const negative = baseNeg("1girl, 1boy, people, person, character, text, letters, compass rose, grid, hexagons, border, frame, perspective, horizon, sky");
+      const subject = `A top-down map of this place as a game board seen straight from above, no people, no text, no grid: ${l.name}: ${l.description}.${spec.painting ? " Match the attached painting's art style and palette." : ""}`;
+      return out(prompt, negative, [], sentences(subject, gptPaletteSentence(l.palette), gptTail));
     }
     case "monster":
     case "monster_phase2": {

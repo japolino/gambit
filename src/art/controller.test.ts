@@ -26,7 +26,7 @@ function browser(art: () => ArtApi, sent: ToFrontend[], opts: { inset?: boolean;
       }
       if (msg.type === "art.pixels" && opts.pixels !== false) {
         const job = msg.job;
-        const items = job.kind === "crop" ? [pngBase64(job.rect.width, job.rect.height)] : Array.from({ length: job.count }, () => pngBase64(236, 236));
+        const items = job.kind === "crop" ? [pngBase64(job.rect.width, job.rect.height)] : job.kind === "cut" ? [pngBase64(64, 96)] : Array.from({ length: job.count }, () => pngBase64(236, 236));
         items.forEach((data, item) => {
           const chunks = chunkBase64(data, 30);
           chunks.forEach((chunk, index) =>
@@ -108,7 +108,7 @@ describe("registerArt", () => {
     expect(raw.action).toBe("infill");
     expect(raw.parameters.image).toBe(pngBase64(1216, 832));
     const crop = sent.find((m) => m.type === "art.pixels");
-    expect(crop && crop.type === "art.pixels" && crop.job.kind === "crop" ? crop.job.rect : null).toEqual({ x: 608, y: 0, width: 608, height: 832 });
+    expect(crop && crop.type === "art.pixels" && crop.job.kind === "cut" ? crop.job.crop : null).toEqual({ x: 608, y: 0, width: 608, height: 832 });
     expect(done).toMatchObject({ state: "ready", imageId: fake.uploads[0]!.id, cutout: true });
     expect(fake.deleted).toEqual(["img-1"]); // the uncropped canvas
   });
