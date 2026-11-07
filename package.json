@@ -18,6 +18,11 @@
     "three": "0.171.0"
   },
   "devDependencies": {
+    "@fontsource/cinzel": "5",
+    "@fontsource/cormorant-garamond": "5",
+    "@fontsource/im-fell-english": "5",
+    "@fontsource/press-start-2p": "5",
+    "@fontsource/vt323": "5",
     "@types/three": "0.171.0",
     "bun-types": "^1.4.0",
     "lumiverse-spindle-types": "0.6.79",

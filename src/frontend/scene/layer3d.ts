@@ -13,6 +13,9 @@
  *    wall, plaster and plank textures tinted from it, a counter when it
  *    sells things, warm light, and the people standing in it.
  * Clicking a person in the room calls `onPick` with their id.
+ *  - custom: a theme's own 3D stage (Table, Diorama): the theme builds its
+ *    models, lights and camera in a group it owns (`customStage()`), and the
+ *    layer just renders it; leaving the mode disposes the group.
  */
 import {
   AmbientLight,
@@ -41,7 +44,30 @@ import {
   Vector2,
   WebGLRenderer,
   WebGLRenderTarget,
+  NoToneMapping,
+  type Intersection,
+  type Object3D,
 } from "three";
+
+/** A theme's own 3D stage on the layer (see SceneLayer3D.customStage). */
+export interface Stage3D {
+  /** Your scene graph. Disposed (geometry and materials) when the layer leaves custom mode. */
+  readonly root: Group;
+  /** Changes whenever `root` was recreated (e.g. after a delve corridor used the layer): rebuild then. */
+  readonly generation: number;
+  /** The scene: set fog / background / environment only (reset when custom mode ends). */
+  readonly scene: Scene;
+  readonly camera: PerspectiveCamera;
+  /** Enable shadowMap, tone mapping, exposure as needed (reset when custom mode ends). */
+  readonly renderer: WebGLRenderer;
+  readonly canvas: HTMLCanvasElement;
+  /** Called every frame before rendering; drive the camera and animation here. */
+  setUpdate(fn: ((t: number, dt: number) => void) | null): void;
+  /** Raycast from a client point against these objects (recursive); nearest hit or null. */
+  pick(clientX: number, clientY: number, objects: Object3D[]): Intersection | null;
+  /** Load an image URL as an sRGB texture (cached; the layer disposes it). */
+  texture(url: string): Promise<Texture | null>;
+}
 
 export type PostFx = "none" | "dither" | "paper" | "scan";
 
@@ -206,47 +232,86 @@ function roomTexture(kind: "plaster" | "planks" | "beams", tint: [number, number
 
 /** Procedural stand-ins until the generated tileable textures land. */
 function proceduralTexture(kind: "wall" | "floor" | "ceil" | "door", seed = 7): CanvasTexture {
-  const s = 128;
+  const s = 256;
   const c = document.createElement("canvas");
   c.width = c.height = s;
   const g = c.getContext("2d")!;
   let r = seed;
   const rnd = () => ((r = (r * 16807) % 2147483647) / 2147483647);
-  const base = { wall: [74, 66, 58], floor: [58, 52, 46], ceil: [30, 27, 25], door: [92, 62, 38] }[kind];
-  g.fillStyle = `rgb(${base.join(",")})`;
+  const base = { wall: [78, 70, 61], floor: [60, 54, 47], ceil: [34, 31, 28], door: [92, 62, 38] }[kind];
+  const rgb = (k: number, a = 1) => `rgba(${base.map((v) => Math.max(0, Math.min(255, Math.round(v + k)))).join(",")},${a})`;
+  g.fillStyle = rgb(0);
   g.fillRect(0, 0, s, s);
-  for (let i = 0; i < 900; i++) {
-    const k = (rnd() - 0.5) * 34;
-    g.fillStyle = `rgba(${base.map((v) => Math.max(0, Math.min(255, v + k))).join(",")},.6)`;
-    g.fillRect(rnd() * s, rnd() * s, 2 + rnd() * 3, 2 + rnd() * 3);
+  // Grain: soft speckle at two scales, so close walls don't read as flat colour.
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = rgb((rnd() - 0.5) * 40, 0.35);
+    const w = 1 + rnd() * (i < 400 ? 14 : 3);
+    g.fillRect(rnd() * s, rnd() * s, w, w * (0.5 + rnd()));
   }
-  g.strokeStyle = "rgba(10,8,6,.75)";
-  g.lineWidth = 3;
-  if (kind === "wall") {
-    for (let row = 0; row < 4; row++) {
-      const y = row * 32;
+  /** One dressed stone: a lit top-left bevel, a shadowed bottom-right, a little face variation. */
+  const stone = (x: number, y: number, w: number, h: number) => {
+    g.fillStyle = rgb((rnd() - 0.5) * 22, 0.55);
+    g.fillRect(x + 3, y + 3, w - 6, h - 6);
+    g.fillStyle = "rgba(255,235,200,.13)";
+    g.fillRect(x + 2, y + 2, w - 4, 3);
+    g.fillRect(x + 2, y + 2, 3, h - 4);
+    g.fillStyle = "rgba(0,0,0,.35)";
+    g.fillRect(x + 2, y + h - 5, w - 4, 3);
+    g.fillRect(x + w - 5, y + 2, 3, h - 4);
+    // A chip or crack now and then.
+    if (rnd() < 0.35) {
+      g.strokeStyle = "rgba(0,0,0,.4)";
+      g.lineWidth = 1.2;
       g.beginPath();
-      g.moveTo(0, y);
-      g.lineTo(s, y);
+      let px = x + 6 + rnd() * (w - 12);
+      let py = y + 4;
+      g.moveTo(px, py);
+      for (let k = 0; k < 4; k++) g.lineTo((px += (rnd() - 0.5) * 10), (py += h / 5));
       g.stroke();
-      for (let col = 0; col < 3; col++) {
-        const x = col * 48 + (row % 2 ? 24 : 0);
-        g.beginPath();
-        g.moveTo(x, y);
-        g.lineTo(x, y + 32);
-        g.stroke();
+    }
+  };
+  g.strokeStyle = "rgba(12,10,8,.85)";
+  if (kind === "wall") {
+    // Ashlar courses of uneven height, joints staggered, deep mortar.
+    const rows = [0, 58, 104, 166, 210, 256];
+    for (let i = 0; i < rows.length - 1; i++) {
+      const y0 = rows[i]!;
+      const h = rows[i + 1]! - y0;
+      let x = i % 2 ? -40 : 0;
+      while (x < s) {
+        const w = 60 + Math.floor(rnd() * 50);
+        stone(x, y0, w, h);
+        // Tile the overhang so the texture wraps cleanly.
+        if (x < 0) stone(x + s, y0, w, h);
+        if (x + w > s) stone(x - s, y0, w, h);
+        g.fillStyle = "rgba(12,10,8,.9)";
+        g.fillRect(x - 2, y0, 4, h);
+        x += w;
       }
+      g.fillStyle = "rgba(12,10,8,.9)";
+      g.fillRect(0, y0 - 2, s, 4);
     }
   } else if (kind === "floor") {
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) stone(x * 128, y * 128, 128, 128);
+    g.lineWidth = 5;
     for (let i = 0; i <= 2; i++) {
+      g.beginPath();
+      g.moveTo(0, i * 128);
+      g.lineTo(s, i * 128);
+      g.moveTo(i * 128, 0);
+      g.lineTo(i * 128, s);
+      g.stroke();
+    }
+  } else if (kind === "ceil") {
+    g.lineWidth = 4;
+    for (let i = 0; i < 4; i++) {
       g.beginPath();
       g.moveTo(0, i * 64);
       g.lineTo(s, i * 64);
-      g.moveTo(i * 64, 0);
-      g.lineTo(i * 64, s);
       g.stroke();
     }
   } else if (kind === "door") {
+    g.lineWidth = 5;
     for (let i = 1; i < 5; i++) {
       g.beginPath();
       g.moveTo((i * s) / 5, 0);
@@ -254,17 +319,17 @@ function proceduralTexture(kind: "wall" | "floor" | "ceil" | "door", seed = 7): 
       g.stroke();
     }
     g.fillStyle = "#2b2420";
-    g.fillRect(s * 0.1, s * 0.25, s * 0.8, 8);
-    g.fillRect(s * 0.1, s * 0.7, s * 0.8, 8);
+    g.fillRect(s * 0.1, s * 0.25, s * 0.8, 14);
+    g.fillRect(s * 0.1, s * 0.7, s * 0.8, 14);
     g.fillStyle = "#c9a865";
     g.beginPath();
-    g.arc(s * 0.78, s * 0.5, 6, 0, Math.PI * 2);
+    g.arc(s * 0.78, s * 0.5, 11, 0, Math.PI * 2);
     g.fill();
   }
   const t = new CanvasTexture(c);
   t.wrapS = t.wrapT = RepeatWrapping;
   t.colorSpace = SRGBColorSpace;
-  t.magFilter = NearestFilter;
+  t.anisotropy = 4;
   return t;
 }
 
@@ -292,10 +357,15 @@ void main(){
   vec2 d = vUv - 0.5;
   vec3 col = c;
   if (mode > 0.5 && mode < 1.5) {
-    vec2 px = floor(vUv * res / 2.0);
-    float l = pow(dot(c, vec3(0.299, 0.587, 0.114)), 1.0 / 2.2);
-    l = clamp((l - 0.1) * 1.4, 0.0, 1.0);
-    col = l > bayer4(px) ? paper : ink;
+    // Chunky: about 150 dither cells top to bottom, each sampled once, so a
+    // cell is a big square pixel; shadows crushed to pure black.
+    float cell = max(3.0, floor(res.y / 150.0));
+    vec2 blk = floor(vUv * res / cell);
+    vec3 s = texture2D(tDiffuse, (blk + 0.5) * cell / res).rgb;
+    // Linear to display brightness, then the same crush as the canvas dither (art/dither.ts).
+    float l = pow(dot(s, vec3(0.299, 0.587, 0.114)), 1.0 / 2.2);
+    l = clamp((l - 0.18) / 0.6, 0.0, 1.0);
+    col = l > bayer4(blk) ? paper : ink;
   } else if (mode > 1.5 && mode < 2.5) {
     float grain = hash(floor(vUv * res)) * 0.035 - 0.0175;
     col = (c * vec3(1.03, 1.0, 0.92) + grain) * (1.0 - dot(d, d) * 1.2);
@@ -334,7 +404,10 @@ export class SceneLayer3D {
   private camera = new PerspectiveCamera(42, 1, 0.05, 100);
   private target: WebGLRenderTarget;
   private post: { scene: Scene; camera: OrthographicCamera; mat: ShaderMaterial };
-  private mode: "backdrop" | "corridor" | "diorama" | "none" = "none";
+  private mode: "backdrop" | "corridor" | "diorama" | "custom" | "none" = "none";
+  private custom: { root: Group; update: ((t: number, dt: number) => void) | null; gen: number } | null = null;
+  private customGen = 0;
+  private lastFrame = 0;
   private dioramaKey = "";
   private standZ = -1.4;
   private ray = new Raycaster();
@@ -373,8 +446,8 @@ export class SceneLayer3D {
         res: { value: new Vector2(2, 2) },
         mode: { value: 0 },
         time: { value: 0 },
-        ink: { value: new Color(0x0c0b0a) },
-        paper: { value: new Color(0xe8e2d0) },
+        ink: { value: new Color(0x000000) },
+        paper: { value: new Color(0xffffff) },
       },
       depthTest: false,
       depthWrite: false,
@@ -450,6 +523,58 @@ export class SceneLayer3D {
     }
     this.backdrop = null;
     this.scene.fog = null;
+    this.dropCustom();
+  }
+
+  /** Leave the theme's custom stage: dispose its graph and undo its renderer settings. */
+  private dropCustom(): void {
+    const c = this.custom;
+    if (!c) return;
+    this.custom = null;
+    this.scene.remove(c.root);
+    c.root.traverse((o) => {
+      const m = o as Mesh;
+      m.geometry?.dispose();
+      const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+      for (const mt of mats) mt.dispose();
+    });
+    this.renderer.shadowMap.enabled = false;
+    this.renderer.toneMapping = NoToneMapping;
+    this.renderer.toneMappingExposure = 1;
+    this.scene.environment = null;
+    this.scene.background = new Color(0x0b0a09);
+    this.scene.fog = null;
+  }
+
+  /** Switch to (or stay in) the theme's own 3D stage. */
+  customStage(): Stage3D {
+    if (this.mode !== "custom" || !this.custom) {
+      this.clearRoom();
+      this.corridor = null;
+      this.mode = "custom";
+      const root = new Group();
+      this.scene.add(root);
+      this.custom = { root, update: null, gen: ++this.customGen };
+    }
+    const c = this.custom;
+    const layer = this;
+    return {
+      root: c.root,
+      generation: c.gen,
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+      canvas: this.canvas,
+      setUpdate(fn) {
+        if (layer.custom === c) c.update = fn;
+      },
+      pick(clientX, clientY, objects) {
+        const r = layer.canvas.getBoundingClientRect();
+        layer.ray.setFromCamera(new Vector2(((clientX - r.left) / Math.max(1, r.width)) * 2 - 1, -(((clientY - r.top) / Math.max(1, r.height)) * 2 - 1)), layer.camera);
+        return layer.ray.intersectObjects(objects, true)[0] ?? null;
+      },
+      texture: (url) => this.texture(url),
+    };
   }
 
   /** The place's painting, displaced by a depth guess. */
@@ -631,10 +756,14 @@ export class SceneLayer3D {
     this.camera.fov = 60;
     this.camera.updateProjectionMatrix();
     this.scene.background = new Color(0x050404);
-    const wallMat = new MeshBasicMaterial({ map: wallTex, side: DoubleSide });
-    const floorMat = new MeshBasicMaterial({ map: proceduralTexture("floor", 11) });
-    const ceilMat = new MeshBasicMaterial({ map: proceduralTexture("ceil", 23) });
-    const doorMat = new MeshBasicMaterial({ map: proceduralTexture("door", 5), side: DoubleSide });
+    // Lit by the torch you carry (a flickering point light at the camera) over a cold dim fill.
+    const wallMat = new MeshLambertMaterial({ map: wallTex, side: DoubleSide });
+    const floorMat = new MeshLambertMaterial({ map: proceduralTexture("floor", 11) });
+    const ceilMat = new MeshLambertMaterial({ map: proceduralTexture("ceil", 23) });
+    const doorMat = new MeshLambertMaterial({ map: proceduralTexture("door", 5), side: DoubleSide });
+    const torch = new PointLight(0xffa860, 4.2, 5.5, 1.1);
+    torch.userData.torch = true;
+    this.room.add(torch, new AmbientLight(0x8090b8, 0.55));
     const glintMat = new MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85 });
     const at = (x: number, y: number) => v.grid[y]?.[x] ?? "#";
     const solid = (x: number, y: number) => {
@@ -692,6 +821,8 @@ export class SceneLayer3D {
   private frame(): void {
     const now = performance.now();
     const t = (now - this.t0) / 1000;
+    const dt = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 0.016;
+    this.lastFrame = now;
     this.look.lerp(this.pointer, 0.05);
     if (this.mode === "backdrop") {
       // Cover the viewport with the painting from a distance that fits it.
@@ -741,7 +872,27 @@ export class SceneLayer3D {
       this.camera.position.set(c.pos.x + Math.sin(c.pos.yaw) * 0.38, 0.5 + bob, c.pos.y + Math.cos(c.pos.yaw) * 0.38);
       this.camera.rotation.set(0, c.pos.yaw, 0);
       this.camera.rotateY(this.look.x * -0.06);
-      for (const m of this.room.children) if (m.userData.spin) m.rotation.y = t * 1.5;
+      for (const m of this.room.children) {
+        if (m.userData.spin) m.rotation.y = t * 1.5;
+        if (m.userData.torch) {
+          // Held a little low and to the right; the flame breathes.
+          m.position.set(this.camera.position.x + Math.cos(c.pos.yaw) * 0.12, 0.42, this.camera.position.z - Math.sin(c.pos.yaw) * 0.12);
+          (m as PointLight).intensity = 4.2 + Math.sin(t * 9.1) * 0.18 + Math.sin(t * 23.7) * 0.1;
+        }
+      }
+    }
+    if (this.mode === "custom" && this.custom) {
+      try {
+        this.custom.update?.(t, dt);
+      } catch (err) {
+        console.error("[gambit] 3D stage update", err);
+      }
+      // With no post effect, draw straight to the screen so tone mapping applies.
+      if (this.post.mat.uniforms.mode!.value === 0) {
+        this.renderer.setRenderTarget(null);
+        this.renderer.render(this.scene, this.camera);
+        return;
+      }
     }
     this.post.mat.uniforms.time!.value = t;
     this.renderer.setRenderTarget(this.target);

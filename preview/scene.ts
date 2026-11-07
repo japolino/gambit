@@ -41,6 +41,7 @@ const sheet = {
   cast: [
     { id: "mara", name: "Mara", role: "the harbormaster, usually at the docks", look: "", main: true, pronoun: "she", evidence: ev },
     { id: "tobin", name: "Tobin", role: "keeps The Drowned Lantern", look: "", main: false, pronoun: "he", evidence: ev },
+    { id: "ilse", name: "Ilse", role: "a warden off duty, usually at the docks", look: "", main: false, pronoun: "she", evidence: ev },
   ],
   places: [
     { id: "docks", name: "The Docks", description: "Wet planks, gulls, and crates under tarps", evidence: ev },
@@ -129,7 +130,15 @@ function paint(seed: number, kind: "place" | "wall" | "person"): string {
   return c.toDataURL();
 }
 
-const host = document.getElementById("host")!;
+// ?shadow=1 mounts inside a shadow root, as Lumiverse does.
+const host = (() => {
+  const h = document.getElementById("host")!;
+  if (new URLSearchParams(location.search).get("shadow") !== "1") return h;
+  const inner = document.createElement("div");
+  inner.style.cssText = "position:absolute;inset:0";
+  h.attachShadow({ mode: "open" }).append(inner);
+  return inner;
+})();
 const T = sheet as unknown as { cardKey: string };
 const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   act(id) {
@@ -237,14 +246,58 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   },
 });
 
+/**
+ * ?real=1: real generated art served by the preview server from the folder in
+ * GAMBIT_PREVIEW_ART (place1-4.png, opaque1-2.png, cut1-3.png), so themes can
+ * be judged on what they will actually show. Mara is opaque (framed or keyed).
+ */
+const REAL = new URLSearchParams(location.search).get("real") === "1";
+// ?opaque=1: everyone's art is opaque, as on most real cards (each gets keyed or framed).
+const REAL_PERSON: Record<string, [string, boolean]> =
+  new URLSearchParams(location.search).get("opaque") === "1" ? { mara: ["opaque1", false], tobin: ["opaque2", false], ilse: ["place4", false] } : { mara: ["opaque1", false], tobin: ["cut1", true], ilse: ["cut2", true] };
+
 function refresh(): void {
   const v = buildSceneView(sheet, "preview", r);
+  if (new URLSearchParams(location.search).get("busy") === "1") v.busy = "Mara is thinking it over…";
+  // ?imageid=1: people carry their own opaque images (served at /api/v1/images/<id>), as on real cards; Ilse's can't be keyed.
+  if (new URLSearchParams(location.search).get("imageid") === "1") {
+    const ids: Record<string, string> = { mara: "opaque1", tobin: "opaque2", ilse: "place4" };
+    v.people = v.people.map((p) => ({ ...p, imageId: ids[p.id] ?? null }));
+  }
   handle.setView(v);
   // Stand-in art for every key the view uses.
-  for (const p of Object.values(r.world.places)) handle.setArt(placeKey(sheet, p.id), paint(p.id.length * 47 + p.id.charCodeAt(0) * 13, "place"), false);
-  for (const m of [{ id: "mara" }, { id: "tobin" }]) handle.setArt(npcArtKey(`${T.cardKey}:${m.id}`), paint(m.id.charCodeAt(0) * 31, "person"), true);
-  if (r.delve) handle.setArt(wallKey(sheet, r.delve.placeId), paint(5, "wall"), false);
+  Object.values(r.world.places).forEach((p, i) => handle.setArt(placeKey(sheet, p.id), REAL ? `/localart/place${(i % 4) + 1}.png` : paint(p.id.length * 47 + p.id.charCodeAt(0) * 13, "place"), false));
+  for (const m of [{ id: "mara" }, { id: "tobin" }, { id: "ilse" }]) {
+    const real = REAL_PERSON[m.id]!;
+    handle.setArt(npcArtKey(`${T.cardKey}:${m.id}`), REAL ? `/localart/${real[0]}.png` : paint(m.id.charCodeAt(0) * 31, "person"), REAL ? real[1] : true);
+  }
+  // With real art there is no generated wall texture, as in a fresh Lumiverse delve: the layer draws stone.
+  if (r.delve && !REAL) handle.setArt(wallKey(sheet, r.delve.placeId), paint(5, "wall"), false);
   for (const t of ["plain", "wood", "hill", "ruin"]) handle.setArt(placeKey(sheet, `wild_${t}`), paint(t.length * 91 + 7, "place"), false);
-  (window as unknown as { gambitScene: unknown }).gambitScene = { r, v };
+  (window as unknown as { gambitScene: unknown }).gambitScene = { r, v, handle };
+}
+/*
+ * Screenshot switches: ?delve=1 starts inside a delve, ?at=<placeId> starts
+ * at a place, ?busy=1 shows the busy state, ?crowd=1 puts all three people there, ?journal=1 / ?classes=1 open those panels, ?log=1 fills the log.
+ */
+{
+  const q = new URLSearchParams(location.search);
+  const at = q.get("at");
+  if (at && r.world.places[at]) r = { ...r, scene: { ...r.scene, placeId: at } };
+  if (q.get("crowd") === "1") (r.world.places[r.scene.placeId] as { people: string[] }).people = ["mara", "tobin", "ilse"];
+  if (q.get("log") === "1") r = { ...r, log: ["You arrive by the morning ferry.", "Mara eyes your satchel and says nothing.", "You found: a torn wharf ticket.", "Tobin pours you something that might be rum.", "Time passes: afternoon."] };
+  if (q.get("delve") === "1") {
+    const map = generateDelve(`preview:${r.scene.placeId}`);
+    r = { ...r, delve: { placeId: r.scene.placeId, map, state: enterDelve(map) } };
+  }
 }
 refresh();
+{
+  const q = new URLSearchParams(location.search);
+  const ctx = (document.querySelector(".gs") as unknown as { gambitCtx?: { journal: { toggle(): void }; classes: { toggle(): void } } }).gambitCtx;
+  if (q.get("journal") === "1") ctx?.journal.toggle();
+  if (q.get("classes") === "1") {
+    handle.forge(buildForgeView("preview", book, codex, (o) => o.art ?? `class:${o.def.id}`, null));
+    ctx?.classes.toggle();
+  }
+}

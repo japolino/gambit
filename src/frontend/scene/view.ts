@@ -1,24 +1,30 @@
 /**
  * The Scene view (docs/DESIGN.md 6.1-6.3): the place's painting (3D when it
- * can, flat when it cannot), the people in it, a nameplate dialogue box with
- * what just happened, and the menu of what you can do here. Movement follows
- * the world's shape: plain menus, a lobby of place tiles around the
- * companion, a journey's stops, or a first-person delve with an automap and
- * a command menu. Everything is reachable from the menu, on desktop and
- * phone; the delve also takes arrow keys and WASD.
+ * can, flat when it cannot), the people in it, what just happened, the menu
+ * of what you can do here, and movement in the world's shape (plain menus,
+ * a lobby of places, a journey's stops, a frontier honeycomb, or a
+ * first-person delve with an automap; the delve also takes arrows / WASD).
  *
- * M5: frontier cards walk a honeycomb overland; the Table theme seats the
- * person you face across a table with what you know as a hand of cards;
- * the Diorama theme builds indoor places as little 3D rooms; resting plays
- * the "Meanwhile…" montage over the scene.
+ * This is the host. Every stage theme is its own game interface in
+ * ./themes/<id>.ts, built against ./themes/contract.ts: the host owns the
+ * data, the art cache, the WebGL place layer, the journal / class-panel
+ * state, the delve keys, the "Meanwhile…" montage and a pointer tracker;
+ * the theme owns every pixel.
  */
-import { fightLabel, type Hotspot } from "../../engine/world/places.js";
+import type { Hotspot } from "../../engine/world/places.js";
+import { fightLabel } from "../../engine/world/places.js";
 import type { DelveMove } from "../../engine/world/delve.js";
 import type { DelveView, SceneView, ThemeId } from "../../shared/scene-view.js";
-import { SceneLayer3D, webglOk, type PostFx } from "./layer3d.js";
+import { SceneLayer3D, webglOk } from "./layer3d.js";
 import { drawCorridor2D } from "./corridor2d.js";
 import { FORGE_CSS, mountForgePanel } from "./forge-panel.js";
+import { PIXEL_FONT_CSS } from "./pixel-font.js";
+import { THEME_FONTS_CSS } from "./fonts.js";
+import { prepareArt } from "../art/prepare.js";
+import { ditherUrl } from "../art/dither.js";
 import type { ForgeOp, ForgeView } from "../../shared/forge-view.js";
+import { esc, type AutomapStyle, type BackdropOpts, type MenuItem, type PersonArt, type ThemeCtx, type ThemeRenderer } from "./themes/contract.js";
+import { THEME_FACTORIES } from "./themes/index.js";
 
 export interface SceneActions {
   act(hotspot: string): void;
@@ -50,7 +56,7 @@ export interface SceneHandle {
   forge(v: ForgeView): void;
 }
 
-/** The stage themes (6.3), all drawn as of M5. */
+/** The stage themes (6.3). */
 export const SCENE_THEMES: { id: ThemeId; label: string }[] = [
   { id: "storybook", label: "Storybook" },
   { id: "diorama", label: "Diorama" },
@@ -61,10 +67,6 @@ export const SCENE_THEMES: { id: ThemeId; label: string }[] = [
 ];
 const TERRAIN_FILL: Record<string, string> = { plain: "#6f7d4a", wood: "#3d5a33", hill: "#8f7c55", water: "#2d4c66", ruin: "#6b5d5a" };
 const HEX_DIRS: [number, number][] = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
-
-const POST: Record<ThemeId, PostFx> = { storybook: "paper", onebit: "dither", lobby: "paper", diorama: "paper", table: "paper", command: "scan" };
-const KIND_ICON: Record<Hotspot["kind"], string> = { talk: "💬", search: "🔍", exit: "➜", rest: "☾", shop: "⚖", fight: "⚔", delve: "▼", wait: "⌛" };
-const ONEBIT_ICON: Record<Hotspot["kind"], string> = { talk: ">", search: "?", exit: "»", rest: "z", shop: "$", fight: "!", delve: "v", wait: "." };
 const ROOM_TEXT: Record<string, string> = {
   entrance: "The way you came in.",
   fight: "Signs of a struggle.",
@@ -76,186 +78,69 @@ const ROOM_TEXT: Record<string, string> = {
   event: "A long-abandoned chamber.",
 };
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+/** @font-face is ignored inside a shadow root, so the fonts are declared on the page once. */
+function ensureFonts(): void {
+  if (document.getElementById("gambit-pixel-font")) return;
+  const st = document.createElement("style");
+  st.id = "gambit-pixel-font";
+  st.textContent = PIXEL_FONT_CSS + "\n" + THEME_FONTS_CSS;
+  document.head.append(st);
+}
 
 const CSS = `
-.gs { position: absolute; inset: 0; overflow: hidden; color: #ece3cf; font: 15px/1.45 "Cormorant Garamond", "Palatino Linotype", Georgia, serif; }
+.gs { position: absolute; inset: 0; overflow: hidden; color: #ece3cf; font: 16px/1.45 "Palatino Linotype", Georgia, serif; }
 .gs * { box-sizing: border-box; }
-.gs .world { position: absolute; inset: 0; background: #0b0a09; }
-.gs .flat { position: absolute; inset: 0; background: #0b0a09 center/cover no-repeat; transition: background-image .4s; }
-.gs .flat.dim { filter: brightness(.55); }
-.gs .folk { position: absolute; left: 0; right: 0; bottom: 30%; height: 62%; display: flex; justify-content: center; align-items: flex-end; gap: 2%; pointer-events: none; }
-.gs .folk img { max-height: 100%; max-width: 30%; object-fit: contain; filter: drop-shadow(0 8px 18px rgba(0,0,0,.6)); }
-.gs .folk img.opaque { border-radius: 10px; -webkit-mask-image: radial-gradient(ellipse 70% 72% at 50% 44%, #000 62%, transparent 100%); mask-image: radial-gradient(ellipse 70% 72% at 50% 44%, #000 62%, transparent 100%); }
-.gs .hud { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 60px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; pointer-events: none; }
-.gs .chip { pointer-events: auto; background: rgba(11,10,9,.62); border: 1px solid rgba(201,168,101,.35); border-radius: 999px; padding: 4px 11px; font: 12px/1.3 "Segoe UI", system-ui, sans-serif; backdrop-filter: blur(6px); white-space: nowrap; }
-.gs .chip b { color: #c9a865; font-weight: 600; }
-.gs .vig { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); vertical-align: middle; margin-left: 6px; overflow: hidden; }
-.gs .vig i { display: block; height: 100%; background: linear-gradient(90deg,#b8382e,#e0604c); }
-.gs select.chip { color: inherit; appearance: none; cursor: pointer; }
-.gs .route { position: absolute; top: var(--hud, 52px); left: 12px; right: 12px; display: flex; align-items: center; gap: 0; font: 11px/1.2 "Segoe UI", system-ui, sans-serif; pointer-events: none; }
-.gs .route .stop { display: grid; justify-items: center; gap: 3px; flex: 0 0 auto; max-width: 90px; text-align: center; opacity: .6; }
-.gs .route .stop i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #c9a865; background: #0b0a09; }
-.gs .route .stop.here { opacity: 1; } .gs .route .stop.here i { background: #c9a865; }
-.gs .route .stop.past i { background: #7d6a45; }
-.gs .route .leg { flex: 1; height: 2px; background: rgba(201,168,101,.35); margin-bottom: 14px; }
-.gs .box { position: absolute; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: 1fr minmax(220px, 300px); gap: 10px; align-items: end; }
-.gs .say { position: relative; background: linear-gradient(180deg, rgba(23,19,15,.92), rgba(11,10,9,.94)); border: 1px solid rgba(201,168,101,.5); border-radius: 12px; padding: 18px 16px 12px; min-height: 104px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
-.gs .plate { position: absolute; top: -13px; left: 14px; background: #c9a865; color: #17130f; font: 600 13px/1 "Segoe UI", system-ui, sans-serif; padding: 6px 12px; border-radius: 6px; letter-spacing: .02em; }
-.gs .plate .new { font-weight: 400; opacity: .7; margin-left: 6px; }
-.gs .desc { opacity: .9; }
-.gs .log { margin-top: 6px; font-size: 13px; opacity: .78; display: grid; gap: 2px; max-height: 84px; overflow: auto; }
-.gs .log div:last-child { opacity: 1; color: #f1d9b0; }
-.gs .busy { margin-top: 6px; font-size: 13px; color: #c9a865; }
-.gs .menu { background: rgba(11,10,9,.86); border: 1px solid rgba(201,168,101,.4); border-radius: 12px; padding: 8px; display: grid; gap: 4px; max-height: 46vh; overflow: auto; }
-.gs .menu button, .gs .cmd button, .gs .tiles button { font: 14px/1.2 "Segoe UI", system-ui, sans-serif; color: #ece3cf; background: rgba(255,255,255,.04); border: 1px solid transparent; border-radius: 8px; padding: 9px 10px; text-align: left; cursor: pointer; display: flex; gap: 8px; align-items: center; min-height: 40px; }
-.gs .menu button:hover, .gs .menu button:focus-visible, .gs .cmd button:hover, .gs .cmd button:focus-visible { border-color: rgba(201,168,101,.7); background: rgba(201,168,101,.12); outline: none; }
-.gs .menu .ic { width: 18px; text-align: center; opacity: .8; }
-.gs .menu .sep { height: 1px; background: rgba(201,168,101,.2); margin: 3px 2px; }
-.gs .tiles { position: absolute; top: var(--hud, 56px); left: 12px; right: 12px; bottom: 210px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 160px)); grid-auto-rows: 96px; gap: 10px; justify-content: space-between; align-content: start; pointer-events: none; }
-.gs .tiles button { pointer-events: auto; position: relative; padding: 0; overflow: hidden; border: 1px solid rgba(201,168,101,.45); background: #17130f center/cover; align-items: flex-end; min-height: 0; box-shadow: 0 6px 18px rgba(0,0,0,.5); }
-.gs .tiles button span { width: 100%; padding: 6px 8px; background: linear-gradient(0deg, rgba(11,10,9,.92), rgba(11,10,9,0)); font-size: 13px; }
-.gs .tiles button:hover { border-color: #c9a865; transform: translateY(-2px); }
-.gs .lobbyface { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%); height: 58%; pointer-events: none; }
-.gs .lobbyface img { height: 100%; object-fit: contain; filter: drop-shadow(0 10px 24px rgba(0,0,0,.7)); }
-.gs .lobbyface img.opaque { border-radius: 14px; -webkit-mask-image: radial-gradient(ellipse 70% 72% at 50% 44%, #000 62%, transparent 100%); mask-image: radial-gradient(ellipse 70% 72% at 50% 44%, #000 62%, transparent 100%); }
-.gs .delve2d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
-.gs .automap { position: absolute; top: var(--hud, 52px); right: 12px; width: 150px; height: 150px; background: rgba(11,10,9,.78); border: 1px solid rgba(201,168,101,.45); border-radius: 10px; image-rendering: pixelated; }
-.gs .cmd { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
-.gs .cmd button { justify-content: center; text-align: center; }
-.gs .cmd .wide { grid-column: span 3; }
+.gs > .th { position: absolute; inset: 0; container-type: size; overflow: hidden; }
+.gs .world { position: absolute; inset: 0; background: #0b0a09; overflow: hidden; }
+.gs .world > .flat { position: absolute; inset: 0; background: #0b0a09 center/cover no-repeat; }
+.gs .world.flatmode > canvas:not(.delve2d) { visibility: hidden; }
+.gs .world.void { visibility: hidden; }
+.gs .world > .delve2d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 .gs .gone { display: none !important; }
-@media (max-width: 720px) {
-  .gs .box { grid-template-columns: 1fr; }
-  .gs .menu { max-height: 34vh; }
-  .gs .tiles { bottom: 330px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); grid-auto-rows: 70px; }
-  .gs .lobbyface { bottom: 320px; height: 36%; }
-  .gs .automap { width: 110px; height: 110px; }
-  .gs .say { min-height: 84px; }
-}
-/* 1-bit: black and white, terminal text, square frames. */
-.gs.onebit { font: 14px/1.45 "Consolas", "Courier New", ui-monospace, monospace; color: #e8e2d0; }
-.gs.onebit .say, .gs.onebit .menu, .gs.onebit .automap { background: #0c0b0a; border: 2px solid #e8e2d0; border-radius: 0; box-shadow: none; }
-.gs.onebit .plate { background: #e8e2d0; color: #0c0b0a; border-radius: 0; font-family: inherit; }
-.gs.onebit .chip { background: #0c0b0a; border: 1px solid #e8e2d0; border-radius: 0; font-family: inherit; }
-.gs.onebit .chip b, .gs.onebit .busy, .gs.onebit .log div:last-child { color: #e8e2d0; }
-.gs.onebit .menu button, .gs.onebit .cmd button, .gs.onebit .tiles button { font-family: inherit; border-radius: 0; }
-.gs.onebit .menu button:hover, .gs.onebit .menu button:focus-visible, .gs.onebit .cmd button:hover, .gs.onebit .cmd button:focus-visible { background: #e8e2d0; color: #0c0b0a; }
-.gs.onebit .flat, .gs.onebit .tiles button, .gs.onebit .folk img, .gs.onebit .lobbyface img { filter: grayscale(1) contrast(1.9) brightness(1.05); }
-.gs.onebit .vig i { background: #e8e2d0; }
-/* Command: a classic crawler's blue panels. */
-.gs.command { font: 14px/1.4 "Consolas", "Courier New", ui-monospace, monospace; }
-.gs.command .say, .gs.command .menu, .gs.command .automap { background: linear-gradient(180deg, #1b2a5a, #0f1838); border: 2px solid #c8d2f0; border-radius: 4px; }
-.gs.command .plate { background: #c8d2f0; color: #0f1838; border-radius: 2px; font-family: inherit; }
-.gs.command .menu button, .gs.command .cmd button { font-family: inherit; }
-.gs.command .menu button:hover, .gs.command .cmd button:hover { background: rgba(200,210,240,.18); border-color: #c8d2f0; }
-/* Honeycomb overland (frontier). */
-.gs .hexwrap { position: absolute; top: var(--hud, 56px); right: 12px; width: min(460px, 48vw); height: min(340px, 44vh); background: rgba(11,10,9,.72); border: 1px solid rgba(201,168,101,.45); border-radius: 12px; backdrop-filter: blur(4px); }
-.gs .hexwrap svg { width: 100%; height: 100%; display: block; }
-.gs .hexwrap polygon { stroke: rgba(11,10,9,.85); stroke-width: 1.2; }
-.gs .hexwrap .fog { fill: #17130f; }
-.gs .hexwrap .step { cursor: pointer; }
-.gs .hexwrap .step:hover polygon, .gs .hexwrap .step:focus-visible polygon { stroke: #f1d9b0; stroke-width: 2.4; }
-.gs .hexwrap .here polygon { stroke: #c9a865; stroke-width: 3; }
-.gs .hexwrap .goto { cursor: pointer; }
-.gs .hexwrap text { font: 600 9px "Segoe UI", system-ui, sans-serif; fill: #ece3cf; paint-order: stroke; stroke: rgba(11,10,9,.9); stroke-width: 3px; pointer-events: none; }
-.gs .hexwrap .pin { fill: #c9a865; stroke: #17130f; stroke-width: 1.5; }
-.gs .hexwrap .you { fill: #f1d9b0; stroke: #17130f; stroke-width: 1.5; }
-.gs .hexwrap .key { position: absolute; left: 10px; bottom: 6px; font: 11px "Segoe UI", system-ui, sans-serif; opacity: .75; pointer-events: none; }
-/* Table: the person you face across a table, and your hand of fact cards. */
-.gs .tabletop { position: absolute; left: -6%; right: -6%; bottom: 0; height: 40%; background: radial-gradient(ellipse at 50% 0%, #6e4a26 0%, #3d2713 55%, #1c1209 100%); border-top: 4px solid #8a6436; border-radius: 50% 50% 0 0 / 22% 22% 0 0; box-shadow: 0 -40px 90px rgba(255,180,90,.18) inset, 0 -8px 40px rgba(0,0,0,.6); pointer-events: none; }
-.gs .tabletop::before { content: ""; position: absolute; left: 50%; top: 10%; width: 18px; height: 34px; margin-left: -9px; border-radius: 4px 4px 2px 2px; background: linear-gradient(#f3e3c0, #cdb68a); box-shadow: 0 -16px 30px 10px rgba(255,190,100,.35); }
-.gs .hand { position: absolute; left: 12px; right: 12px; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 150px); display: flex; justify-content: center; pointer-events: none; }
-.gs .hand button { pointer-events: auto; flex: 0 0 auto; width: 128px; min-height: 86px; margin: 0 -9px; padding: 9px 9px 7px; text-align: left; font: 12px/1.3 Georgia, serif; color: #2a1f14; background: linear-gradient(#f3e6c8, #dcc79a); border: 1px solid #8a6d3f; border-radius: 8px; box-shadow: 0 6px 14px rgba(0,0,0,.55); transform: rotate(var(--tilt, 0deg)) translateY(8px); transition: transform .15s ease, margin .15s ease; cursor: pointer; }
-.gs .hand button:hover, .gs .hand button:focus-visible { transform: rotate(0deg) translateY(-12px) scale(1.06); margin: 0 4px; z-index: 2; outline: none; }
-.gs .hand button[disabled] { cursor: default; opacity: .6; }
-.gs .hand .none { pointer-events: none; font: italic 13px Georgia, serif; opacity: .7; }
-.gs.table .lobbyface { bottom: 34%; height: 50%; }
-.gs.table .say, .gs.table .menu { background: linear-gradient(180deg, rgba(40,26,14,.94), rgba(20,13,7,.96)); border-color: rgba(214,170,100,.55); }
-/* Diorama: warm, close, a little toy-like. */
-.gs.diorama .say, .gs.diorama .menu { background: linear-gradient(180deg, rgba(48,32,20,.92), rgba(26,18,11,.95)); border-color: rgba(230,180,110,.5); }
-.gs.diorama .plate { background: #e3b26a; }
-.gs.diorama .flat { filter: sepia(.25) saturate(1.1); }
-/* Meanwhile… */
-.gs .mw { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,16,12,.86), rgba(5,4,3,.97)); cursor: pointer; animation: mwIn .6s ease; }
-.gs .mw-in { display: grid; justify-items: center; gap: 16px; width: min(640px, 90vw); }
-.gs .mw-title { font: italic 34px/1 "Cormorant Garamond", Georgia, serif; color: #e9d4ad; letter-spacing: .03em; }
+/* Meanwhile… (themes restyle it). */
+.gs > .mw { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,16,12,.86), rgba(5,4,3,.97)); cursor: pointer; animation: mwIn .6s ease; }
+.gs .mw-in { display: grid; justify-items: center; gap: 16px; width: min(760px, 90%); }
+.gs .mw-title { font: italic 40px/1 "Gambit Fell", "Palatino Linotype", Georgia, serif; color: #e9d4ad; letter-spacing: .03em; }
 .gs .mw.waiting .mw-title { animation: mwPulse 1.6s ease-in-out infinite; }
-.gs .mw-art { width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; background: #17130f center/cover no-repeat; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.gs .mw-art { width: 100%; aspect-ratio: 16 / 9; background: #17130f center/cover no-repeat; border: 8px solid #efe2c4; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
 .gs .mw-art.none { display: none; }
-.gs .mw-text { font: 19px/1.5 "Cormorant Garamond", Georgia, serif; text-align: center; color: #f1e6cf; min-height: 3em; margin: 0; }
+.gs .mw-text { font: 22px/1.5 "Gambit Fell", "Palatino Linotype", Georgia, serif; text-align: center; color: #f1e6cf; min-height: 3em; margin: 0; }
 .gs .mw-card { display: grid; gap: 14px; width: 100%; animation: mwIn .5s ease; }
-.gs .mw-dots { display: flex; gap: 6px; } .gs .mw-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
-.gs .mw-hint { font: 12px "Segoe UI", system-ui, sans-serif; opacity: .55; }
-/* Journal (4.6): what you did and what the world remembers. */
-.gs .jr { position: absolute; top: var(--hud, 56px); left: 12px; width: min(420px, calc(100% - 24px)); bottom: 200px; z-index: 4; overflow: auto; background: rgba(15,12,9,.95); border: 1px solid rgba(201,168,101,.5); border-radius: 12px; padding: 12px 14px; font: 13px/1.45 "Segoe UI", system-ui, sans-serif; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
-.gs .jr h3 { font: 600 12px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #c9a865; margin: 12px 0 6px; }
-.gs .jr h3:first-child { margin-top: 0; }
-.gs .jr ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; }
-.gs .jr .muted { opacity: .6; font-style: italic; }
-.gs .jr .done { text-decoration: line-through; opacity: .6; }
-.gs .jr .aff { display: inline-block; width: 70px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); margin: 0 6px; vertical-align: middle; position: relative; }
-.gs .jr .aff i { position: absolute; top: 0; bottom: 0; left: 50%; background: #c9a865; border-radius: 3px; }
-.gs .jr .aff i.neg { background: #c4544a; }
-.gs .jr .bond { color: #f1d9b0; font-weight: 600; }
-.gs .chip.jbtn, .gs .chip.fbtn { cursor: pointer; color: inherit; }
-@media (max-width: 720px) { .gs .jr { bottom: 330px; } }
+.gs .mw-dots { display: flex; gap: 8px; justify-content: center; margin-top: 10px; } .gs .mw-dots i { width: 8px; height: 8px; transform: rotate(45deg); background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
+.gs .mw-hint { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
+.gs > .fg { z-index: 40; }
 @keyframes mwIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes mwPulse { 50% { opacity: .45; } }
-@media (max-width: 720px) {
-  .gs .hexwrap { left: 12px; right: 12px; width: auto; height: 32vh; }
-  .gs .hand { bottom: 320px; }
-  .gs .hand button { width: 104px; min-height: 76px; font-size: 11px; }
-}
-.gs.onebit .hexwrap { filter: grayscale(1) contrast(1.6); border-radius: 0; background: #0c0b0a; border: 2px solid #e8e2d0; }
-@media (prefers-reduced-motion: reduce) { .gs .flat { transition: none; } .gs .tiles button:hover { transform: none; } .gs .mw, .gs .mw-card { animation: none; } .gs .hand button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .gs > .mw, .gs .mw-card { animation: none; } }
 `;
 
 export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions): SceneHandle {
+  ensureFonts();
   const el = document.createElement("div");
   el.className = "gs";
   el.setAttribute("data-gambit-stage", "scene");
   const style = document.createElement("style");
   style.textContent = CSS + FORGE_CSS;
-  el.innerHTML = `
-    <div class="world"><div class="flat"></div><canvas class="delve2d gone"></canvas><div class="folk"></div><div class="tabletop gone"></div><div class="lobbyface gone"></div></div>
-    <div class="hexwrap gone"><svg role="group" aria-label="The overland"></svg><div class="key"></div></div>
-    <div class="hand gone"></div>
-    <div class="jr gone" role="dialog" aria-label="Journal"></div>
-    <div class="tiles gone"></div>
-    <div class="route gone"></div>
-    <canvas class="automap gone" width="150" height="150"></canvas>
-    <div class="hud"></div>
-    <div class="box"><div class="say"><div class="plate"></div><div class="desc"></div><div class="log"></div><div class="busy gone"></div></div><div class="menu" role="menu"></div></div>`;
+  const th = document.createElement("div");
+  th.className = "th";
+  el.append(th);
   root.append(style, el);
-  const $ = <T extends HTMLElement>(sel: string) => el.querySelector(sel) as T;
-  const world = $<HTMLDivElement>(".world");
-  const flat = $<HTMLDivElement>(".flat");
-  const folk = $<HTMLDivElement>(".folk");
-  const lobbyface = $<HTMLDivElement>(".lobbyface");
-  const delve2d = $<HTMLCanvasElement>(".delve2d");
-  const automap = $<HTMLCanvasElement>(".automap");
-  const tiles = $<HTMLDivElement>(".tiles");
-  const route = $<HTMLDivElement>(".route");
-  const hud = $<HTMLDivElement>(".hud");
-  const plate = $<HTMLDivElement>(".plate");
-  const desc = $<HTMLDivElement>(".desc");
-  const log = $<HTMLDivElement>(".log");
-  const busy = $<HTMLDivElement>(".busy");
-  const menu = $<HTMLDivElement>(".menu");
-  const hexwrap = $<HTMLDivElement>(".hexwrap");
-  const hexsvg = hexwrap.querySelector("svg") as SVGSVGElement;
-  const hexkey = $<HTMLDivElement>(".hexwrap .key");
-  const hand = $<HTMLDivElement>(".hand");
-  const tabletop = $<HTMLDivElement>(".tabletop");
-  const jr = $<HTMLDivElement>(".jr");
-  let journalOpen = false;
+
+  // The place painting / 3D layer: a theme puts it where it wants.
+  const world = document.createElement("div");
+  world.className = "world";
+  world.innerHTML = `<div class="flat"></div><canvas class="delve2d gone"></canvas>`;
+  const flat = world.querySelector(".flat") as HTMLDivElement;
+  const delve2d = world.querySelector(".delve2d") as HTMLCanvasElement;
 
   const art = new Map<string, { url: string; cutout: boolean }>();
+  let journalOpen = false;
   const classes = mountForgePanel(el, (op, x, y, text) => a.forge(op, x, y, text), (key) => art.get(key)?.url ?? null);
   let view = first;
   let destroyed = false;
+  let hidden = false;
   let layer: SceneLayer3D | null = null;
+  const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const low = (() => {
     try {
       return localStorage.getItem("gambit.scene.low") === "1";
@@ -266,15 +151,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   if (!low && webglOk()) {
     try {
       layer = new SceneLayer3D(world);
-      // Clicking someone standing in the room talks to them, when you can.
-      layer.onPick = (id) => {
-        if (view.menu.some((h) => h.id === `talk:${id}`)) a.act(`talk:${id}`);
-      };
       // For debugging from devtools: the scene element carries its 3D layer.
       (el as unknown as { gambitLayer?: SceneLayer3D }).gambitLayer = layer;
-      // The 3D layer draws the room; the DOM keeps the menus and HUD.
-      flat.classList.add("gone");
-      folk.classList.add("gone");
     } catch {
       layer = null;
     }
@@ -283,86 +161,112 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     layer?.resize();
     if (view.delve && !layer) drawDelve(view.delve);
   });
-  ro.observe(el);
+  ro.observe(world);
 
   const urlOf = (key: string | undefined | null) => (key ? art.get(key)?.url ?? null : null);
-  const personArt = (p: SceneView["people"][number]) => (p.imageId ? { url: `/api/v1/images/${p.imageId}`, cutout: false } : art.get(p.art) ?? null);
+  const personSrc = (p: SceneView["people"][number]) => (p.imageId ? { url: `/api/v1/images/${p.imageId}`, cutout: false } : art.get(p.art) ?? null);
 
-  function onKey(e: KeyboardEvent): void {
-    if (!view.delve || view.busy) return;
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    const k = e.key.toLowerCase();
-    const move: DelveMove | null = k === "arrowup" || k === "w" ? "forward" : k === "arrowdown" || k === "s" ? "back" : k === "arrowleft" || k === "a" ? "left" : k === "arrowright" || k === "d" ? "right" : k === " " || k === "f" ? "search" : null;
-    if (!move) return;
-    e.preventDefault();
-    a.step(move);
+  /* ------------------------------ Pointer ------------------------------ */
+  const ptr = { tx: 0, ty: 0, x: 0, y: 0 };
+  function onMove(e: PointerEvent): void {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    ptr.tx = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1));
+    ptr.ty = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1));
   }
-  window.addEventListener("keydown", onKey);
+  el.addEventListener("pointermove", onMove);
+  const frames = new Set<(t: number, dt: number) => void>();
+  let raf = 0;
+  let last = 0;
+  function tick(t: number): void {
+    raf = 0;
+    if (destroyed || hidden || !frames.size) return;
+    const dt = last ? Math.min(0.1, (t - last) / 1000) : 0.016;
+    last = t;
+    const k = 1 - Math.pow(0.0008, dt);
+    ptr.x += (ptr.tx - ptr.x) * k;
+    ptr.y += (ptr.ty - ptr.y) * k;
+    for (const f of [...frames]) {
+      try {
+        f(t, dt);
+      } catch (err) {
+        console.error("[gambit] theme frame", err);
+      }
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  const kick = () => {
+    if (!raf && !destroyed && !hidden && frames.size) {
+      last = 0;
+      raf = requestAnimationFrame(tick);
+    }
+  };
 
-  function renderHud(v: SceneView): void {
-    const themes = SCENE_THEMES.map((t) => `<option value="${t.id}" ${t.id === v.theme ? "selected" : ""}>${t.label}</option>`).join("");
-    hud.innerHTML = `
-      <span class="chip"><b>${esc(v.cardName)}</b> · ${esc(v.delve ? v.delve.name : v.place.name)}</span>
-      <span class="chip">Day ${v.clock.day} · ${esc(v.clock.time)}</span>
-      <span class="chip">${v.coin} ${esc(v.skin.currency || "coin")}</span>
-      <span class="chip" title="How fresh the party is">Vigor<span class="vig"><i style="width:${Math.round(v.vigor * 100)}%"></i></span></span>
-      ${v.hex ? `<span class="chip" title="Each step on the overland eats a day's supplies; rest in a town to refill">Supplies <b>${v.hex.supplies}/${v.hex.max}</b></span>` : ""}
-      ${v.thread ? `<span class="chip" title="${esc(`${v.thread.goal}${v.thread.found.length ? `\n\n${v.thread.found.map((f) => `• ${f}`).join("\n")}` : ""}`)}">🧵 <b>${v.thread.found.length}/${v.thread.total}</b></span>` : ""}
-      <button class="chip jbtn" type="button" aria-expanded="${journalOpen}">📜 Journal</button>
-      <button class="chip fbtn" type="button" aria-expanded="${classes.open}">⚒ Classes</button>
-      <select class="chip" aria-label="Scene theme">${themes}</select>`;
-    hud.querySelector(".jbtn")!.addEventListener("click", () => {
-      journalOpen = !journalOpen;
-      renderJournal(view);
-      hud.querySelector(".jbtn")!.setAttribute("aria-expanded", String(journalOpen));
-    });
-    hud.querySelector(".fbtn")!.addEventListener("click", () => {
-      classes.toggle();
-      hud.querySelector(".fbtn")!.setAttribute("aria-expanded", String(classes.open));
-    });
-    hud.querySelector("select")!.addEventListener("change", (e) => a.theme((e.target as HTMLSelectElement).value as ThemeId));
-    // What sits under the HUD starts below it, however many rows it wraps to.
-    requestAnimationFrame(() => el.style.setProperty("--hud", `${hud.offsetTop + hud.offsetHeight + 8}px`));
+  /* ------------------------------ Art prep ----------------------------- */
+  const ready = new Map<string, PersonArt>();
+  const pending = new Set<string>();
+  function preparedArt(src: { url: string; cutout: boolean }, mode: "color" | "onebit", rows: number): PersonArt | null {
+    const id = `${mode}|${rows}|${src.url}`;
+    const got = ready.get(id);
+    if (got) return got;
+    if (!pending.has(id)) {
+      pending.add(id);
+      void (async () => {
+        try {
+          const keyed = src.cutout ? { url: src.url, cutout: true } : await prepareArt(src.url, true);
+          const base = { cutout: keyed.cutout, keyed: !src.cutout && keyed.cutout, source: src.url };
+          ready.set(id, { ...base, url: mode === "onebit" ? await ditherUrl(keyed.url, rows) : keyed.url });
+        } catch {
+          ready.set(id, { url: src.url, cutout: src.cutout, keyed: false, source: src.url });
+        }
+        pending.delete(id);
+        if (!destroyed) renderTheme();
+      })();
+    }
+    return null;
   }
 
-  function renderMenu(v: SceneView): void {
-    const icons = v.theme === "onebit" ? ONEBIT_ICON : KIND_ICON;
+  /* ------------------------------ Data views --------------------------- */
+  function menuOf(v: SceneView): MenuItem[] {
     if (v.delve) {
       const d = v.delve;
       const search = d.room && !d.room.cleared && (d.room.kind === "key" || d.room.kind === "treasure");
-      menu.innerHTML = `<div class="cmd">
-        <span></span><button data-move="forward" aria-label="Step forward">▲ Advance</button><span></span>
-        <button data-move="left" aria-label="Turn left">⟲ Left</button><button data-move="back" aria-label="Step back">▼ Back</button><button data-move="right" aria-label="Turn right">Right ⟳</button>
-        <button class="wide" data-move="search">${search ? "✦ Search this room" : "🔍 Search"}</button>
-        <button class="wide" data-leave>${d.done ? "Leave, victorious" : "Leave the delve"}</button></div>`;
-      menu.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((b) => b.addEventListener("click", () => a.step(b.dataset.move as DelveMove)));
-      menu.querySelector("[data-leave]")!.addEventListener("click", () => a.leave());
-      return;
+      const moves: [DelveMove, string][] = [["forward", "Advance"], ["left", "Turn left"], ["right", "Turn right"], ["back", "Step back"], ["search", search ? "Search this room" : "Search"]];
+      return [
+        ...moves.map(([m, label]): MenuItem => ({ key: `move:${m}`, kind: m === "search" ? "search" : "move", label, group: "move", target: m, run: () => a.step(m) })),
+        { key: "leave", kind: "delve", label: d.done ? "Leave, victorious" : "Leave the delve", group: "go", run: () => a.leave() },
+      ];
     }
-    const groups: Hotspot["kind"][][] = [["talk"], ["search", "shop", "rest", "wait"], ["exit", "delve"], ["fight"]];
-    const parts: string[] = [];
-    for (const g of groups) {
-      const items = v.menu.filter((h) => g.includes(h.kind));
-      if (!items.length) continue;
-      if (parts.length) parts.push(`<div class="sep"></div>`);
-      for (const h of items) parts.push(`<button role="menuitem" data-spot="${esc(h.id)}"><span class="ic">${icons[h.kind]}</span>${esc(h.label)}</button>`);
-    }
-    if (v.canFight && !v.menu.some((h) => h.kind === "fight")) {
-      parts.push(`<div class="sep"></div><button role="menuitem" data-fight><span class="ic">${icons.fight}</span>${esc(fightLabel(v.skin.fight))}</button>`);
-    }
-    menu.innerHTML = parts.join("");
-    menu.querySelectorAll<HTMLButtonElement>("[data-spot]").forEach((b) => b.addEventListener("click", () => a.act(b.dataset.spot!)));
-    menu.querySelector("[data-fight]")?.addEventListener("click", () => a.fight());
+    const groupOf = (k: Hotspot["kind"]): MenuItem["group"] => (k === "talk" ? "talk" : k === "exit" || k === "delve" ? "go" : k === "fight" ? "fight" : "do");
+    const tileArt = new Map(v.tiles.map((t) => [t.id, t.art]));
+    const order: MenuItem["group"][] = ["talk", "do", "go", "fight"];
+    const items = v.menu.map((h): MenuItem => ({
+      key: h.id,
+      kind: h.kind,
+      label: h.label,
+      group: groupOf(h.kind),
+      ...(h.target ? { target: h.target } : h.kind === "talk" ? { target: h.id.slice(5) } : {}),
+      art: h.kind === "exit" && h.target ? urlOf(tileArt.get(h.target)) : null,
+      run: () => a.act(h.id),
+    }));
+    if (v.canFight && !v.menu.some((h) => h.kind === "fight")) items.push({ key: "fight", kind: "fight", label: fightLabel(v.skin.fight), group: "fight", run: () => a.fight() });
+    return items.sort((x, y) => order.indexOf(x.group) - order.indexOf(y.group));
   }
 
-  function renderJournal(v: SceneView): void {
-    jr.classList.toggle("gone", !journalOpen);
-    if (!journalOpen) return;
+  function toggleJournal(): void {
+    journalOpen = !journalOpen;
+    renderTheme();
+  }
+  function toggleClasses(): void {
+    classes.toggle();
+    renderTheme();
+  }
+
+  function journalHtml(v: SceneView): string {
     const j = v.journal;
     const list = (items: string[], empty: string) => (items.length ? `<ul>${items.join("")}</ul>` : `<div class="muted">${esc(empty)}</div>`);
-    const aff = (a: number) => `<span class="aff"><i class="${a < 0 ? "neg" : ""}" style="${a < 0 ? `right:50%;left:auto;width:${Math.min(50, -a * 5)}%` : `width:${Math.min(50, a * 5)}%`}"></i></span>`;
-    jr.innerHTML = [
+    const aff = (x: number) => `<span class="aff"><i class="${x < 0 ? "neg" : ""}" style="${x < 0 ? `right:50%;left:auto;width:${Math.min(50, -x * 5)}%` : `left:50%;width:${Math.min(50, x * 5)}%`}"></i></span>`;
+    return [
       `<h3>Companions</h3>`,
       list(j.companions.map((c) => `<li class="${c.bonded ? "bond" : ""}">${esc(c.name)}${c.recruit ? " (recruited)" : ""}${aff(c.affinity)}${c.bonded ? "bonded: combo skill" : ""}</li>`), "Nobody travels with you yet."),
       `<h3>Quests</h3>`,
@@ -381,22 +285,6 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     ].join("");
   }
 
-  function renderBox(v: SceneView): void {
-    if (v.delve) {
-      const d = v.delve;
-      plate.innerHTML = `${esc(d.name)}${d.keys ? `<span class="new">🗝 ${d.keys}</span>` : ""}`;
-      desc.textContent = d.done ? "Its master is beaten. The way out is open." : d.room ? (d.room.cleared && d.room.kind !== "entrance" ? "You have been here. It is quiet now." : ROOM_TEXT[d.room.kind] ?? "") : v.theme === "onebit" ? "A corridor. Go on?" : "A narrow corridor, cold and quiet.";
-    } else {
-      plate.innerHTML = `${esc(v.place.name)}${v.place.added ? `<span class="new">new</span>` : ""}`;
-      desc.textContent = v.place.description;
-    }
-    log.innerHTML = v.log.map((l) => `<div>${esc(l)}</div>`).join("");
-    // After layout (the box may have just been shown): newest line in view.
-    requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
-    busy.textContent = v.busy ?? "";
-    busy.classList.toggle("gone", !v.busy);
-  }
-
   function hexPoints(cx: number, cy: number, size: number): string {
     const out: string[] = [];
     for (let i = 0; i < 6; i++) {
@@ -407,8 +295,12 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   }
 
   /** The honeycomb overland: seen cells in their terrain, fog elsewhere; neighbours are steps, known places are trips. */
-  function drawHex(v: SceneView): void {
-    const h = v.hex!;
+  function drawHex(svg: SVGSVGElement, v: SceneView): void {
+    const h = v.hex;
+    if (!h) {
+      svg.innerHTML = "";
+      return;
+    }
     const size = 20;
     const pos = (q: number, r: number) => ({ x: size * Math.sqrt(3) * (q + r / 2), y: size * 1.5 * r });
     const here = h.cells.find((c) => c.here)!;
@@ -420,7 +312,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
     }
     const pad = size * 2.2;
-    hexsvg.setAttribute("viewBox", `${(x0 - pad).toFixed(0)} ${(y0 - pad).toFixed(0)} ${(x1 - x0 + pad * 2).toFixed(0)} ${(y1 - y0 + pad * 2).toFixed(0)}`);
+    svg.setAttribute("viewBox", `${(x0 - pad).toFixed(0)} ${(y0 - pad).toFixed(0)} ${(x1 - x0 + pad * 2).toFixed(0)} ${(y1 - y0 + pad * 2).toFixed(0)}`);
     const goes = new Set(v.menu.filter((m) => m.kind === "exit").map((m) => m.target));
     const parts: string[] = [];
     const labels: string[] = [];
@@ -431,7 +323,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       const cls = c.here ? "here" : step ? "step" : trip ? "goto" : "";
       const fill = c.seen ? TERRAIN_FILL[c.terrain] ?? "#555" : "";
       const attrs = step ? ` data-q="${c.q}" data-r="${c.r}" tabindex="0" role="button" aria-label="Step ${c.name ? `to ${esc(c.name)}` : `into ${esc(c.terrain)}`}"` : trip ? ` data-go="${esc(c.placeId!)}" tabindex="0" role="button" aria-label="Travel to ${esc(c.name ?? "")}"` : "";
-      parts.push(`<g class="${cls}"${attrs}><polygon points="${hexPoints(p.x, p.y, size - 0.6)}" ${c.seen ? `style="fill:${fill}"` : `class="fog"`}><title>${esc(c.name ?? (c.seen ? c.terrain : "Unknown"))}</title></polygon></g>`);
+      parts.push(`<g class="${cls}" data-terrain="${esc(c.seen ? c.terrain : "fog")}"${attrs}><polygon points="${hexPoints(p.x, p.y, size - 0.6)}" ${c.seen ? `style="fill:var(--hex-${esc(c.terrain)},${fill})"` : `class="fog"`}><title>${esc(c.name ?? (c.seen ? c.terrain : "Unknown"))}</title></polygon></g>`);
       if (c.placeId && c.seen) {
         parts.push(`<circle class="pin" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5"/>`);
         if (c.name) labels.push(`<text x="${p.x.toFixed(1)}" y="${(p.y + size * 0.95).toFixed(1)}" text-anchor="middle">${esc(c.name.length > 18 ? `${c.name.slice(0, 17)}…` : c.name)}</text>`);
@@ -439,135 +331,52 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     }
     const hp = pos(here.q, here.r);
     parts.push(`<circle class="you" cx="${hp.x.toFixed(1)}" cy="${(hp.y - (here.placeId ? 9 : 0)).toFixed(1)}" r="6"/>`);
-    hexsvg.innerHTML = parts.join("") + labels.join("");
-    hexkey.textContent = h.wild ? "Out in the wild. Step to a lit cell, or make camp." : "Step to a neighbouring cell, or tap a place to travel there.";
-    hexsvg.querySelectorAll<SVGGElement>("[data-q]").forEach((g) => {
+    svg.innerHTML = parts.join("") + labels.join("");
+    svg.querySelectorAll<SVGGElement>("[data-q]").forEach((g) => {
       const go = () => a.hex(Number(g.dataset.q), Number(g.dataset.r));
       g.addEventListener("click", go);
       g.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), go()));
     });
-    hexsvg.querySelectorAll<SVGGElement>("[data-go]").forEach((g) => {
+    svg.querySelectorAll<SVGGElement>("[data-go]").forEach((g) => {
       const go = () => a.act(`go:${g.dataset.go}`);
       g.addEventListener("click", go);
       g.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), go()));
     });
   }
 
-  /** Table: what you know as a hand of cards; playing one on the person across the table starts a Parley citing it. */
-  function drawHand(v: SceneView): void {
-    const lead = v.people[0];
-    const canTalk = !!lead && v.menu.some((h) => h.id === `talk:${lead.id}`);
-    if (!v.hand.length) {
-      hand.innerHTML = `<span class="none">You hold no cards yet. Look around; people let things slip.</span>`;
-      return;
-    }
-    hand.innerHTML = v.hand
-      .map((f, i) => `<button data-fact="${esc(f.id)}" style="--tilt:${((i - (v.hand.length - 1) / 2) * 5).toFixed(1)}deg" ${canTalk ? `title="Play this on ${esc(lead!.name)}"` : `disabled title="Nobody here to play it on"`}>${esc(f.text)}</button>`)
-      .join("");
-    hand.querySelectorAll<HTMLButtonElement>("[data-fact]").forEach((b) =>
-      b.addEventListener("click", () => {
-        const f = v.hand.find((x) => x.id === b.dataset.fact);
-        if (f && lead) a.cite(lead.id, f.text);
-      }),
-    );
-  }
-
-  function renderWorld(v: SceneView): void {
-    const table = !v.delve && v.theme === "table";
-    const lobby = !v.delve && (v.movement === "lobby" || table);
-    const hexOn = !v.delve && !!v.hex && !table;
-    // An indoor place in the Diorama theme: people stand in the 3D room, not as the lobby portrait.
-    const room = !!layer && !v.delve && v.theme === "diorama" && v.indoor;
-    hexwrap.classList.toggle("gone", !hexOn);
-    if (hexOn) drawHex(v);
-    hand.classList.toggle("gone", !table);
-    tabletop.classList.toggle("gone", !table);
-    if (table) drawHand(v);
-    tiles.classList.toggle("gone", !lobby || table || !v.tiles.length);
-    lobbyface.classList.toggle("gone", !lobby || room);
-    route.classList.toggle("gone", !!v.delve || v.movement !== "stops" || v.route.length < 2);
-    automap.classList.toggle("gone", !v.delve);
-    delve2d.classList.toggle("gone", !v.delve || !!layer);
-    if (lobby) {
-      tiles.innerHTML = v.tiles.map((t) => `<button data-go="${esc(t.id)}" style="${urlOf(t.art) ? `background-image:url('${esc(urlOf(t.art)!)}')` : ""}"><span>${esc(t.name)}</span></button>`).join("");
-      tiles.querySelectorAll<HTMLButtonElement>("[data-go]").forEach((b) => b.addEventListener("click", () => a.act(`go:${b.dataset.go}`)));
-      const lead = v.people[0];
-      const la = lead ? personArt(lead) : null;
-      lobbyface.innerHTML = la ? `<img alt="${esc(lead!.name)}" class="${la.cutout ? "" : "opaque"}" src="${esc(la.url)}">` : "";
-    }
-    if (v.movement === "stops" && v.route.length >= 2) {
-      const here = v.route.findIndex((r) => r.id === v.place.id);
-      route.innerHTML = v.route.map((r, i) => `${i ? `<span class="leg"></span>` : ""}<span class="stop ${i === here ? "here" : i < here ? "past" : ""}"><i></i>${esc(r.name)}</span>`).join("");
-    }
-    if (v.delve) {
-      drawAutomap(v.delve);
-      if (layer) {
-        layer.setPost(POST[v.theme]);
-        void layer.showCorridor(
-          { grid: v.delve.grid, x: v.delve.x, y: v.delve.y, facing: v.delve.facing, opened: [], glints: v.delve.rooms.filter((r) => !r.cleared && (r.kind === "key" || r.kind === "treasure")).map((r) => r.id) },
-          urlOf(v.delve.textures.wall),
-        );
-      } else drawDelve(v.delve);
-      return;
-    }
-    const bg = urlOf(v.place.art);
-    const shown = lobby && !room ? [] : v.people.map((p) => ({ p, a: personArt(p) })).filter((x) => x.a);
-    if (layer) {
-      layer.setPost(POST[v.theme]);
-      layer.setDolly(table ? 0.5 : 0);
-      if (room) void layer.showDiorama(bg, { counter: v.menu.some((h) => h.kind === "shop") });
-      else void layer.showBackdrop(bg);
-      void layer.showPeople(shown.map((x) => ({ id: x.p.id, url: x.a!.url, cutout: x.a!.cutout })));
-    } else {
-      flat.style.backgroundImage = bg ? `url('${bg.replace(/'/g, "%27")}')` : "";
-      flat.classList.toggle("dim", lobby);
-      folk.innerHTML = shown.map((x) => `<img alt="${esc(x.p.name)}" class="${x.a!.cutout ? "" : "opaque"}" src="${esc(x.a!.url)}">`).join("");
-    }
-    if (layer && lobby && !table && !room) {
-      // The lobby keeps its tiles readable over the 3D room.
-      layer.setDolly(-0.4);
-    }
-  }
-
-  function drawAutomap(d: DelveView): void {
-    const g = automap.getContext("2d")!;
-    const W = automap.width;
-    const H = automap.height;
+  function drawAutomap(canvas: HTMLCanvasElement, d: DelveView, s: AutomapStyle): void {
+    const g = canvas.getContext("2d")!;
+    const W = canvas.width;
+    const H = canvas.height;
     const rows = d.grid.length;
     const cols = d.grid[0]?.length ?? 1;
-    // Fit what has been seen (plus a margin), not the whole grid.
     let x0 = d.x, x1 = d.x, y0 = d.y, y1 = d.y;
     d.grid.forEach((row, y) => [...row].forEach((c, x) => {
       if (c === "?") return;
       x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
     }));
     const span = Math.max(x1 - x0 + 3, y1 - y0 + 3, 7);
-    const cell = Math.max(2, Math.min(16, Math.floor(Math.min(W, H) / span)));
+    const cell = Math.max(2, Math.min(24, Math.floor(Math.min(W, H) / span)));
     const ox = Math.floor(W / 2 - ((x0 + x1 + 1) / 2) * cell);
     const oy = Math.floor(H / 2 - ((y0 + y1 + 1) / 2) * cell);
-    void cols;
-    void rows;
-    const onebit = view.theme === "onebit";
     g.clearRect(0, 0, W, H);
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
         const c = d.grid[y]![x]!;
         if (c === "?" || c === "#") continue;
-        g.fillStyle = c === "L" ? (onebit ? "#e8e2d0" : "#a8743e") : onebit ? "#8a857a" : "rgba(201,168,101,.45)";
+        g.fillStyle = c === "L" ? s.lit : s.floor;
         g.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       }
     }
     for (const r of d.rooms) {
       if (r.cleared && r.kind !== "boss") continue;
-      g.fillStyle = r.kind === "boss" ? "#e0604c" : r.kind === "key" || r.kind === "treasure" ? "#ffd27a" : r.kind === "rest" ? "#8fd18a" : r.kind === "fight" ? "#c4544a" : "transparent";
-      if (onebit) g.fillStyle = "#e8e2d0";
+      g.fillStyle = s.mark ?? (r.kind === "boss" ? "#e0604c" : r.kind === "key" || r.kind === "treasure" ? "#ffd27a" : r.kind === "rest" ? "#8fd18a" : r.kind === "fight" ? "#c4544a" : "transparent");
       g.fillRect(ox + r.x * cell + cell * 0.25, oy + r.y * cell + cell * 0.25, cell * 0.5, cell * 0.5);
     }
-    // You: a triangle pointing your way.
     const cx = ox + d.x * cell + cell / 2;
     const cy = oy + d.y * cell + cell / 2;
     const ang = (d.facing * Math.PI) / 2 - Math.PI / 2;
-    g.fillStyle = onebit ? "#ffffff" : "#ece3cf";
+    g.fillStyle = s.you;
     g.beginPath();
     g.moveTo(cx + Math.cos(ang) * cell * 0.7, cy + Math.sin(ang) * cell * 0.7);
     g.lineTo(cx + Math.cos(ang + 2.5) * cell * 0.55, cy + Math.sin(ang + 2.5) * cell * 0.55);
@@ -584,20 +393,203 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       delve2d.width = w;
       delve2d.height = h;
     }
-    drawCorridor2D(delve2d, d.view, { onebit: view.theme === "onebit", wall: urlOf(d.textures.wall) });
+    drawCorridor2D(delve2d, d.view, { onebit: view.theme === "onebit" || view.theme === "command", wall: urlOf(d.textures.wall) });
   }
 
-  function render(v: SceneView): void {
-    view = v;
-    el.classList.remove("storybook", "onebit", "lobby", "diorama", "table", "command");
-    el.classList.add(v.theme);
-    renderHud(v);
-    renderJournal(v);
-    renderBox(v);
-    renderMenu(v);
-    renderWorld(v);
+  let flatKey = "";
+  function backdrop(v: SceneView, o: BackdropOpts): void {
+    const d = v.delve;
+    // "none": the theme draws the place itself; the world shows nothing (outside a delve).
+    world.classList.toggle("void", !d && o.flat === "none");
+    delve2d.classList.toggle("gone", !d || !!layer);
+    const useFlat = !layer || (!d && !!o.flat);
+    world.classList.toggle("flatmode", useFlat);
+    flat.classList.toggle("gone", !useFlat || !!d);
+    if (d) {
+      if (layer) {
+        layer.setPost(o.post);
+        void layer.showPeople([]);
+        void layer.showCorridor(
+          { grid: d.grid, x: d.x, y: d.y, facing: d.facing, opened: [], glints: d.rooms.filter((r) => !r.cleared && (r.kind === "key" || r.kind === "treasure")).map((r) => r.id) },
+          urlOf(d.textures.wall),
+        );
+      } else drawDelve(d);
+      return;
+    }
+    const bg = urlOf(v.place.art);
+    if (o.custom && layer) {
+      world.classList.remove("flatmode");
+      flat.classList.add("gone");
+      layer.setPost(o.post);
+      layer.customStage();
+      return;
+    }
+    if (o.flat === "none") {
+      flat.classList.add("gone");
+      if (layer) void layer.showBackdrop(null);
+      return;
+    }
+    if (!useFlat && layer) {
+      layer.setPost(o.post);
+      layer.setDolly(o.dolly ?? 0);
+      if (o.room) void layer.showDiorama(bg, { counter: false });
+      else void layer.showBackdrop(bg);
+      void layer.showPeople([]);
+      return;
+    }
+    flat.style.backgroundSize = o.fit ?? "cover";
+    const key = `${bg}|${o.flat}|${o.rows}`;
+    if (key === flatKey) return;
+    flatKey = key;
+    const paint = (u: string | null) => (flat.style.backgroundImage = u ? `url('${u.replace(/'/g, "%27")}')` : "");
+    if (bg && o.flat === "dither") {
+      paint(null);
+      flat.style.imageRendering = "pixelated";
+      void ditherUrl(bg, o.rows ?? 160).then((u) => flatKey === key && paint(u));
+    } else {
+      flat.style.imageRendering = "";
+      paint(bg);
+    }
   }
-  render(first);
+
+  /* ------------------------------ Themes ------------------------------- */
+  const ctx: ThemeCtx = {
+    root: th,
+    world,
+    reducedMotion,
+    get has3d() {
+      return !!layer;
+    },
+    backdrop,
+    stage3d: () => layer?.customStage() ?? null,
+    art: urlOf,
+    placeArt: (v) => urlOf(v.place.art),
+    people: (v) =>
+      v.delve
+        ? []
+        : v.people.map((p) => ({
+            id: p.id,
+            name: p.name,
+            role: p.role,
+            talkable: v.menu.some((h) => h.id === `talk:${p.id}`),
+            talk: () => a.act(`talk:${p.id}`),
+          })),
+    personArt(v, id, mode = "color", rows = 120) {
+      const p = v.people.find((x) => x.id === id);
+      const src = p ? personSrc(p) : null;
+      return src ? preparedArt(src, mode, rows) : null;
+    },
+    dither: (url, rows) => ditherUrl(url, rows),
+    menu: menuOf,
+    status: (v) => ({
+      where: v.delve ? v.delve.name : v.place.name,
+      card: v.cardName,
+      day: v.clock.day,
+      time: v.clock.time,
+      coin: v.coin,
+      currency: v.skin.currency || "coin",
+      vigor: v.vigor,
+      ...(v.hex ? { supplies: { now: v.hex.supplies, max: v.hex.max } } : {}),
+      ...(v.thread ? { thread: { found: v.thread.found, total: v.thread.total, goal: v.thread.goal } } : {}),
+    }),
+    box(v) {
+      if (v.delve) {
+        const d = v.delve;
+        return {
+          title: d.name,
+          isNew: false,
+          desc: d.done ? "Its master is beaten. The way out is open." : d.room ? (d.room.cleared && d.room.kind !== "entrance" ? "You have been here. It is quiet now." : ROOM_TEXT[d.room.kind] ?? "") : "A narrow corridor, cold and quiet.",
+          log: v.log,
+          busy: v.busy ?? null,
+        };
+      }
+      return { title: v.place.name, isNew: v.place.added, desc: v.place.description, log: v.log, busy: v.busy ?? null };
+    },
+    hand(v) {
+      const lead = v.delve ? undefined : v.people[0];
+      const canTalk = !!lead && v.menu.some((h) => h.id === `talk:${lead.id}`);
+      return v.hand.map((f) => ({ id: f.id, text: f.text, play: canTalk ? () => a.cite(lead!.id, f.text) : null }));
+    },
+    drawHex,
+    drawAutomap,
+    journal: {
+      get open() {
+        return journalOpen;
+      },
+      toggle: toggleJournal,
+      html: journalHtml,
+    },
+    classes: {
+      get open() {
+        return classes.open;
+      },
+      toggle: toggleClasses,
+    },
+    themes: SCENE_THEMES,
+    setTheme: (id) => a.theme(id),
+    pointer: () => ({ x: ptr.x, y: ptr.y }),
+    onFrame(fn) {
+      frames.add(fn);
+      kick();
+      return () => frames.delete(fn);
+    },
+    rerender: () => renderTheme(),
+  };
+
+  // For debugging and preview screenshots: the scene element carries the theme context.
+  (el as unknown as { gambitCtx?: ThemeCtx }).gambitCtx = ctx;
+
+  let current: { id: ThemeId; r: ThemeRenderer } | null = null;
+  function mountTheme(id: ThemeId): void {
+    if (current) {
+      try {
+        current.r.destroy();
+      } catch (err) {
+        console.error("[gambit] theme destroy", err);
+      }
+      frames.clear();
+    }
+    world.remove();
+    th.replaceChildren();
+    th.className = `th t-${id}`;
+    el.classList.remove(...SCENE_THEMES.map((t) => t.id));
+    el.classList.add(id);
+    flatKey = "";
+    const make = THEME_FACTORIES[id] ?? THEME_FACTORIES.storybook;
+    current = { id, r: make(ctx) };
+  }
+  let rendering = false;
+  function renderTheme(): void {
+    if (destroyed || rendering) return;
+    rendering = true;
+    try {
+      if (!current || current.id !== view.theme) mountTheme(view.theme);
+      current!.r.render(view);
+    } catch (err) {
+      console.error("[gambit] theme render", err);
+    } finally {
+      rendering = false;
+    }
+  }
+
+  function onKey(e: KeyboardEvent): void {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+    if (el.classList.contains("gone") || view.busy || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (current?.r.key?.(e, view)) {
+      e.preventDefault();
+      return;
+    }
+    if (!view.delve) return;
+    const k = e.key.toLowerCase();
+    const move: DelveMove | null = k === "arrowup" || k === "w" ? "forward" : k === "arrowdown" || k === "s" ? "back" : k === "arrowleft" || k === "a" ? "left" : k === "arrowright" || k === "d" ? "right" : k === " " || k === "f" ? "search" : null;
+    if (!move) return;
+    e.preventDefault();
+    a.step(move);
+  }
+  window.addEventListener("keydown", onKey);
+
+  renderTheme();
 
   /* ----------------------------- Meanwhile… ---------------------------- */
   let mw: { day: number; items: MeanwhileItem[] | null; i: number; box: HTMLDivElement; timer: number } | null = null;
@@ -634,7 +626,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     m.box.classList.remove("waiting");
     const url = item.imageId ? `/api/v1/images/${item.imageId}` : urlOf(item.art);
     const body = m.box.querySelector(".mw-body")!;
-    body.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><p class="mw-text">${esc(item.text)}</p></div><div class="mw-dots" style="justify-content:center;margin-top:10px">${m.items!.map((_, i) => `<i class="${i === m.i ? "on" : ""}"></i>`).join("")}</div>`;
+    body.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><p class="mw-text">${esc(item.text)}</p></div><div class="mw-dots">${m.items!.map((_, i) => `<i class="${i === m.i ? "on" : ""}"></i>`).join("")}</div>`;
     m.box.querySelector(".mw-hint")!.textContent = m.i + 1 < m.items!.length ? "Tap to continue" : "Tap to wake";
     clearTimeout(m.timer);
     m.timer = window.setTimeout(() => {
@@ -649,7 +641,9 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   return {
     chatId: first.chatId,
     setView(v) {
-      if (!destroyed) render(v);
+      if (destroyed) return;
+      view = v;
+      renderTheme();
     },
     setArt(key, url, cutout = true) {
       const prev = art.get(key);
@@ -657,7 +651,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       art.set(key, { url, cutout });
       const v = view;
       const used = key === v.place.art || v.tiles.some((t) => t.art === key) || v.people.some((p) => p.art === key) || key === v.delve?.textures.wall;
-      if (used && !destroyed) renderWorld(v);
+      if (used && !destroyed) renderTheme();
       if (mw && mw.items?.[mw.i]?.art === key) paintMeanwhile();
       classes.art(key);
     },
@@ -676,17 +670,28 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       paintMeanwhile();
     },
     hide() {
+      hidden = true;
       el.classList.add("gone");
     },
     show() {
+      hidden = false;
       el.classList.remove("gone");
       layer?.resize();
-      requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
+      kick();
+      renderTheme();
     },
     destroy() {
       destroyed = true;
       closeMeanwhile();
       window.removeEventListener("keydown", onKey);
+      el.removeEventListener("pointermove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+      try {
+        current?.r.destroy();
+      } catch {
+        /* already gone */
+      }
+      frames.clear();
       ro.disconnect();
       layer?.destroy();
       classes.destroy();

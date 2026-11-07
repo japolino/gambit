@@ -540,16 +540,18 @@ Ways to turn images into 3D, from cheapest to richest:
 
 ### 6.3 Stage themes
 
-A **stage theme** is the frame around the art: the dialogue box, menu style, font, HUD, post-process shader, and default movement modes. It is separate from the **look** (5.2a), which is how the art itself is drawn, though a theme can suggest a look. Themes ship as data like looks, and a card can suggest one. Planned set:
+A **stage theme** is the whole game interface around the art: layout, materials, how each piece of data is shown (status as a hanging scoreboard, a pocket watch, a page corner...), the dialogue, the menus, motion and lighting. It is separate from the **look** (5.2a), which is how the art itself is drawn, though a theme can suggest a look. A card can suggest a theme.
+
+Each theme is its own interface in code, not a reskin: `src/frontend/scene/themes/<id>.ts` (plus a folder of art, textures and styles) built against `themes/contract.ts`. The Scene host (`scene/view.ts`) owns only what isn't visual: the scene data, the art cache, the WebGL layer, the journal and class-panel state, the delve keys, the "Meanwhile…" montage and a pointer tracker for parallax. Themes draw everything themselves: multi-path SVG, procedural canvas textures, pixel frame buffers, and, through `ctx.stage3d()`, their own three.js stage on the host layer (Table and Diorama are real 3D rooms with lit, clickable props and a camera that glides in). Every theme must reach every action, person and system control by mouse, touch and keyboard, from a phone to an ultrawide window, and keep a 2D fallback when there is no WebGL. The set:
 
 | Theme | Frame | Pairs well with |
 |---|---|---|
-| **Storybook** (default) | painted backdrop, standing portraits, nameplate dialogue box | most cards, single scenes |
-| **Diorama** | 3D rooms with props and a counter, warm light | shops, taverns, slice of life |
-| **Lobby** | big portrait in the middle, menu tiles around it | towns, companion-focused cards |
-| **Table** | first-person table, the opponent across from you, cards in hand, candlelight | Parley-heavy cards, gambling, horror |
-| **1-bit** | dithered black and white, terminal text, prompts like "Enter the dungeon?" | delves, horror, retro cards |
-| **Command** | first-person view with a text command list and party roster | classic dungeon crawls |
+| **Storybook** (default) | the speaker large behind a carved, gilt dialogue page; ribbons for choices; bookmarks for status | most cards, single scenes |
+| **Diorama** | a 3D shop room: people behind a counter, actions as lit props on it (register, hourglass, teacup, books) | shops, taverns, slice of life |
+| **Lobby** | one big figure, brass instruments and layered place cards, resource troughs, a news ticker | towns, companion-focused cards |
+| **Table** | a 3D candle-lit card table: the person across from you, a fanned hand of action and fact cards, a hanging chalk scoreboard | Parley-heavy cards, gambling, horror |
+| **1-bit** | one low-res 1-bit frame buffer: dithered scene and people, bitmap type, "WHAT NOW?" prompt | delves, horror, retro cards |
+| **Command** | a character-grid EGA screen inside a CRT on a desk, a command terminal, floppy disks as the theme switcher | classic dungeon crawls |
 
 ---
 
@@ -688,7 +690,7 @@ gambit/
     frontend/
       stage/             Pixi renderer: battle, cut-ins, FX library
       scene/             three.js scene layer: depth backdrops, billboards, diorama rooms, grid corridors, post-process (6.2)
-      themes/            stage themes as data (6.3)
+      scene/themes/      stage themes, one interface each, on a shared host contract (6.3)
       ui/                React or DOM panels: sheet, journal, altar, parley
       bridge/            window events for Cue and LumiDoll (optional)
   tests/  scripts/  docs/

@@ -18,15 +18,15 @@ export interface Overlay {
 
 const CSS = `
 :host { all: initial; }
-.layer { position: fixed; inset: 0; z-index: 40; background: #0b0a0c; color: #e9e2d4;
+.gx-layer { position: fixed; inset: 0; z-index: 40; background: #0b0a0c; color: #e9e2d4;
   font: 14px/1.4 "Cormorant Garamond", "EB Garamond", Georgia, serif; display: none; }
-.layer.open { display: block; }
-.content { position: absolute; inset: 0; overflow: hidden; }
-.close { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 5;
+.gx-layer.open { display: block; }
+.gx-content { position: absolute; inset: 0; overflow: hidden; }
+.gx-close { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 5;
   width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(233,226,212,.25);
   background: rgba(11,10,12,.55); color: #e9e2d4; font-size: 18px; cursor: pointer;
   display: grid; place-items: center; backdrop-filter: blur(6px); }
-.close:hover { border-color: rgba(200,162,106,.8); color: #c8a26a; }
+.gx-close:hover { border-color: rgba(200,162,106,.8); color: #c8a26a; }
 `;
 
 export function createOverlay(ctx: SpindleFrontendContext, canMountApp: boolean): Overlay {
@@ -61,11 +61,11 @@ export function createOverlay(ctx: SpindleFrontendContext, canMountApp: boolean)
   const style = document.createElement("style");
   style.textContent = CSS;
   const layer = document.createElement("div");
-  layer.className = "layer";
+  layer.className = "gx-layer"; // gx-: the stage markup shares this shadow root
   const content = document.createElement("div");
-  content.className = "content";
+  content.className = "gx-content";
   const close = document.createElement("button");
-  close.className = "close";
+  close.className = "gx-close";
   close.setAttribute("aria-label", "Close");
   close.textContent = "✕";
   layer.append(content, close);

@@ -15,7 +15,8 @@ import { TIER_NAMES } from "../../engine/parley/types.js";
 import { expressionArtKey, isExpressionArtKey, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
 import { EXPRESSION_FOR_MOOD } from "../../shared/parley-view.js";
 import type { ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
-import { figureStats, keyFlatBackground, usableExpression } from "../art/key-background.js";
+import { figureStats, usableExpression } from "../art/key-background.js";
+import { prepareArtFresh as prepareArt } from "../art/prepare.js";
 import { paintBackground } from "../stage/placeholder.js";
 import { PARLEY_CSS } from "./style.js";
 
@@ -71,33 +72,6 @@ function renderProse(target: HTMLElement, text: string): void {
 }
 
 type FigureStats = ReturnType<typeof figureStats>;
-
-/**
- * Art made ready to show, with how much figure it holds and how colourful it is.
- * Opaque art on a flat background (V5 inset expressions) is keyed to a transparent PNG.
- */
-async function prepareArt(url: string, key: boolean): Promise<{ url: string; stats: FigureStats }> {
-  const img = new Image();
-  img.decoding = "async";
-  img.src = url;
-  await img.decode();
-  const c = document.createElement("canvas");
-  c.width = img.naturalWidth;
-  c.height = img.naturalHeight;
-  const ctx = c.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0);
-  let data: ImageData;
-  try {
-    data = ctx.getImageData(0, 0, c.width, c.height);
-  } catch {
-    return { url, stats: { coverage: 1, saturation: 1 } };
-  }
-  if (!key || !keyFlatBackground(data.data, c.width, c.height)) return { url, stats: figureStats(data.data) };
-  const stats = figureStats(data.data);
-  ctx.putImageData(data, 0, 0);
-  const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/png"));
-  return { url: blob ? URL.createObjectURL(blob) : url, stats };
-}
 
 const colorsOf = (palette: string): number[] => palette.split(",").map((h) => parseInt(h.trim().replace("#", ""), 16)).filter((n) => Number.isFinite(n));
 
