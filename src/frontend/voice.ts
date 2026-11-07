@@ -34,6 +34,17 @@ export interface Voice {
 
 const KEY = "gambit.voice";
 
+/** The drawer's one voice picker: "" is no voice, "default" the user's default TTS connection, else a connection id. */
+export type VoiceChoice = string;
+
+export function voiceChoice(p: VoicePrefs): VoiceChoice {
+  return !p.on ? "" : p.connectionId || "default";
+}
+
+export function prefsFor(choice: VoiceChoice): VoicePrefs {
+  return choice === "" ? { on: false, connectionId: "" } : { on: true, connectionId: choice === "default" ? "" : choice };
+}
+
 /** Text the way it should be read aloud: no markdown, no stage asterisks, not too long. */
 export function speakable(text: string, max = 900): string {
   const t = text

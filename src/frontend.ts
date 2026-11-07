@@ -17,7 +17,7 @@ import { mountParley, type ParleyView } from "./frontend/parley/view.js";
 import type { CardStatus, ParleyNarrator, ParleyViewMode } from "./shared/protocol.js";
 import { mountScene, type SceneHandle } from "./frontend/scene/view.js";
 import type { SceneView } from "./shared/scene-view.js";
-import { createVoice } from "./frontend/voice.js";
+import { createVoice, prefsFor, voiceChoice } from "./frontend/voice.js";
 
 type StageHandle = ReturnType<typeof mountBattleStage>;
 type Step = { state: BattleState; events: BattleEvent[] };
@@ -50,16 +50,23 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       const body = (await res.json()) as unknown;
       const rows = (Array.isArray(body) ? body : ((body as { data?: unknown[]; connections?: unknown[] }).data ?? (body as { connections?: unknown[] }).connections ?? [])) as { id?: string; name?: string }[];
       ttsConnections = rows.filter((c) => c.id).map((c) => ({ id: c.id!, name: c.name || c.id! }));
-      if (card) panel.setCard(card, true);
+      panel.setVoice(voiceUi());
     } catch {
       /* the default voice still works */
     }
   }
   let spokenStory = "";
   const spokenParley = new Map<string, number>();
-  voice.onChange(() => {
-    if (card) panel.setCard(card, true);
+  // The drawer's voice picker: no voice, the default one, or a TTS connection.
+  const voiceUi = () => ({
+    available: voice.available,
+    choice: voiceChoice(voice.prefs()),
+    connections: ttsConnections,
+    error: voice.lastError(),
+    choose: (c: string) => voice.set(prefsFor(c)),
+    test: () => voice.say("The road ahead is quiet. For now."),
   });
+  voice.onChange(() => panel.setVoice(voiceUi()));
   let wantParley = false;
   /** The Scene on screen (6.1), the last view the backend sent, and whether a click asked for it. */
   let scene: SceneHandle | null = null;
@@ -123,19 +130,6 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       module: (id, on) => withChat((chatId) => send({ type: "card.edit", chatId, modules: { [id]: on } })),
       chips: (on) => withChat((chatId) => send({ type: "card.chips", chatId, on })),
       play: () => withChat((chatId) => openScene(chatId)),
-      voice: () => {
-        const p = voice.prefs();
-        if (p.on) void listTts();
-        return {
-          available: voice.available,
-          on: p.on,
-          connectionId: p.connectionId,
-          connections: ttsConnections,
-          error: voice.lastError(),
-          set: (x) => voice.set(x),
-          test: () => voice.say("The road ahead is quiet. For now."),
-        };
-      },
     },
     demo: () => {
       panel.setStatus("Adding the demo card…");
@@ -146,6 +140,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       set: (patch) => send({ type: "models.set", patch }),
     },
   });
+  panel.setVoice(voiceUi());
+  if (voice.available) void listTts();
 
   function withChat(fn: (chatId: string) => void): void {
     const chatId = activeChatId();

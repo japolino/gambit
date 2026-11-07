@@ -589,7 +589,7 @@ Each theme is its own interface in code, not a reskin: `src/frontend/scene/theme
 
 ### 6.4 Voice
 
-Gambit's own lines can be spoken through the host's TTS (`ctx.tts`, `text-to-speech-v1`): board story scenes as their card opens, the Meanwhile montage, and each Parley reply once it is written. It is off until the player turns it on in the drawer ("Speak Gambit's scenes and replies"), where they can also pick a TTS connection (default: their own) and test it. The setting is kept per browser. Playback needs the `media` permission, which the user grants; without it the drawer says so and nothing else changes. Markdown and stage asterisks are stripped before speaking, and a long scene is cut at a sentence.
+Gambit's own lines can be spoken through the host's TTS (`ctx.tts`, `text-to-speech-v1`): board story scenes as their card opens, the Meanwhile montage, and each Parley reply once it is written. The drawer's Voice picker is always there, chat or no chat: **No voice** (the default), **Default voice** (their own default TTS connection), or any of their TTS connections, with a Test button. The setting is kept per browser. Playback needs the `media` permission, which the user grants; without it the drawer says so and nothing else changes. Markdown and stage asterisks are stripped before speaking, and a long scene is cut at a sentence.
 
 ## 7. State, swipes, and saves
 

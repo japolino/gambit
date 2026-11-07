@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createVoice, speakable } from "../src/frontend/voice.js";
+import { createVoice, prefsFor, speakable, voiceChoice } from "../src/frontend/voice.js";
 
 const mem = () => {
   const m = new Map<string, string>();
@@ -43,5 +43,16 @@ describe("voice", () => {
     await Bun.sleep(5);
     expect(n).toBe(3);
     expect(v.lastError()).toBeNull();
+  });
+});
+
+describe("voice picker", () => {
+  test("no voice, the default voice, or a connection", () => {
+    expect(voiceChoice({ on: false, connectionId: "c1" })).toBe("");
+    expect(voiceChoice({ on: true, connectionId: "" })).toBe("default");
+    expect(voiceChoice({ on: true, connectionId: "c1" })).toBe("c1");
+    expect(prefsFor("")).toEqual({ on: false, connectionId: "" });
+    expect(prefsFor("default")).toEqual({ on: true, connectionId: "" });
+    expect(prefsFor("c1")).toEqual({ on: true, connectionId: "c1" });
   });
 });
