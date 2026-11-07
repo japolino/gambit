@@ -342,6 +342,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         s.setProperty("--r", `${i % 2 ? 1.5 : -1.5}deg`);
         s.setProperty("--z", String(i + 1));
         s.setProperty("--lift", `${L!.H * 0.02}px`);
+        s.setProperty("--hw", i === n - 1 ? "100%" : `${step * 1.1}px`);
         s.setProperty("--tw", "86%");
       });
       return;
@@ -365,6 +366,8 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       s.setProperty("--r", `${t * Math.min(13, n * 1.6)}deg`);
       s.setProperty("--z", String(i + 1));
       s.setProperty("--lift", `${L!.H * 0.12}px`);
+      // Each card answers only on the slice the next card leaves showing.
+      s.setProperty("--hw", i === n - 1 ? "100%" : `${step * 1.1}px`);
       s.setProperty("--tw", `${i === n - 1 ? 86 : tw}%`);
     });
   }
@@ -426,11 +429,11 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   function cardHtml(motif: string, seed: number, art: string | null, small: string, big: string, i: number): string {
     const size = big.length > 16 ? "s" : big.length > 9 ? "m" : "";
-    return `<span class="face">${actionCard(motif, seed, paper, art)}<span class="ttl ${size}">${small ? `<small>${esc(small)}</small>` : ""}<b>${esc(big)}</b></span>${i < 9 ? `<span class="idx">${i + 1}</span>` : ""}</span>`;
+    return `<span class="hit"></span><span class="face">${actionCard(motif, seed, paper, art)}<span class="ttl ${size}">${small ? `<small>${esc(small)}</small>` : ""}<b>${esc(big)}</b></span>${i < 9 ? `<span class="idx">${i + 1}</span>` : ""}</span>`;
   }
 
   function factHtml(id: string, text: string, who: string | null): string {
-    return `<span class="face">${factCard(seedOf(id), paper)}<span class="ttl"><small>${who ? `Play on ${esc(who)}` : "Known"}</small><b>Fact</b></span><span class="ftx">${esc(text)}</span></span>`;
+    return `<span class="hit"></span><span class="face">${factCard(seedOf(id), paper)}<span class="ttl"><small>${who ? `Play on ${esc(who)}` : "Known"}</small><b>Fact</b></span><span class="ftx">${esc(text)}</span></span>`;
   }
 
   /** A card or fact was pointed at: preview it on the plaque ribbon. */

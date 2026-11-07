@@ -678,42 +678,94 @@ export function shadowbox(): string {
 
 /* ------------------------------ Player's hand ---------------------------- */
 
-/**
- * Your own left hand, comic-inked, entering from the bottom-right corner and
- * holding your fact cards (viewBox 0 0 400 400). Split in two: the fingers
- * go behind the cards, the thumb, palm heel and sleeve in front of them.
+/*
+ * Your own hand, entering from the bottom-right corner and holding your fact
+ * cards (viewBox 0 0 400 400), inked like the cards and lit by the candles
+ * on the left. Palm toward you: the cards rest against it, the fingers curl
+ * behind the fan and show past its right edge, and the thumb presses the fan
+ * at its pivot (table.ts layoutFacts, ~220,288) with the nail toward you.
+ * handBack draws the palm and fingers under the cards; handFront draws the
+ * thumb, its heel and the cuff over them.
  */
+const SKIN = { lit: "#f4d3a6", mid: "#d9a57a", shade: "#a8694f", deep: "#5e3428", ink: "#1a0c08" };
+
+/** Skin shading that falls off from the candle side (upper left). */
+function skinDefs(id: string): string {
+  return `<linearGradient id="${id}k" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="${SKIN.lit}"/><stop offset=".45" stop-color="${SKIN.mid}"/><stop offset="1" stop-color="${SKIN.shade}"/></linearGradient>
+    <pattern id="${id}x" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)"><rect width="1.5" height="5" fill="${SKIN.ink}"/></pattern>`;
+}
+
+/** One finger as a tapered capsule from base b to tip t, w wide, with two joint creases and a lit pad. */
+function finger(id: string, bx: number, by: number, tx: number, ty: number, w: number): string {
+  const L = Math.hypot(tx - bx, ty - by);
+  const ux = (tx - bx) / L, uy = (ty - by) / L;
+  const px = -uy, py = ux; // the left edge, toward the candles
+  const wb = w / 2, wt = w * 0.43;
+  const at = (s: number, o: number): string => `${f(bx + ux * s + px * o)},${f(by + uy * s + py * o)}`;
+  const body = `M${at(0, wb)} Q${at(L * 0.55, wb * 1.06)} ${at(L, wt)} A${f(wt)},${f(wt)} 0 0 0 ${at(L, -wt)} Q${at(L * 0.55, -wb * 1.04)} ${at(0, -wb)}Z`;
+  const shade = `M${at(0, -wb)} Q${at(L * 0.55, -wb * 1.04)} ${at(L, -wt)} A${f(wt)},${f(wt)} 0 0 0 ${at(L + wt * 0.7, -wt * 0.7)} Q${at(L * 0.5, -wb * 0.3)} ${at(0, -wb * 0.35)}Z`;
+  const crease = (s: number, k: number): string => `M${at(L * s, wb * k)} Q${at(L * s + 4, 0)} ${at(L * s, -wb * k)}`;
+  return `<path d="${body}" fill="url(#${id}k)"/>
+    <path d="${shade}" fill="${SKIN.shade}" opacity=".85"/>
+    <path d="${shade}" fill="url(#${id}x)" opacity=".35"/>
+    <path d="M${at(L * 0.7, wt * 0.55)} Q${at(L + wt * 0.4, wt * 0.2)} ${at(L + wt * 0.6, -wt * 0.25)}" stroke="#fff3dc" stroke-width="2.4" fill="none" opacity=".6" stroke-linecap="round"/>
+    <path d="${crease(0.42, 0.62)} ${crease(0.72, 0.55)}" stroke="${SKIN.ink}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".8"/>
+    <path d="${body}" fill="none" stroke="${SKIN.ink}" stroke-width="4.5" stroke-linejoin="round"/>`;
+}
+
 export function handBack(): string {
   const id = uid("h");
-  return `<svg viewBox="0 0 400 400" aria-hidden="true"><defs>
-    <linearGradient id="${id}s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e2bc8e"/><stop offset=".55" stop-color="#9a6e58"/><stop offset="1" stop-color="#3a2e39"/></linearGradient>
-    <pattern id="${id}x" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)"><rect width="1.8" height="5" fill="#24120a"/></pattern></defs>
-    <path d="M236,300 C232,250 236,200 252,170 C262,150 284,138 302,144 C320,150 336,160 346,178 C358,198 362,228 356,258 C352,290 342,320 328,346 L300,384 L240,362Z" fill="url(#${id}s)" stroke="#24120a" stroke-width="5" stroke-linejoin="round"/>
-    <path d="M346,178 C358,198 362,228 356,258 C352,290 342,320 328,346 L316,350 C330,320 340,290 344,258 C348,228 344,200 336,184Z" fill="url(#${id}x)" opacity=".8"/>
-    <path d="M338,196 q10,4 14,14 M348,236 q8,2 10,10 M344,280 q8,0 10,8" stroke="#24120a" stroke-width="3" fill="none" stroke-linecap="round"/>
-    <path d="M300,144 q12,-10 26,-2 q10,6 6,16" stroke="#24120a" stroke-width="3" fill="#c89a74" stroke-linejoin="round"/>
-    <path d="M326,160 q12,-4 20,8 q4,10 -4,16" stroke="#24120a" stroke-width="3" fill="#c89a74"/>
+  const palm = "M262,392 C254,366 246,340 246,316 C246,296 248,282 254,270 C274,256 306,252 342,270 C354,290 364,320 370,350 C374,366 378,378 382,392Z";
+  return `<svg viewBox="0 0 400 400" aria-hidden="true"><defs>${skinDefs(id)}
+    <clipPath id="${id}p"><path d="${palm}"/></clipPath></defs>
+    <path d="${palm}" fill="#000" opacity=".45" transform="translate(-6 8)"/>
+    ${finger(id, 344, 292, 354, 204, 28)}
+    ${finger(id, 320, 280, 324, 158, 32)}
+    ${finger(id, 294, 274, 296, 148, 34)}
+    ${finger(id, 266, 280, 256, 160, 33)}
+    <path d="${palm}" fill="url(#${id}k)"/>
+    <g clip-path="url(#${id}p)">
+      <path d="M318,262 C346,300 360,340 368,400 L400,400 L400,250Z" fill="${SKIN.shade}" opacity=".9"/>
+      <path d="M330,280 C350,316 358,350 364,400 L400,400 L400,260Z" fill="url(#${id}x)" opacity=".4"/>
+      <path d="M254,272 C276,262 306,258 336,272" stroke="${SKIN.deep}" stroke-width="7" fill="none" opacity=".35"/>
+    </g>
+    <path d="M262,300 C288,290 318,292 346,306 M276,326 C300,318 324,322 352,340" stroke="${SKIN.ink}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".7"/>
+    <path d="M262,280 C284,270 312,270 334,282" stroke="${SKIN.ink}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".55"/>
+    <path d="${palm}" fill="none" stroke="${SKIN.ink}" stroke-width="5" stroke-linejoin="round"/>
   </svg>`;
 }
 
 export function handFront(): string {
   const id = uid("h");
-  return `<svg viewBox="0 0 400 400" aria-hidden="true"><defs>
-    <linearGradient id="${id}s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f0cc9a"/><stop offset=".45" stop-color="#9a6e58"/><stop offset="1" stop-color="#3a2e39"/></linearGradient>
-    <linearGradient id="${id}c" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a1418"/><stop offset=".5" stop-color="#1c0a0e"/><stop offset="1" stop-color="#070305"/></linearGradient>
-    <pattern id="${id}x" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)"><rect width="1.8" height="5" fill="#24120a"/></pattern>
-    <pattern id="${id}y" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(50)"><rect width="1.4" height="6" fill="#24120a"/><rect width="6" height="1.2" fill="#24120a"/></pattern></defs>
-    <path d="M262,400 C250,370 228,346 208,326 C192,310 176,292 164,274 C154,260 144,246 146,234 C148,220 164,216 176,226 C192,240 208,256 224,268 C240,280 256,288 270,294 C290,304 306,320 316,342 L322,400Z" fill="url(#${id}s)" stroke="#24120a" stroke-width="5" stroke-linejoin="round"/>
-    <path d="M152,238 C156,226 170,224 176,232 C172,242 160,246 152,238Z" fill="#f6dcb6" stroke="#24120a" stroke-width="2.5"/>
-    <path d="M164,274 C176,292 192,310 208,326 C228,346 250,370 262,400 L240,400 C226,372 206,350 188,330 C176,316 166,300 160,284Z" fill="url(#${id}x)" opacity=".75"/>
-    <path d="M196,268 q8,-10 18,-6 M210,298 q16,-4 26,6" stroke="#24120a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-    <path d="M232,318 C252,326 270,344 280,366" stroke="#24120a" stroke-width="2" fill="none" opacity=".55"/>
-    <path d="M178,236 C190,246 204,258 214,264" stroke="#fff" stroke-width="2.5" fill="none" opacity=".5" stroke-linecap="round"/>
-    <path d="M300,330 C318,340 340,346 360,348 L700,330 L700,520 L282,520Z" fill="url(#${id}c)" stroke="#24120a" stroke-width="5" stroke-linejoin="round"/>
-    <path d="M276,368 C300,346 340,334 400,326 L700,300 L700,326 L400,350 C346,356 310,368 290,388Z" fill="#7a1015" stroke="#24120a" stroke-width="3"/>
-    <path d="M286,372 C310,354 346,342 398,336 L700,310" stroke="#e8c070" stroke-width="2" stroke-dasharray="7 5" fill="none"/>
-    <path d="M300,392 C330,376 360,370 400,366 L700,350 L700,520 L296,520Z" fill="url(#${id}y)" opacity=".55"/>
-    <circle cx="318" cy="356" r="5" fill="#e8c070" stroke="#24120a" stroke-width="2"/>
+  // The heel of the thumb and the thumb itself, crossing in front of the fan's foot.
+  const thumb = "M262,392 C252,376 238,360 234,340 C230,324 220,310 208,300 C198,292 190,282 194,272 C198,262 212,262 222,270 C236,280 250,294 262,304 C276,318 284,346 288,392Z";
+  return `<svg viewBox="0 0 400 400" aria-hidden="true" style="overflow:visible"><defs>${skinDefs(id)}
+    <clipPath id="${id}t"><path d="${thumb}"/></clipPath>
+    <linearGradient id="${id}l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#efe4cc"/><stop offset="1" stop-color="#b9a681"/></linearGradient>
+    <linearGradient id="${id}c" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a1418"/><stop offset=".6" stop-color="#22080c"/><stop offset="1" stop-color="#0a0305"/></linearGradient></defs>
+    <path d="${thumb}" fill="#000" opacity=".28" transform="translate(-5 7)"/>
+    <path d="${thumb}" fill="url(#${id}k)"/>
+    <g clip-path="url(#${id}t)">
+      <path d="M262,304 C276,318 284,346 288,400 L300,400 L300,290Z" fill="${SKIN.shade}"/>
+      <path d="M246,310 C262,326 270,352 272,400 L300,400 L300,300 L262,300Z" fill="url(#${id}x)" opacity=".35"/>
+      <path d="M200,296 C214,308 226,316 236,332" stroke="${SKIN.shade}" stroke-width="9" fill="none" opacity=".5"/>
+    </g>
+    <path d="M222,300 C230,296 236,292 240,284" stroke="${SKIN.ink}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".85"/>
+    <path d="M250,318 C262,336 268,358 268,384" stroke="${SKIN.ink}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".6"/>
+    <g transform="rotate(42 207 278)">
+      <rect x="196" y="270" width="24" height="16" rx="7" fill="#f6e2c8" stroke="${SKIN.ink}" stroke-width="2.4"/>
+      <path d="M200,274 h12" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".8"/>
+      <path d="M216,272 v12" stroke="${SKIN.mid}" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+    <path d="M196,282 C194,270 204,262 216,266" stroke="#fff3dc" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".7"/>
+    <path d="M236,340 C232,324 222,310 210,300" stroke="#fff3dc" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".45"/>
+    <path d="${thumb}" fill="none" stroke="${SKIN.ink}" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M240,384 C270,364 320,352 400,338 L420,338 L420,420 L236,420Z" fill="url(#${id}l)" stroke="${SKIN.ink}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M250,382 l8,10 l8,-14 l8,12 l8,-15 l8,12 l9,-16 l8,12 l9,-16 l9,11 l10,-16 l9,10 l10,-15 l10,9 l10,-13 l10,8" stroke="#8a7656" stroke-width="2" fill="none" stroke-linejoin="round" opacity=".8"/>
+    <path d="M252,372 C282,354 326,344 400,332" stroke="#fffaf0" stroke-width="2.4" fill="none" opacity=".7" stroke-linecap="round"/>
+    <path d="M296,412 C322,388 360,374 420,366 L420,440 L296,440Z" fill="url(#${id}c)" stroke="${SKIN.ink}" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M304,406 C328,386 362,376 420,370" stroke="#e8c070" stroke-width="2.2" stroke-dasharray="7 5" fill="none"/>
+    <circle cx="350" cy="384" r="5" fill="#e8c070" stroke="${SKIN.ink}" stroke-width="2"/>
   </svg>`;
 }
 

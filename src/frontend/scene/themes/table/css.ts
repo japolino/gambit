@@ -107,11 +107,24 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 .tb .fan.scroll { pointer-events: auto; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .tb .fan.scroll::-webkit-scrollbar { display: none; }
 .tb .fan .rail { position: absolute; left: 0; top: 0; height: 100%; }
-.tb .card { position: absolute; left: 0; top: 0; width: var(--cw); height: var(--ch); pointer-events: auto; transform-origin: 50% 100%; transform: translate(var(--x), var(--y)) rotate(var(--r)); transition: transform .24s cubic-bezier(.2,.8,.3,1.2), filter .2s; z-index: var(--z); filter: drop-shadow(-4px 8px 10px rgba(0,0,0,.75)); }
-.tb .card .face { position: absolute; inset: 0; display: block; }
+/*
+ * Hit-testing never moves. The button and its face take no pointer events;
+ * a fixed .hit strip does: the slice of the card the next one leaves showing
+ * (--hw). If the button rose on hover, or a raised card's whole box or
+ * enlarged face caught the pointer, cards would flicker and steal hover from
+ * their neighbours. While hovered, the strip reaches up so the pointer can
+ * follow the lifted card.
+ */
+.tb .card { position: absolute; left: 0; top: 0; width: var(--cw); height: var(--ch); pointer-events: none; transform-origin: 50% 100%; transform: translate(var(--x), var(--y)) rotate(var(--r)); transition: filter .2s; z-index: var(--z); filter: drop-shadow(-4px 8px 10px rgba(0,0,0,.75)); }
+.tb .card .face { position: absolute; inset: 0; display: block; transform-origin: 50% 100%; transition: transform .24s cubic-bezier(.2,.8,.3,1.2); pointer-events: none; }
+.tb .card .hit { position: absolute; left: 0; top: 0; bottom: 0; width: var(--hw, 100%); pointer-events: auto; }
+.tb .card:hover .hit { top: calc(var(--lift) * -1 - 4%); }
+.tb .card[aria-disabled="true"] .hit { cursor: default; }
 .tb .card svg.cardart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.tb .card:hover, .tb .card:focus-visible, .tb .card.sel { transform: translate(var(--x), calc(var(--y) - var(--lift))) rotate(0deg) scale(1.12); z-index: 80; filter: drop-shadow(0 0 3px #ffcf6a) drop-shadow(0 0 18px rgba(255,140,40,.75)) drop-shadow(0 16px 18px rgba(0,0,0,.8)); }
-.tb .fan.scroll .card:hover, .tb .fan.scroll .card:focus-visible { transform: translate(var(--x), calc(var(--y) - var(--lift) * .4)) rotate(0deg) scale(1.04); }
+.tb .card:hover, .tb .card:focus-visible, .tb .card.sel { z-index: 80; filter: drop-shadow(0 0 3px #ffcf6a) drop-shadow(0 0 18px rgba(255,140,40,.75)) drop-shadow(0 16px 18px rgba(0,0,0,.8)); }
+/* Straighten (undo the fan's tilt), rise and grow, in screen space. */
+.tb .card:hover .face, .tb .card:focus-visible .face, .tb .card.sel .face { transform: rotate(calc(var(--r) * -1)) translateY(calc(var(--lift) * -1)) scale(1.12); }
+.tb .fan.scroll .card:hover .face, .tb .fan.scroll .card:focus-visible .face { transform: rotate(calc(var(--r) * -1)) translateY(calc(var(--lift) * -.4)) scale(1.04); }
 .tb .card .ttl { position: absolute; left: 7%; top: 4.2%; width: var(--tw, 86%); height: 18.5%; overflow: hidden; display: flex; flex-direction: column; justify-content: center; color: ${INK}; text-transform: uppercase; line-height: .95; pointer-events: none; }
 .tb .card .ttl small { font: 800 calc(var(--ch) * .044)/1 "Gambit Cinzel", serif; letter-spacing: .1em; color: ${RED}; }
 .tb .card .ttl b { font: 800 calc(var(--ch) * .074)/.95 "Gambit Cinzel", serif; letter-spacing: .02em; }
@@ -156,7 +169,9 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 .tb .fgh .facts { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
 .tb .fgh .empty { z-index: 1; }
 .tb .fgh .card { transform-origin: 50% 92%; transform: translate(var(--x), var(--y)) rotate(var(--r)); }
-.tb .fgh .card:hover, .tb .fgh .card:focus-visible { transform: translate(var(--x), var(--y)) rotate(var(--r)) translateY(calc(var(--ch) * -.42)) scale(1.3); }
+.tb .fgh .card .face { transform-origin: 50% 92%; }
+.tb .fgh .card:hover .hit { top: calc(var(--ch) * -.42); }
+.tb .fgh .card:hover .face, .tb .fgh .card:focus-visible .face { transform: translateY(calc(var(--ch) * -.42)) scale(1.3); }
 .tb .fgh .empty { position: absolute; left: 36%; top: 26%; width: 40%; transform: rotate(8deg); font: 800 max(12px, 1.7cqh)/1.15 "Gambit Cinzel", serif; letter-spacing: .08em; color: ${BONE}; padding: 1.4em 1em; background: #141518; clip-path: polygon(0 8%, 6% 0, 94% 4%, 100% 0, 98% 92%, 92% 100%, 4% 96%, 0 100%); text-align: center; pointer-events: none; box-shadow: inset 0 0 0 3px #3a3d45; }
 
 /* The theme switcher: iron tags fanned out above the gavel. */
@@ -288,7 +303,7 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 
 @media (prefers-reduced-motion: reduce) {
   .tb .skull .fl, .tb .mote, .tb.busy .bell, .tb .tags button, .tb .book, .tb .plaque .busy::after { animation: none !important; }
-  .tb .card, .tb .who, .tb .prop, .tb .plaque { transition: none !important; }
+  .tb .card, .tb .card .face, .tb .who, .tb .prop, .tb .plaque { transition: none !important; }
 }
 `;
 }
