@@ -258,10 +258,14 @@ export interface BattleMeta {
   monsters?: Record<string, MonsterDef>;
   /** Party portraits by combatant id: Lumiverse image ids of card art. */
   faces?: Record<string, string>;
+  /** A boss fight (leaves a catalyst, M7). */
+  boss?: boolean;
   /** Delve room the fight is in, to mark it cleared. */
   room?: string;
   /** How the party fought (4.6 build profile): damage by element, statuses applied, talks. */
-  tally?: { elements: Partial<Record<Element, number>>; statuses: Partial<Record<StatusId, number>>; talks: number; hits: number };
+  tally?: { elements: Partial<Record<Element, number>>; statuses: Partial<Record<StatusId, number>>; talks: number; hits: number; uses?: Record<string, number> };
+  /** Classes the player made (M7): what the art pipeline draws them from. */
+  classes?: Record<string, Pick<ClassDef, "id" | "name" | "visual">>;
 }
 
 /* ------------------------------------------------------------------ */

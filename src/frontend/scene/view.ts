@@ -17,6 +17,8 @@ import type { DelveMove } from "../../engine/world/delve.js";
 import type { DelveView, SceneView, ThemeId } from "../../shared/scene-view.js";
 import { SceneLayer3D, webglOk, type PostFx } from "./layer3d.js";
 import { drawCorridor2D } from "./corridor2d.js";
+import { FORGE_CSS, mountForgePanel } from "./forge-panel.js";
+import type { ForgeOp, ForgeView } from "../../shared/forge-view.js";
 
 export interface SceneActions {
   act(hotspot: string): void;
@@ -29,6 +31,8 @@ export interface SceneActions {
   hex(q: number, r: number): void;
   /** Table theme: play a fact card on someone (talk to them, citing it). */
   cite(personId: string, text: string): void;
+  /** The class panel (M7). */
+  forge(op: ForgeOp, arg?: string, arg2?: string, text?: string): void;
 }
 
 export type MeanwhileItem = { text: string; art?: string; imageId?: string | null };
@@ -42,6 +46,8 @@ export interface SceneHandle {
   destroy(): void;
   /** "Meanwhile…": null opens the montage; the vignettes then play in turn. */
   meanwhile(day: number, items: MeanwhileItem[] | null): void;
+  /** The class panel's state. */
+  forge(v: ForgeView): void;
 }
 
 /** The stage themes (6.3), all drawn as of M5. */
@@ -192,7 +198,7 @@ const CSS = `
 .gs .jr .aff i { position: absolute; top: 0; bottom: 0; left: 50%; background: #c9a865; border-radius: 3px; }
 .gs .jr .aff i.neg { background: #c4544a; }
 .gs .jr .bond { color: #f1d9b0; font-weight: 600; }
-.gs .chip.jbtn { cursor: pointer; color: inherit; }
+.gs .chip.jbtn, .gs .chip.fbtn { cursor: pointer; color: inherit; }
 @media (max-width: 720px) { .gs .jr { bottom: 330px; } }
 @keyframes mwIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes mwPulse { 50% { opacity: .45; } }
@@ -210,7 +216,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   el.className = "gs";
   el.setAttribute("data-gambit-stage", "scene");
   const style = document.createElement("style");
-  style.textContent = CSS;
+  style.textContent = CSS + FORGE_CSS;
   el.innerHTML = `
     <div class="world"><div class="flat"></div><canvas class="delve2d gone"></canvas><div class="folk"></div><div class="tabletop gone"></div><div class="lobbyface gone"></div></div>
     <div class="hexwrap gone"><svg role="group" aria-label="The overland"></svg><div class="key"></div></div>
@@ -246,6 +252,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   let journalOpen = false;
 
   const art = new Map<string, { url: string; cutout: boolean }>();
+  const classes = mountForgePanel(el, (op, x, y, text) => a.forge(op, x, y, text), (key) => art.get(key)?.url ?? null);
   let view = first;
   let destroyed = false;
   let layer: SceneLayer3D | null = null;
@@ -303,11 +310,16 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       ${v.hex ? `<span class="chip" title="Each step on the overland eats a day's supplies; rest in a town to refill">Supplies <b>${v.hex.supplies}/${v.hex.max}</b></span>` : ""}
       ${v.thread ? `<span class="chip" title="${esc(`${v.thread.goal}${v.thread.found.length ? `\n\n${v.thread.found.map((f) => `• ${f}`).join("\n")}` : ""}`)}">🧵 <b>${v.thread.found.length}/${v.thread.total}</b></span>` : ""}
       <button class="chip jbtn" type="button" aria-expanded="${journalOpen}">📜 Journal</button>
+      <button class="chip fbtn" type="button" aria-expanded="${classes.open}">⚒ Classes</button>
       <select class="chip" aria-label="Scene theme">${themes}</select>`;
     hud.querySelector(".jbtn")!.addEventListener("click", () => {
       journalOpen = !journalOpen;
       renderJournal(view);
       hud.querySelector(".jbtn")!.setAttribute("aria-expanded", String(journalOpen));
+    });
+    hud.querySelector(".fbtn")!.addEventListener("click", () => {
+      classes.toggle();
+      hud.querySelector(".fbtn")!.setAttribute("aria-expanded", String(classes.open));
     });
     hud.querySelector("select")!.addEventListener("change", (e) => a.theme((e.target as HTMLSelectElement).value as ThemeId));
     // What sits under the HUD starts below it, however many rows it wraps to.
@@ -647,6 +659,10 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       const used = key === v.place.art || v.tiles.some((t) => t.art === key) || v.people.some((p) => p.art === key) || key === v.delve?.textures.wall;
       if (used && !destroyed) renderWorld(v);
       if (mw && mw.items?.[mw.i]?.art === key) paintMeanwhile();
+      classes.art(key);
+    },
+    forge(v) {
+      if (!destroyed) classes.set(v);
     },
     meanwhile(day, items) {
       if (destroyed) return;
@@ -673,6 +689,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       window.removeEventListener("keydown", onKey);
       ro.disconnect();
       layer?.destroy();
+      classes.destroy();
       el.remove();
       style.remove();
     },

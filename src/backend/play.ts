@@ -39,6 +39,10 @@ import {
 } from "../engine/memory/memory.js";
 import { fallbackNight, fallbackPromotion, nightPrompt, parseNight, parsePromotion, promotedId, promotePrompt } from "../meaning/night.js";
 import { baseClassFor } from "../engine/card/foes.js";
+import { bookOf, createForge } from "./forge.js";
+import { rankOf } from "../engine/forge/forge.js";
+import type { ForgeOp } from "../shared/forge-view.js";
+import type { ClassDef } from "../engine/types.js";
 import { solveSkill } from "../engine/budget.js";
 import type { CastMember } from "../engine/card/types.js";
 import type { ParleyScenario, ParleyState } from "../engine/parley/types.js";
@@ -91,6 +95,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       log(`could not post to ${chatId}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  const forge = createForge({ spindle, send, art, sheetFor: (u, c) => cards.sheetFor(u, c), ...(cards.compile ? { compile: cards.compile } : {}), load, save, aside, log });
 
   /** Merge the World Bible's places and thread into a chat's world (4.5). True when anything changed. */
   function mergeBible(sheet: CardSheet, r: PlayRecord, b: Bible): boolean {
@@ -304,13 +310,30 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       const combo = p.classDef.skills.filter((sk) => sk.id.startsWith("combo_"));
       return { classDef: kit && combo.length ? { ...cls, skills: [...cls.skills, ...combo] } : cls, level: 5, id: p.id, name: p.name, art: img ? `face:${img}` : `class:${p.classDef.id}:${t}.${p.id}` };
     });
+    // The player fights as the class picked in the class book (M7): the card's kit, a base class, or one they made.
+    const mine = party.find((p) => p.id === "p_player");
+    const classes: Record<string, Pick<ClassDef, "id" | "name" | "visual">> = {};
+    let cardDef: ClassDef | null = null;
+    if (mine) {
+      const combo = mine.classDef.skills.filter((sk) => sk.id.startsWith("combo_"));
+      cardDef = { ...mine.classDef, skills: mine.classDef.skills.filter((sk) => !sk.id.startsWith("combo_")) };
+      const pc = forge.playerClass(sheet, r, cardDef);
+      const book = bookOf(r);
+      mine.classDef = { ...pc.def, skills: [...pc.def.skills, ...combo] };
+      mine.level = 4 + rankOf(book.classes[book.active]?.wins ?? 0);
+      if (pc.art) {
+        mine.art = pc.art;
+        classes[pc.def.id] = { id: pc.def.id, name: pc.def.name, visual: pc.def.visual };
+      } else if (pc.def !== cardDef && !pc.def.id.includes("~")) mine.art = `class:${pc.def.id}:${t}.p_player`;
+    }
     let state = createBattle({ id: `${t}.${enc.id}.${Date.now().toString(36)}`, seed, party, enemies });
     // Vigor carries between fights: a tired party starts hurt.
     for (const c of state.combatants) if (c.side === "party") c.hp = Math.max(1, Math.round(c.maxHp * Math.max(0.35, r.scene.vigor)));
     const wildHere = wildCell(r);
-    state.meta = { title: enc.name, chatId, backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : wildHere ? placeKey(sheet, `wild_${wildHere}`) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}) };
+    state.meta = { title: enc.name, chatId, ...(enc.boss ? { boss: true } : {}), ...(Object.keys(classes).length ? { classes } : {}), backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : wildHere ? placeKey(sheet, `wild_${wildHere}`) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}) };
     state = advance(state, { enemyPolicy: chooseAction }).state;
     r = (await load(userId, chatId)) ?? r;
+    if (cardDef) forge.playerClass(sheet, r, cardDef);
     r.battleId = state.id;
     note(r, `${enc.name}!`);
     await save(userId, chatId, r);
@@ -347,7 +370,10 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       ].filter(Boolean).join(" and ");
       line = `${state.meta?.title ?? "The fight"} is over. ${party.map((c) => c.name).join(" and ")} ${how}${loot - bribes ? ` (${loot - bribes > 0 ? "+" : ""}${loot - bribes} ${cur})` : ""}.`;
       if (r.delve && state.meta?.room) r.delve.state = clearRoom(r.delve.map, r.delve.state, state.meta.room);
-      if (r.delve?.state.done) line += ` The depths of ${r.world.places[r.delve.placeId]?.name ?? "the delve"} fall quiet.`;
+      if (r.delve?.state.done) {
+        line += ` The depths of ${r.world.places[r.delve.placeId]?.name ?? "the delve"} fall quiet, and a catalyst waits at the bottom.`;
+        bookOf(r).catalysts++;
+      }
     } else {
       // Story difficulty (4.2): lose, retreat, take a consequence. The model never rescues anyone.
       r.scene = { ...r.scene, vigor: 0.35, coin: Math.max(0, Math.round(r.scene.coin * 0.8)), placeId: r.world.start };
@@ -359,6 +385,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       line = `${state.meta?.title ?? "The fight"} is lost. ${party.map((c) => c.name).join(" and ")} fall back to ${r.world.places[r.world.start]?.name ?? "safety"}, bruised and lighter of ${cur}.`;
     }
     r.battleId = undefined;
+    // Classes (M7): ranks from wins, catalysts from bosses, skills ready to awaken.
+    for (const l of forge.afterBattle(r, state, !!state.meta?.boss)) line += ` ${l}`;
     // The deed ledger (4.6): who fell, who was spared or recruited, and how you fought.
     const t = tag(sheet.cardKey);
     const foeIdOf = (id: string) => id.replace(`${t}.`, "").replace(/_p2$/, "").replace(/~.*$/, "");
@@ -573,11 +601,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       if (p.steps.every((s) => s.done)) {
         p.done = true;
         m.items = [...m.items, { ...p.item, from: p.name }];
+        bookOf(r).crests++;
         if (p.castId) {
           const n = (m.npc[p.castId] ??= { notes: [], affinity: 0 });
           n.affinity = Math.min(10, n.affinity + 2);
         }
-        return `${step.text}: done. ${p.name}'s thread comes together, and you come away with ${p.item.name}.`;
+        return `${step.text}: done. ${p.name}'s thread comes together, and you come away with ${p.item.name} and a Blank Crest.`;
       }
       return `${step.text}: done. (${p.name}, ${p.steps.filter((s) => s.done).length}/${p.steps.length})`;
     }
@@ -646,6 +675,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
 
   return {
     onBattleEnd,
+    /** The class panel (M7). */
+    forgeAct: (userId: string, chatId: string, op: ForgeOp, arg?: string, arg2?: string, text?: string) => forge.act(userId, chatId, op, arg, arg2, text),
 
     /** A Parley with someone on the card ended: the outcome and how you spoke become deeds. */
     async onParleyEnd(userId: string, scenario: ParleyScenario, state: ParleyState) {

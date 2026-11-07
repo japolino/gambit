@@ -52,16 +52,21 @@ export interface Tally {
   statuses: Partial<Record<StatusId, number>>;
   talks: number;
   hits: number;
+  /** The player's skill uses by skill id (skill awakening, 4.4). */
+  uses?: Record<string, number>;
 }
 
 export const emptyTally = (): Tally => ({ elements: {}, statuses: {}, talks: 0, hits: 0 });
 
 /** Add a step's events to a tally, counting only what the party did. */
 export function tallyEvents(t: Tally, events: readonly BattleEvent[], party: ReadonlySet<string>): Tally {
-  const out: Tally = { elements: { ...t.elements }, statuses: { ...t.statuses }, talks: t.talks, hits: t.hits };
+  const out: Tally = { elements: { ...t.elements }, statuses: { ...t.statuses }, talks: t.talks, hits: t.hits, uses: { ...(t.uses ?? {}) } };
   let lastActor = "";
   for (const e of events) {
-    if (e.kind === "use") lastActor = e.actor;
+    if (e.kind === "use") {
+      lastActor = e.actor;
+      if (e.actor === "p_player" && !e.skill.startsWith("talk:")) out.uses![e.skill] = (out.uses![e.skill] ?? 0) + 1;
+    }
     if (e.kind === "hit" && party.has(e.source)) {
       out.elements[e.element] = (out.elements[e.element] ?? 0) + e.amount;
       out.hits++;

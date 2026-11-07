@@ -147,6 +147,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         fight: () => send({ type: "play.fight", chatId }),
         close: () => ov.hide(),
         hex: (q, r) => send({ type: "hex.step", chatId, q, r }),
+        forge: (op, arg, arg2, text) => send({ type: "forge.act", chatId, op, ...(arg !== undefined ? { arg } : {}), ...(arg2 !== undefined ? { arg2 } : {}), ...(text !== undefined ? { text } : {}) }),
         cite: (personId, text) => {
           pendingCite = `I know this: ${text.replace(/\.?$/, ".")}`;
           wantParley = true;
@@ -338,6 +339,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           wantScene = false;
           void showScene(msg.view);
         }
+        break;
+      }
+      case "forge.state": {
+        if (scene && scene.chatId === msg.chatId) scene.forge(msg.view);
         break;
       }
       case "scene.meanwhile": {

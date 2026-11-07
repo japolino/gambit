@@ -14,7 +14,7 @@ import type { ToBackend, ToFrontend } from "./shared/protocol.js";
 
 declare const spindle: SpindleAPI;
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 
 const send = (msg: ToFrontend, userId?: string) => spindle.sendToFrontend(msg, userId);
 // Without image connections the art pipeline reports "placeholder art" and
@@ -138,6 +138,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         break;
       case "hex.step":
         await play!.hexStep(userId, msg.chatId, msg.q, msg.r);
+        break;
+      case "forge.act":
+        await play!.forgeAct(userId, msg.chatId, msg.op, msg.arg, msg.arg2, msg.text);
         break;
       case "play.fight":
         await play!.fight(userId, msg.chatId, { ...(msg.lead ? { lead: msg.lead } : {}), ...(msg.boss ? { boss: true } : {}) });

@@ -11,6 +11,7 @@ import type { Thread } from "../meaning/bible.js";
 import type { Adaptation, Deed, NpcMemory, Promotion, Recruit, Tally } from "../engine/memory/memory.js";
 import { BOND_AT } from "../engine/memory/memory.js";
 import type { Scar } from "../meaning/night.js";
+import type { ClassBook } from "../engine/forge/forge.js";
 
 /** What the chat's world remembers (4.6, M6). */
 export interface MemoryRecord {
@@ -56,6 +57,8 @@ export interface PlayRecord {
   thread?: Thread;
   revealed?: string[];
   memory?: MemoryRecord;
+  /** The class book (M7): classes, ranks, crests, catalysts, awakenings. */
+  forge?: ClassBook;
 }
 
 const INDOOR = /(inn|tavern|shop|store|room|rooms|bar|cafe|café|parlou?r|hall|kitchen|library|office|apartment|bedroom|chamber|study|salon|lounge|club|pub|smithy|forge|bakery|apothecary|mess|quarters|house|home|manor|mansion|palace|castle)/i;

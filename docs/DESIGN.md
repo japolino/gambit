@@ -770,6 +770,26 @@ gambit/
 - **Checked live** on one card: search, rest with the night phase, and the journal. Promotions, scars and adaptations are covered by `tests/memory.test.ts`.
 - **Still open:** a scar redrawn by the model live (Vertex was rate-limited), group chats with more than one member as companions, and recruited monsters getting their own portrait set.
 
+**M7 status (2026-11-07): built; checked in tests, the local preview, and once in Lumiverse.**
+- **The class book** (`src/engine/forge/forge.ts`), one per campaign: the card's kit (recorded at your first fight), the base classes, and every class you make. You pick the class you fight as in the class panel (⚒ Classes in the scene's HUD). Each win raises the class in use: a rank every two wins, up to 5, and the player fights at level 4 + rank.
+- **The Forge:** describe a class in your own words. The Architect answers in shapes only: element, the stats it leans on, a resource and what fills it, a passive, 4 or 5 skills as atoms, a look, and what it had to change from the request. Code then:
+  - keeps a class within a tier room of 10 across its skills, with one signature, and says which skills it lowered;
+  - sizes every skill with the budget solver and runs passives at a chance that fits their trigger;
+  - tests the class in sim fights beside a Warden and a Tidecaller, against the same fights with a Duelist. Too strong, its skills drop up to two tiers and then its health and power shrink; too weak, its skills rise up to two tiers.
+
+  You see the full sheet with real numbers, the changes and the test result before you keep it. Keeping it spends a Blank Crest: you start with one, and every finished questline gives another. With no model, the closest base class is renamed from your words.
+- **Fusion at the Altar:** two classes at rank 3 and a catalyst. Bosses and cleared delves leave catalysts.
+  - Code blends the stats evenly and adds one seeded mutation toward a stat a parent was strong in.
+  - The resource comes from a hybrid table (Tempo and Resolve make Momentum, Hex and Tide make Omen…). A pair without an entry keeps one parent's resource with a trigger from the other.
+  - The fusion keeps the two strongest skills of each parent and gets three new ones that may only use the parents' effects, elements and statuses; anything else is dropped or remapped, and the preview says so.
+  - Its portrait is drawn as a GPT edit with both parents' portraits as references.
+  - Declining gives the catalyst back; one reroll costs a second catalyst.
+- **Awakening:** the battle tally counts the player's skill uses. At 50 a skill can awaken: three mutations (from the Architect, or code ones: an extra hit, a status rider, wider targets, a kill reward), each a tier up with a new cut-in template. The awakened skill replaces the original from then on.
+- **The codex** (`codex.json` in the user's storage) keeps every class you forge or fuse, from every campaign, with its portrait. "Take" brings one into the current campaign at rank 1.
+- **Checked live** on one card: the Forge with the live model ("a war-chef…" became a forged class, with its portrait drawn and its changes explained), the test fights trimming it, keeping it, and the codex. Fusion, rerolls, awakening, ranks and catalysts are covered by `tests/forge.test.ts`, and each was clicked through in the preview.
+- **Changes from 4.4:** the Forge and the Altar live in the class panel, gated by Blank Crests and catalysts, instead of at a shrine and an altar place. Fusion does not yet draw a cut-in pose per new signature skill; the cut-in uses the class portrait's "determined" face like every class.
+- **Still open:** a fight as a made class live (no fight was on offer in the card used), and the four-card check.
+
 ---
 
 ## 12. Open decisions

@@ -11,6 +11,20 @@ import { buildSceneView, placeKey, wallKey, type PlayRecord } from "../src/share
 import { npcArtKey } from "../src/shared/art-keys.js";
 import type { ThemeId } from "../src/shared/scene-view.js";
 import { mountScene } from "../src/frontend/scene/view.js";
+import { addToCodex, awakenedSkill, balance, classFromDraft, fallbackAwakenings, fallbackForge, fromCodex, fuseClasses, newBook, rankOf, type Codex } from "../src/engine/forge/forge.js";
+import { buildForgeView } from "../src/shared/forge-view.js";
+import { baseClassFor } from "../src/engine/card/foes.js";
+import { CLASSES } from "../src/engine/content/classes.js";
+
+// The class panel (M7) on a local book: no model, so every answer is the code fallback.
+const book = newBook();
+book.classes.card = { def: { ...CLASSES.duelist!, id: "duelist~p_player", name: "Courier" }, origin: "card", wins: 4, at: 0 };
+book.classes.hexwright!.wins = 5;
+book.catalysts = 2;
+book.uses["duelist_flurry"] = 52;
+book.uses["duelist_opening"] = 31;
+let codex: Codex = { v: 1, entries: [] };
+void awakenedSkill;
 
 const ev = { source: "card" as const, quote: "", verified: true };
 const sheet = {
@@ -173,6 +187,53 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   cite(personId, text) {
     r = { ...r, log: [...r.log, `(Parley with ${personId}, citing: ${text})`].slice(-6) };
     refresh();
+  },
+  forge(op, arg, arg2, text) {
+    const p = book.pending;
+    if (op === "use" && arg && book.classes[arg]) book.active = arg;
+    if (op === "forge" && text && book.crests > 0) {
+      const notes: string[] = [];
+      const draft = fallbackForge(text, baseClassFor(text));
+      const t = balance(classFromDraft(draft, `preview:${text}`, notes), notes);
+      book.pending = { kind: "forge", owned: { def: t.def, origin: "forged", wins: 0, prompt: text, identity: draft.identity, art: `forge:${t.def.id}`, at: Date.now() }, changes: [...draft.changes, ...notes], sim: t.sim };
+    }
+    if ((op === "fuse" || op === "reroll") && book.catalysts > 0) {
+      const [ia, ib] = op === "fuse" ? [arg!, arg2!] : p!.pair!;
+      const a = book.classes[ia]!, b = book.classes[ib]!;
+      if (rankOf(a.wins) >= 3 && rankOf(b.wins) >= 3 && ia !== ib) {
+        book.catalysts--;
+        const f = fuseClasses(a.def, b.def, null, `${ia}+${ib}:${op}`);
+        const t = balance(f.def, f.changes);
+        book.pending = { kind: "fusion", owned: { def: t.def, origin: "fused", wins: 0, parents: [a.def.name, b.def.name], art: `forge:${t.def.id}`, at: Date.now() }, changes: f.changes, sim: t.sim, pair: [ia, ib], rerolled: op === "reroll" };
+      }
+    }
+    if (op === "awaken" && arg) {
+      const s = (book.classes[book.active]!.def.skills.find((x) => x.id === arg))!;
+      book.pending = { kind: "awaken", skillId: arg, options: fallbackAwakenings(s), changes: ["(Preview: mutations built in code.)"] };
+    }
+    if (op === "pick" && p?.kind === "awaken") {
+      book.awakened[p.skillId!] = p.options![Number(arg)]!;
+      book.pending = null;
+    }
+    if (op === "confirm" && p?.owned) {
+      if (p.kind === "forge") book.crests--;
+      book.classes[p.owned.def.id] = p.owned;
+      book.active = p.owned.def.id;
+      codex = addToCodex(codex, { id: p.owned.def.id, name: p.owned.def.name, origin: p.kind === "forge" ? "forged" : "fused", ...(p.owned.parents ? { parents: p.owned.parents } : {}), card: "Saltmarsh", def: p.owned.def, art: p.owned.art!, at: Date.now() });
+      book.pending = null;
+    }
+    if (op === "decline") {
+      if (p?.kind === "fusion") book.catalysts++;
+      book.pending = null;
+    }
+    if (op === "take" && arg) {
+      const e = codex.entries.find((x) => x.id === arg);
+      if (e) book.classes[e.id] ??= fromCodex(e);
+    }
+    const v = buildForgeView("preview", book, codex, (o) => o.art ?? `class:${o.def.id}`, null);
+    handle.forge(v);
+    for (const c of v.classes) handle.setArt(c.art!, paint(c.id.length * 53 + c.id.charCodeAt(0) * 7, "person"), true);
+    if (v.pending?.art) handle.setArt(v.pending.art, paint(v.pending.art.length * 29, "person"), true);
   },
 });
 

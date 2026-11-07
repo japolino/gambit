@@ -38,7 +38,7 @@ export function requestBattleArt(art: ArtApi, state: BattleState, userId: string
     } else {
       // Card art is shown as it is (play.ts sends it); only the rest is drawn.
       if (state.meta?.faces?.[c.id]) continue;
-      const cls = CLASSES[c.defId] ?? CLASSES[c.defId.split("~")[0]!];
+      const cls = CLASSES[c.defId] ?? CLASSES[c.defId.split("~")[0]!] ?? state.meta?.classes?.[c.defId];
       if (cls) {
         const dna = dnaFromClass(cls, { id: c.id, name: c.name, seed: seedOf(c.art) });
         art.request(c.art, { kind: "portrait", character: dna }, 1, userId);
