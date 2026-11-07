@@ -592,6 +592,16 @@ gambit/
 | **M5 Memory** | Deed ledger, scars with background edits, faction adaptation, Notice promotions, companions | The world reacts |
 | **M6 Forge and Codex** | Class Forge from text, skill awakening, cross-campaign codex | Long-tail replay |
 
+**M2 status (2026-11-06): playable in Lumiverse.**
+- **Built:** the engine (`src/engine/parley/`, tested), three Saltgate scenarios linked by a journal, the Referee with its fallbacks, the Parley scene, and chat integration.
+  - Referee order: Jev through `decisions`, preferring a TypeSafe connection; then the helper model imitating typed answers; then rules only.
+  - Chat integration: Parley-box lines are posted with `metadata.gambit.parley`. Composer lines are judged inside the interceptor. Edits re-judge with the same faces, and deletes rewind.
+- **Change from 4.1.2 step 2:** claims are checked inside the same Referee batch (one yes/no per fact), not by a separate `generate.quiet` extraction call. Code still verifies them against the journal.
+- **Narrator modes** ("Who voices the NPC"):
+  - **Gambit (default).** One short streamed quiet call voices the NPC with the outcome as the last thing in the system prompt. The player's line and the reply are posted to the chat; the reply goes under the NPC's name, without starting the chat's own generation. This mode exists because long-form chat presets overrode the short-reply rules.
+  - **Chat preset.** The chat's model narrates, and the interceptor hands it the outcome.
+- **Still open:** lines typed in the normal composer always get the chat's narrator. The host does not yet apply an interceptor `finalResponse`.
+
 ---
 
 ## 12. Open decisions

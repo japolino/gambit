@@ -4,6 +4,8 @@
  */
 import type { SpindleFrontendContext } from "lumiverse-spindle-types";
 import { ENCOUNTERS } from "../../engine/content/index.js";
+import { PARLEYS } from "../../engine/content/parleys.js";
+import type { ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
 
 const ICON = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z"/></svg>`;
 
@@ -25,6 +27,9 @@ const CSS = `
 .gb .look.locked { outline: 2px solid var(--lumiverse-primary, #c8a26a); }
 .gb .look[disabled] { opacity: .5; cursor: default; }
 .gb .hint { font-size: 11px; opacity: .6; }
+.gb .seg { display: flex; border: 1px solid var(--lumiverse-border, rgba(127,127,127,.25)); border-radius: 999px; overflow: hidden; width: max-content; }
+.gb .seg button { border: 0; border-radius: 0; padding: 4px 12px; font-size: 12px; background: none; text-align: center; }
+.gb .seg button.on { background: var(--lumiverse-primary, #c8a26a); color: var(--lumiverse-primary-contrast, #111); }
 `;
 
 export interface Panel {
@@ -33,12 +38,24 @@ export interface Panel {
   setProbeImage(key: string, url: string): void;
   setStatus(text: string): void;
   setResumable(on: boolean): void;
+  /** The open Parley's name (null when none), the view mode, and how many facts the journal holds. */
+  setParley(open: string | null, mode: ParleyViewMode, journalSize: number): void;
+  setNarrator(mode: ParleyNarrator): void;
   destroy(): void;
 }
 
 export function createPanel(
   ctx: SpindleFrontendContext,
-  actions: { start(encounterId: string): void; open(): void; probe(): void; pick(lookId: string): void },
+  actions: {
+    start(encounterId: string): void;
+    open(): void;
+    probe(): void;
+    pick(lookId: string): void;
+    parley(scenarioId: string): void;
+    resumeParley(): void;
+    setParleyMode(mode: ParleyViewMode): void;
+    setNarrator(mode: ParleyNarrator): void;
+  },
 ): Panel {
   const tab = ctx.ui.registerDrawerTab({
     id: "gambit",
@@ -55,6 +72,15 @@ export function createPanel(
     <div class="row"><button class="primary" data-open>Open the Stage</button><div class="status" data-status></div></div>
     <div class="row"><h3>Look</h3><div class="hint" data-look-hint>No look chosen yet: art uses the default.</div>
       <button data-probe>Draw the four looks</button><div class="looks" data-looks></div></div>
+    <div class="row"><h3>Parley</h3>
+      <button class="primary" data-parley-resume hidden>Resume the Parley</button>
+      ${Object.values(PARLEYS)
+        .map((p) => `<button data-parley="${p.id}">${p.name}<span class="sub">${p.blurb}</span></button>`)
+        .join("")}
+      <div class="seg" data-parley-mode><button data-m="immersive">Immersive</button><button data-m="transparent">Transparent</button></div>
+      <div class="hint">Who voices the NPC</div>
+      <div class="seg" data-parley-narrator><button data-n="gambit">Gambit (short replies)</button><button data-n="chat">Chat preset</button></div>
+      <div class="hint" data-parley-hint>Words move the dice. Open a chat first and the narrator plays them.</div></div>
     <div class="row"><h3>Encounters</h3>${Object.values(ENCOUNTERS)
       .map((e) => `<button data-enc="${e.id}">${e.name}${e.boss ? " ✦" : ""}<span class="sub">${e.enemies.length} foe${e.enemies.length === 1 ? "" : "s"}${e.boss ? " · boss" : ""}</span></button>`)
       .join("")}</div>`;
@@ -63,6 +89,18 @@ export function createPanel(
   const openBtn = root.querySelector<HTMLButtonElement>("[data-open]")!;
   openBtn.addEventListener("click", () => actions.open());
   root.querySelectorAll<HTMLButtonElement>("[data-enc]").forEach((b) => b.addEventListener("click", () => actions.start(b.dataset.enc!)));
+  root.querySelectorAll<HTMLButtonElement>("[data-parley]").forEach((b) => b.addEventListener("click", () => actions.parley(b.dataset.parley!)));
+  const parleyResume = root.querySelector<HTMLButtonElement>("[data-parley-resume]")!;
+  parleyResume.addEventListener("click", () => actions.resumeParley());
+  const parleyHint = root.querySelector<HTMLElement>("[data-parley-hint]")!;
+  const modeBtns = [...root.querySelectorAll<HTMLButtonElement>("[data-parley-mode] button")];
+  modeBtns.forEach((b) => b.addEventListener("click", () => actions.setParleyMode(b.dataset.m as ParleyViewMode)));
+  const paintMode = (m: ParleyViewMode) => modeBtns.forEach((b) => b.classList.toggle("on", b.dataset.m === m));
+  paintMode("immersive");
+  const narratorBtns = [...root.querySelectorAll<HTMLButtonElement>("[data-parley-narrator] button")];
+  narratorBtns.forEach((b) => b.addEventListener("click", () => actions.setNarrator(b.dataset.n as ParleyNarrator)));
+  const paintNarrator = (m: ParleyNarrator) => narratorBtns.forEach((b) => b.classList.toggle("on", b.dataset.n === m));
+  paintNarrator("gambit");
 
   const looksEl = root.querySelector<HTMLElement>("[data-looks]")!;
   const lookHint = root.querySelector<HTMLElement>("[data-look-hint]")!;
@@ -108,6 +146,13 @@ export function createPanel(
     },
     setStatus: (t) => (status.textContent = t),
     setResumable: (on) => (openBtn.textContent = on ? "Resume the fight" : "Open the Stage"),
+    setNarrator: (m) => paintNarrator(m),
+    setParley: (open, mode, journalSize) => {
+      parleyResume.hidden = !open;
+      if (open) parleyResume.textContent = `Resume: ${open}`;
+      paintMode(mode);
+      parleyHint.textContent = `Words move the dice. Open a chat first and the narrator plays them.${journalSize ? ` Journal: ${journalSize} fact${journalSize === 1 ? "" : "s"} learned.` : ""}`;
+    },
     destroy: () => {
       removeStyle?.();
       tab.destroy();

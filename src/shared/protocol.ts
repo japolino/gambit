@@ -6,6 +6,21 @@
  * Sections are owned by area; add new message types inside your section.
  */
 import type { Action, BattleEvent, BattleState } from "../engine/types.js";
+import type { Exchange, ParleyState } from "../engine/parley/types.js";
+
+/* ---------------------------- parley -------------------------------- */
+
+/** How the Referee's read is shown (docs/DESIGN.md 4.1.4). */
+export type ParleyViewMode = "immersive" | "transparent";
+
+/** Who voices the NPC: Gambit's own short narrator, or the chat's preset and model. */
+export type ParleyNarrator = "gambit" | "chat";
+
+/** Stored on the chat message that carries an exchange: metadata.gambit.parley. */
+export interface ParleyMessageMeta {
+  id: string;
+  index: number;
+}
 
 /* ---------------------------- art ---------------------------------- */
 
@@ -68,6 +83,13 @@ export type ToBackend =
   // battle
   | { type: "battle.start"; encounterId: string; seed?: string }
   | { type: "battle.act"; battleId: string; action: Action }
+  // parley
+  | { type: "parley.start"; scenarioId: string; chatId: string | null }
+  | { type: "parley.say"; parleyId: string; text: string }
+  | { type: "parley.close"; parleyId: string; how: "deal" | "walk" }
+  | { type: "parley.view"; mode: ParleyViewMode }
+  | { type: "parley.narrator"; mode: ParleyNarrator }
+  | { type: "journal.reset" }
   // art
   | { type: "art.request"; key: string; priority: ArtPriority }
   | { type: "art.status"; keys: string[] }
@@ -99,6 +121,17 @@ export type ToFrontend =
   // battle
   | { type: "battle.state"; state: BattleState; events: BattleEvent[] }
   | { type: "battle.error"; error: string }
+  // parley
+  | { type: "parley.state"; state: ParleyState; journal: string[]; view: ParleyViewMode; narrator: ParleyNarrator; resumed?: boolean }
+  /** A decided exchange: play the read and the dice. */
+  | { type: "parley.exchange"; parleyId: string; state: ParleyState; exchange: Exchange; narrated: boolean }
+  /** The Referee is reading a line typed in the normal composer. */
+  | { type: "parley.judging"; parleyId: string; text: string }
+  /** The NPC's narrated reply to exchange `index` (or a code-written one without a chat). */
+  | { type: "parley.reply"; parleyId: string; index: number; text: string; final: boolean }
+  | { type: "parley.error"; error: string }
+  | { type: "parley.view"; mode: ParleyViewMode }
+  | { type: "parley.narrator"; mode: ParleyNarrator }
   // art
   | { type: "art.update"; items: ArtStatus[] }
   | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus }[] }
