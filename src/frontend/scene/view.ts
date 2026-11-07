@@ -181,6 +181,19 @@ const CSS = `
 .gs .mw-card { display: grid; gap: 14px; width: 100%; animation: mwIn .5s ease; }
 .gs .mw-dots { display: flex; gap: 6px; } .gs .mw-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
 .gs .mw-hint { font: 12px "Segoe UI", system-ui, sans-serif; opacity: .55; }
+/* Journal (4.6): what you did and what the world remembers. */
+.gs .jr { position: absolute; top: var(--hud, 56px); left: 12px; width: min(420px, calc(100% - 24px)); bottom: 200px; z-index: 4; overflow: auto; background: rgba(15,12,9,.95); border: 1px solid rgba(201,168,101,.5); border-radius: 12px; padding: 12px 14px; font: 13px/1.45 "Segoe UI", system-ui, sans-serif; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+.gs .jr h3 { font: 600 12px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #c9a865; margin: 12px 0 6px; }
+.gs .jr h3:first-child { margin-top: 0; }
+.gs .jr ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; }
+.gs .jr .muted { opacity: .6; font-style: italic; }
+.gs .jr .done { text-decoration: line-through; opacity: .6; }
+.gs .jr .aff { display: inline-block; width: 70px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); margin: 0 6px; vertical-align: middle; position: relative; }
+.gs .jr .aff i { position: absolute; top: 0; bottom: 0; left: 50%; background: #c9a865; border-radius: 3px; }
+.gs .jr .aff i.neg { background: #c4544a; }
+.gs .jr .bond { color: #f1d9b0; font-weight: 600; }
+.gs .chip.jbtn { cursor: pointer; color: inherit; }
+@media (max-width: 720px) { .gs .jr { bottom: 330px; } }
 @keyframes mwIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes mwPulse { 50% { opacity: .45; } }
 @media (max-width: 720px) {
@@ -202,6 +215,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     <div class="world"><div class="flat"></div><canvas class="delve2d gone"></canvas><div class="folk"></div><div class="tabletop gone"></div><div class="lobbyface gone"></div></div>
     <div class="hexwrap gone"><svg role="group" aria-label="The overland"></svg><div class="key"></div></div>
     <div class="hand gone"></div>
+    <div class="jr gone" role="dialog" aria-label="Journal"></div>
     <div class="tiles gone"></div>
     <div class="route gone"></div>
     <canvas class="automap gone" width="150" height="150"></canvas>
@@ -228,6 +242,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   const hexkey = $<HTMLDivElement>(".hexwrap .key");
   const hand = $<HTMLDivElement>(".hand");
   const tabletop = $<HTMLDivElement>(".tabletop");
+  const jr = $<HTMLDivElement>(".jr");
+  let journalOpen = false;
 
   const art = new Map<string, { url: string; cutout: boolean }>();
   let view = first;
@@ -286,7 +302,13 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       <span class="chip" title="How fresh the party is">Vigor<span class="vig"><i style="width:${Math.round(v.vigor * 100)}%"></i></span></span>
       ${v.hex ? `<span class="chip" title="Each step on the overland eats a day's supplies; rest in a town to refill">Supplies <b>${v.hex.supplies}/${v.hex.max}</b></span>` : ""}
       ${v.thread ? `<span class="chip" title="${esc(`${v.thread.goal}${v.thread.found.length ? `\n\n${v.thread.found.map((f) => `• ${f}`).join("\n")}` : ""}`)}">🧵 <b>${v.thread.found.length}/${v.thread.total}</b></span>` : ""}
+      <button class="chip jbtn" type="button" aria-expanded="${journalOpen}">📜 Journal</button>
       <select class="chip" aria-label="Scene theme">${themes}</select>`;
+    hud.querySelector(".jbtn")!.addEventListener("click", () => {
+      journalOpen = !journalOpen;
+      renderJournal(view);
+      hud.querySelector(".jbtn")!.setAttribute("aria-expanded", String(journalOpen));
+    });
     hud.querySelector("select")!.addEventListener("change", (e) => a.theme((e.target as HTMLSelectElement).value as ThemeId));
     // What sits under the HUD starts below it, however many rows it wraps to.
     requestAnimationFrame(() => el.style.setProperty("--hud", `${hud.offsetTop + hud.offsetHeight + 8}px`));
@@ -320,6 +342,31 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     menu.innerHTML = parts.join("");
     menu.querySelectorAll<HTMLButtonElement>("[data-spot]").forEach((b) => b.addEventListener("click", () => a.act(b.dataset.spot!)));
     menu.querySelector("[data-fight]")?.addEventListener("click", () => a.fight());
+  }
+
+  function renderJournal(v: SceneView): void {
+    jr.classList.toggle("gone", !journalOpen);
+    if (!journalOpen) return;
+    const j = v.journal;
+    const list = (items: string[], empty: string) => (items.length ? `<ul>${items.join("")}</ul>` : `<div class="muted">${esc(empty)}</div>`);
+    const aff = (a: number) => `<span class="aff"><i class="${a < 0 ? "neg" : ""}" style="${a < 0 ? `right:50%;left:auto;width:${Math.min(50, -a * 5)}%` : `width:${Math.min(50, a * 5)}%`}"></i></span>`;
+    jr.innerHTML = [
+      `<h3>Companions</h3>`,
+      list(j.companions.map((c) => `<li class="${c.bonded ? "bond" : ""}">${esc(c.name)}${c.recruit ? " (recruited)" : ""}${aff(c.affinity)}${c.bonded ? "bonded: combo skill" : ""}</li>`), "Nobody travels with you yet."),
+      `<h3>Quests</h3>`,
+      list(
+        j.quests.map((q) => `<li class="${q.done ? "done" : ""}"><b>${esc(q.name)}</b>: ${esc(q.dossier)}<ul>${q.steps.map((s) => `<li class="${s.done ? "done" : ""}">${esc(s.text)} <span class="muted">(${esc(s.where)})</span></li>`).join("")}</ul></li>`),
+        "Nothing has caught your attention yet. Keep asking after people.",
+      ),
+      `<h3>People remember</h3>`,
+      list(j.people.map((p) => `<li><b>${esc(p.name)}</b> (${esc(p.feel)}): ${esc(p.notes.join("; "))}</li>`), "Nobody has made up their mind about you yet."),
+      `<h3>Rumours</h3>`,
+      list(j.rumors.map((x) => `<li>${esc(x)}</li>`), "No rumours yet."),
+      `<h3>Items</h3>`,
+      list(j.items.map((x) => `<li><b>${esc(x.name)}</b>: ${esc(x.description)} <span class="muted">(from ${esc(x.from)})</span></li>`), "Nothing special yet."),
+      `<h3>What you did</h3>`,
+      list(j.deeds.map((d) => `<li>${esc(d)}</li>`), "Nothing yet."),
+    ].join("");
   }
 
   function renderBox(v: SceneView): void {
@@ -533,6 +580,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     el.classList.remove("storybook", "onebit", "lobby", "diorama", "table", "command");
     el.classList.add(v.theme);
     renderHud(v);
+    renderJournal(v);
     renderBox(v);
     renderMenu(v);
     renderWorld(v);

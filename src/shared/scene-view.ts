@@ -75,6 +75,15 @@ export interface SceneView {
   hand: { id: string; text: string }[];
   /** An indoor place (a shop, inn, room): the Diorama theme builds it as a box room (6.2). */
   indoor: boolean;
+  /** The Journal (4.6): deeds, what people remember, rumours, quests, items, companions. */
+  journal: {
+    deeds: string[];
+    rumors: string[];
+    people: { id: string; name: string; feel: string; notes: string[] }[];
+    quests: { name: string; dossier: string; steps: { text: string; where: string; done: boolean }[]; item: string; done: boolean }[];
+    items: { name: string; description: string; from: string }[];
+    companions: { id: string; name: string; affinity: number; bonded: boolean; recruit: boolean }[];
+  };
   people: ScenePerson[];
   menu: Hotspot[];
   /** Fights are on for this card (the Encounters module). */

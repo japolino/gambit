@@ -8,6 +8,33 @@ import { roomAt, type DelveMap, type DelveState } from "../engine/world/delve.js
 import { fightLabel, hotspotsOf, TIMES, type Hotspot, type SceneState, type World } from "../engine/world/places.js";
 import { hexKey, SUPPLY_MAX, TERRAIN_NAME, type HexMap, type HexState, type Terrain } from "../engine/world/hex.js";
 import type { Thread } from "../meaning/bible.js";
+import type { Adaptation, Deed, NpcMemory, Promotion, Recruit, Tally } from "../engine/memory/memory.js";
+import { BOND_AT } from "../engine/memory/memory.js";
+import type { Scar } from "../meaning/night.js";
+
+/** What the chat's world remembers (4.6, M6). */
+export interface MemoryRecord {
+  deeds: Deed[];
+  /** Deeds before this index were read by a night phase already. */
+  nightAt: number;
+  tally: Tally;
+  adapt: Record<string, Adaptation[]>;
+  npc: Record<string, NpcMemory>;
+  interest: Record<string, number>;
+  promoted: Promotion[];
+  recruits: Recruit[];
+  scars: Record<string, Scar>;
+  items: { name: string; description: string; from: string }[];
+  rumors: string[];
+}
+
+export const newMemory = (): MemoryRecord => ({ deeds: [], nightAt: 0, tally: { elements: {}, statuses: {}, talks: 0, hits: 0 }, adapt: {}, npc: {}, interest: {}, promoted: [], recruits: [], scars: {}, items: [], rumors: [] });
+
+/** The art key of a place, following its scar when it has one (the edited painting). */
+export function placeArt(sheet: CardSheet, r: PlayRecord, placeId: string): string {
+  const scar = r.memory?.scars[placeId];
+  return scar ? `${placeKey(sheet, placeId)}~${scar.flag}` : placeKey(sheet, placeId);
+}
 import { npcArtKey, placeArtKey } from "./art-keys.js";
 import type { DelveView, Movement, SceneView, ThemeId } from "./scene-view.js";
 
@@ -28,6 +55,7 @@ export interface PlayRecord {
   /** The central thread, copied from the Bible, and the revelation ids found so far. */
   thread?: Thread;
   revealed?: string[];
+  memory?: MemoryRecord;
 }
 
 const INDOOR = /(inn|tavern|shop|store|room|rooms|bar|cafe|café|parlou?r|hall|kitchen|library|office|apartment|bedroom|chamber|study|salon|lounge|club|pub|smithy|forge|bakery|apothecary|mess|quarters|house|home|manor|mansion|palace|castle)/i;
@@ -123,8 +151,10 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     shape: r.world.shape,
     movement,
     skin: { currency: sheet.skin.currency, fight: sheet.skin.fight, genre: sheet.skin.genre },
-    place: wild ? { id: `wild_${wild}`, name: TERRAIN_NAME[wild], description: WILD_TEXT[wild], art: placeKey(sheet, `wild_${wild}`), added: true } : { id: p.id, name: p.name, description: p.description, art: placeKey(sheet, p.id), added: p.added },
-    tiles: movement === "lobby" ? others.filter((q) => p.exits.includes(q.id)).map((q) => ({ id: q.id, name: q.name, art: placeKey(sheet, q.id) })) : [],
+    place: wild
+      ? { id: `wild_${wild}`, name: TERRAIN_NAME[wild], description: WILD_TEXT[wild], art: placeKey(sheet, `wild_${wild}`), added: true }
+      : { id: p.id, name: p.name, description: r.memory?.scars[p.id] ? `${p.description}. ${r.memory.scars[p.id]!.note}` : p.description, art: placeArt(sheet, r, p.id), added: p.added },
+    tiles: movement === "lobby" ? others.filter((q) => p.exits.includes(q.id)).map((q) => ({ id: q.id, name: q.name, art: placeArt(sheet, r, q.id) })) : [],
     route: r.world.route.map((id) => ({ id, name: r.world.places[id]?.name ?? id })),
     people,
     menu: menuFor(sheet, r),
@@ -138,6 +168,7 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     ...(r.thread ? { thread: { goal: r.thread.goal, found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text), total: r.thread.revelations.length } } : {}),
     hand: sheet.facts.filter((f) => f.known || r.scene.found.includes(f.id)).map((f) => ({ id: f.id, text: f.text })),
     indoor: !wild && !r.delve && (p.shop || INDOOR.test(`${p.name} ${p.description}`)),
+    journal: journalView(sheet, r),
     ...(busy ? { busy } : {}),
   };
 }
@@ -159,5 +190,28 @@ function hexView(r: PlayRecord): NonNullable<SceneView["hex"]> {
     supplies: state.supplies,
     max: SUPPLY_MAX,
     wild: !!wildCell(r),
+  };
+}
+
+const feel = (a: number) => (a >= BOND_AT ? "devoted" : a >= 2 ? "warm" : a <= -5 ? "hostile" : a <= -2 ? "wary" : "neutral");
+
+/** The Journal: what you did, what people remember, rumours, quests, items, and your companions. */
+function journalView(sheet: CardSheet, r: PlayRecord): SceneView["journal"] {
+  const m = r.memory;
+  if (!m) return { deeds: [], rumors: [], people: [], quests: [], items: [], companions: [] };
+  const name = (id: string) => sheet.cast.find((c) => c.id === id)?.name ?? m.promoted.find((p) => p.castId === id)?.name ?? id;
+  const main = sheet.cast.filter((c) => c.main);
+  return {
+    deeds: m.deeds.slice(-12).reverse().map((d) => `Day ${d.day}: ${d.kind.replace(/_/g, " ")} ${d.name}${d.n && d.n > 1 ? ` (${d.n})` : ""}${d.method ? `, with ${d.method}` : ""}`),
+    rumors: m.rumors.slice(-6).reverse(),
+    people: Object.entries(m.npc)
+      .filter(([, v]) => v.notes.length)
+      .map(([id, v]) => ({ id, name: name(id), feel: feel(v.affinity), notes: v.notes.slice(-3).map((n) => n.text) })),
+    quests: m.promoted.map((p) => ({ name: p.name, dossier: p.dossier, steps: p.steps.map((s) => ({ text: s.text, where: r.world.places[s.where]?.name ?? s.where, done: s.done })), item: p.item.name, done: p.done })),
+    items: m.items,
+    companions: [
+      ...main.map((c) => ({ id: c.id, name: c.name, affinity: m.npc[c.id]?.affinity ?? 0, bonded: (m.npc[c.id]?.affinity ?? 0) >= BOND_AT, recruit: false })),
+      ...m.recruits.map((x) => ({ id: x.id, name: x.name, affinity: m.npc[x.id]?.affinity ?? 0, bonded: (m.npc[x.id]?.affinity ?? 0) >= BOND_AT, recruit: true })),
+    ],
   };
 }

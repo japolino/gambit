@@ -260,6 +260,8 @@ export interface BattleMeta {
   faces?: Record<string, string>;
   /** Delve room the fight is in, to mark it cleared. */
   room?: string;
+  /** How the party fought (4.6 build profile): damage by element, statuses applied, talks. */
+  tally?: { elements: Partial<Record<Element, number>>; statuses: Partial<Record<StatusId, number>>; talks: number; hits: number };
 }
 
 /* ------------------------------------------------------------------ */

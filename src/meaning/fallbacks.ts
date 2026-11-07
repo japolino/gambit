@@ -136,11 +136,11 @@ export function fallbackMeanwhile(sheet: Pick<CardSheet, "cast" | "places" | "ca
   }
   const places = sheet.places;
   if (places.length) {
-    const p = places[(h >> 3) % places.length]!;
-    out.push({ where: p.id, text: `At ${p.name.replace(/^The /, "the ")}, ${AT_PLACE[(h >> 5) % AT_PLACE.length]}.` });
+    const p = places[(h >>> 3) % places.length]!;
+    out.push({ where: p.id, text: `At ${p.name.replace(/^The /, "the ")}, ${AT_PLACE[(h >>> 5) % AT_PLACE.length]}.` });
   }
   if (factions.length) {
-    const f = factions[(h >> 7) % factions.length]!;
+    const f = factions[(h >>> 7) % factions.length]!;
     out.push({ text: `${f.name} moved a step closer to what they want: ${f.want.replace(/\.$/, "")}.` });
   }
   if (out.length < 3) out.push({ text: "The night was quiet. Too quiet, some would say later." });

@@ -47,6 +47,22 @@ let r: PlayRecord = (() => {
   const base: PlayRecord = { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: (new URLSearchParams(location.search).get("theme") ?? "storybook") as ThemeId, log: ["You arrive by the morning ferry."] };
   base.thread = { goal: "Find out why the lighthouse went dark", revelations: [1, 2, 3, 4].map((i) => ({ id: `rev${i}`, text: `Revelation ${i}` })), by: "fallback" };
   base.revealed = ["rev1"];
+  base.memory = {
+    deeds: [
+      { day: 1, kind: "killed", target: "bandit", name: "Dock Bandit", n: 3, method: "fire", place: "docks" },
+      { day: 1, kind: "lied_to", target: "mara", name: "Mara", place: "docks" },
+    ],
+    nightAt: 0,
+    tally: { elements: { fire: 120 }, statuses: {}, talks: 1, hits: 9 },
+    adapt: {},
+    npc: { mara: { notes: [{ day: 1, text: "Wren lied to them on day 1", tone: -1 }], affinity: -2 }, tobin: { notes: [], affinity: 5.5 } },
+    interest: {},
+    promoted: [{ key: "name:Old Brannoc", castId: "n_old_brannoc", name: "Old Brannoc", dossier: "A retired lamplighter who knows every smuggler by their boots.", steps: [{ text: "Find his old lamp", where: "lighthouse", done: true }, { text: "Ask Tobin about the night shift", where: "tavern", done: false }], item: { name: "Brannoc's lamp", description: "Never quite goes out." }, day: 1, done: false }],
+    recruits: [{ id: "r_thug_1_0", name: "Harbor Thug", foe: "thug", look: "", role: "brute", day: 1 }],
+    scars: {},
+    items: [],
+    rumors: ["The Dock Bandits have started carrying wet hides and buckets of sand."],
+  };
   if (world.shape === "frontier") {
     const map = buildHex(world, "preview-hex");
     base.hex = { map, state: newHex(map, cellOf(map, world.start)) };

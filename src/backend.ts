@@ -14,7 +14,7 @@ import type { ToBackend, ToFrontend } from "./shared/protocol.js";
 
 declare const spindle: SpindleAPI;
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 
 const send = (msg: ToFrontend, userId?: string) => spindle.sendToFrontend(msg, userId);
 // Without image connections the art pipeline reports "placeholder art" and
@@ -31,7 +31,15 @@ const parleys = createParleys(spindle, (msg, userId) => send(msg, userId), art);
 const cards = createCards(spindle, (msg, userId) => send(msg, userId), parleys);
 play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles);
 // New places come from play (4.5): the reply detector asks where the scene went.
-cards.setPlaceHook({ where: (u, c) => play!.where(u, c), moved: (u, c, pick, p, lines) => play!.moved(u, c, pick, p, lines) });
+cards.setPlaceHook({
+  where: (u, c) => play!.where(u, c),
+  moved: (u, c, pick, p, lines) => play!.moved(u, c, pick, p, lines),
+  notice: (u, c, lines) => play!.notice(u, c, lines),
+  extraCast: (u, c) => play!.extraCast(u, c),
+});
+// Memory (4.6): Parley outcomes become deeds; the narrator hears what people here remember.
+parleys.setEndHook((u, scenario, state) => void play!.onParleyEnd(u, scenario, state).catch((e) => spindle.log.error(`gambit deeds: ${String(e)}`)));
+spindle.registerInterceptor((messages, ctx) => play!.intercept(messages, ctx), 60);
 const CAMPAIGN = "default"; // one campaign until the World Bible exists (M4)
 
 // Prompt pipeline: Parley outcomes are decided before the narrator writes (docs/DESIGN.md 8.3).

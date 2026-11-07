@@ -3,6 +3,7 @@
  * frontend only sends actions and plays back the events it gets. Each
  * battle's state is saved per user, so a reload resumes the same fight.
  */
+import { emptyTally, tallyEvents } from "../engine/memory/memory.js";
 import type { SpindleAPI } from "lumiverse-spindle-types";
 import { actAndAdvance } from "../engine/battle.js";
 import { chooseAction } from "../engine/ai.js";
@@ -63,6 +64,11 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
       if (!state) return send({ type: "battle.error", error: "That battle is gone." }, userId);
       try {
         const r = actAndAdvance(state, action, chooseAction);
+        // Card battles keep a tally of how the party fights (the build profile, 4.6).
+        if (r.state.meta) {
+          const party = new Set(r.state.combatants.filter((c) => c.side === "party").map((c) => c.id));
+          r.state.meta = { ...r.state.meta, tally: tallyEvents(r.state.meta.tally ?? emptyTally(), r.events, party) };
+        }
         await save(userId, r.state);
         send({ type: "battle.state", state: r.state, events: r.events }, userId);
         if (state.outcome === "ongoing" && r.state.outcome !== "ongoing") onEnd?.(r.state, userId);

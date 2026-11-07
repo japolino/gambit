@@ -757,6 +757,19 @@ gambit/
 - **Checked live** on one card: the frontier overland, the Bible landing as "the world grows", a step into generated woods, a camp, and the montage with generated art. Vertex was rate-limited during the check, so the Bible and the montage ran on their code fallbacks there. The model paths are covered by tests (`tests/compiler.test.ts`, `tests/ledger.test.ts`).
 - **Still open:** checking a model-written Bible, places from the chat, and the montage live once the provider has quota again.
 
+**M6 status (2026-11-07): built; checked in tests and once in Lumiverse.**
+- **Deed ledger** (`src/engine/memory/memory.ts`): code turns what happens into tagged deeds. Battles report kills, spares, recruits and the method (element) from a per-battle tally of the party's events; Parleys report how they ended (won over, a deal, walked away, refused) and how you played it (a lie, a threat, charm, a bribe) against the person you talked to. Each deed carries the day and the place.
+- **Night phase** (`src/meaning/night.ts`), run at P3 when you rest:
+  - **Scars.** The Architect proposes at most one place change a night, only for a place where something happened that day, with a flag from a fixed list (burned, wrecked, bloodied, guarded, quiet, celebrating, abandoned, flooded). The place's art is redrawn as an edit of its original painting and keyed by the flag, and the place's description gains a line. With no model, a place where three or more fell is marked "bloodied", or "burned" if fire did it.
+  - **People remember.** Up to three people the day's deeds touched get a one-line memory. Code also keeps a score per person (-10 to 10) that those deeds move. When that person is in the scene, an interceptor note tells the chat's narrator what they remember.
+  - "Overnight, X changed" is posted to the chat as an aside.
+- **Factions adapt** in code: the build profile (element mix, favourite statuses, talk versus fight) picks countermeasures for a foe kind you have beaten six or more times, two at most, each announced first as a rumour. A monster that keeps getting the same status learns a cleanse.
+- **Notice:** names in your messages, visits, talks and searches raise an interest score. At 6 a P3 job promotes the person or place: role, look, a dossier, a 2 to 4 step questline at real places, sometimes a small sub-place, and a unique item. Code caps it at three promotions. A promoted name becomes a person in the cast. Searching at a step's place finishes the step, and the last step gives the item.
+- **Companions:** the card's cast are the first companions. Recruits from battles join the party with a base kit. Affinity moves with how you treat people: a warm companion likes mercy and dislikes a body count, a cold one the reverse. At 5 a companion is bonded, which unlocks a tier-3 combo skill in battle and their personal quest.
+- **Journal** in the scene's HUD: companions with affinity bars, quests and their steps, what people remember, rumours, items and the deeds.
+- **Checked live** on one card: search, rest with the night phase, and the journal. Promotions, scars and adaptations are covered by `tests/memory.test.ts`.
+- **Still open:** a scar redrawn by the model live (Vertex was rate-limited), group chats with more than one member as companions, and recruited monsters getting their own portrait set.
+
 ---
 
 ## 12. Open decisions

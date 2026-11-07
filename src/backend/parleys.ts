@@ -78,7 +78,11 @@ const metaOf = (meta: unknown): ParleyMessageMeta | null => {
   return p && typeof p.id === "string" && Number.isInteger(p.index) ? p : null;
 };
 
+/** A Parley with someone on a card ended (4.6: the deed ledger hears about it). */
+export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: ParleyState) => void;
+
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
+  let endHook: ParleyEndHook | null = null;
   const live = new Map<string, ParleyState>();
   const scenes = new Map<string, ParleyScenario>();
   const k = (userId: string, id: string) => `${userId}\u0000${id}`;
@@ -174,6 +178,13 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
   /** After an exchange: journal entries for a win, and the frontend event. */
   async function settle(userId: string, scenario: ParleyScenario, state: ParleyState, exchange: Exchange, narrated: boolean): Promise<void> {
     if (state.end?.kind === "won") await learn(userId, scenario, scenario.reveals ?? []);
+    if (state.end && state.end.kind !== "final_offer" && scenario.card && state.chatId) {
+      try {
+        endHook?.(userId, scenario, state);
+      } catch {
+        /* the ledger never breaks a Parley */
+      }
+    }
     send({ type: "parley.exchange", parleyId: state.id, state, exchange, narrated }, userId);
     if (!narrated) send({ type: "parley.reply", parleyId: state.id, index: exchange.index, text: fallbackReply(scenario, state, exchange), final: true }, userId);
   }
@@ -367,6 +378,10 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     /** The chat is waiting on a Parley narration (that reply is not roleplay to scan for contests). */
     awaitingIn(chatId: string): boolean {
       return narrating.has(chatId);
+    },
+
+    setEndHook(h: ParleyEndHook) {
+      endHook = h;
     },
 
     /** Prompt pipeline: inject the decided outcome (and judge composer lines inline). */

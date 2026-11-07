@@ -69,6 +69,10 @@ const BIBLE_RETRY_MS = 10 * 60_000;
 export interface PlaceHook {
   where(userId: string, chatId: string): Promise<{ here: { id: string; name: string }; places: { id: string; name: string }[] } | null>;
   moved(userId: string, chatId: string, pick: string, p: number, lines: { name: string; content: string }[]): Promise<void>;
+  /** Notice (4.6): what the player's latest line mentions raises interest. */
+  notice?(userId: string, chatId: string, lines: { name: string; content: string; isUser: boolean }[]): Promise<void>;
+  /** People the chat's world promoted (4.6): they can be talked to like the card's own cast. */
+  extraCast?(userId: string, chatId: string): Promise<CardSheet["cast"]>;
 }
 const chatPath = (chatId: string) => `cards/chat/${encodeURIComponent(chatId)}.json`;
 const DEMO = "cards/demo.json";
@@ -557,7 +561,9 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     /** Start a Parley with someone in the cast (from the drawer or a chip). */
     async talk(userId: string, chatId: string, castId: string, kind?: ContestKind, chipId?: string) {
       const chip = chipId ? chips.get(chipId) : undefined;
-      const sheet = await sheetFor(userId, chatId);
+      const base = await sheetFor(userId, chatId);
+      const extra = base && placeHook?.extraCast ? await placeHook.extraCast(userId, chatId).catch(() => []) : [];
+      const sheet = base && extra.length ? { ...base, cast: [...base.cast, ...extra.filter((m) => !base.cast.some((c) => c.id === m.id))] } : base;
       const who = sheet?.cast.find((c) => c.id === castId);
       if (!sheet || !who) return send({ type: "parley.error", error: "Gambit has no sheet for this chat yet." }, userId);
       send({ type: "card.starting", chatId, castName: who.name }, userId);
@@ -593,6 +599,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       const where = placeHook ? await placeHook.where(userId, chatId).catch(() => null) : null;
       if (!wantChip && !where) return;
       const lines = await recent(userId, chatId, 4);
+      if (placeHook?.notice) void placeHook.notice(userId, chatId, lines).catch((err) => log(`notice: ${errText(err).slice(0, 160)}`));
       const t0 = Date.now();
       const questions = { ...(wantChip ? detectorQuestions(sheet) : {}), ...(where ? whereQuestion(where.here, where.places) : {}) };
       const state = { ...detectorState(sheet, lines), ...(where ? { scene_was_at: where.here.name, known_places: where.places.map((p) => p.name) } : {}) };
