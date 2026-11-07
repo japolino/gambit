@@ -32,6 +32,8 @@ import { GPT_NO_TEXT, LOOKS, NAI_BASE_NEGATIVE, NAI_NO_TEXT, PROBE_BRIEFS, type 
 
 export interface ImageRef {
   imageId: string;
+  /** "card": art the user brought (a card's avatar or sprite), not Gambit's own render. */
+  source?: "card";
 }
 
 /** Stored per character: what keeps them the same person in every image. */
@@ -48,6 +50,8 @@ export interface CharacterDNA {
   sex?: "girl" | "boy" | "other";
   /** Comma-separated hex palette (as in the engine's visual briefs). */
   palette?: string;
+  /** Appearance tags from the user's own character library (Inlay Illustrator); used even for card art, where `tags` is prose. */
+  booru?: string;
 }
 
 export interface MonsterBrief {
@@ -318,9 +322,13 @@ const GPT_TRANSPARENT = "Isolated on a fully transparent background: no floor, n
 export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions = {}): BuiltPrompt {
   const transparent = wantsTransparency(spec);
   const bg = backgroundTags(transparent, opts);
-  const style = look.nai.positive;
-  const baseNeg = (extra: string) => join(NAI_BASE_NEGATIVE, look.nai.negative, extra, bg.neg, NAI_NO_TEXT);
-  const gptTail = sentences(look.gpt.style, transparent ? GPT_TRANSPARENT : "", look.gpt.avoid, GPT_NO_TEXT);
+  // Drawn from the user's own art (a card's avatar or sprite): the reference
+  // carries the style and the identity. The look's style words fought it (an
+  // oil-painting look against a cartoon card gave an off-model ink figure).
+  const fromCard = (spec.kind === "expression" || spec.kind === "pose") && spec.canonical.source === "card";
+  const style = fromCard ? "" : look.nai.positive;
+  const baseNeg = (extra: string) => join(NAI_BASE_NEGATIVE, fromCard ? "" : look.nai.negative, extra, bg.neg, NAI_NO_TEXT);
+  const gptTail = sentences(fromCard ? "Match the reference image's art style exactly." : look.gpt.style, transparent ? GPT_TRANSPARENT : "", fromCard ? "" : look.gpt.avoid, GPT_NO_TEXT);
   const naiSize = NAI_SIZE[spec.kind];
   const out = (prompt: string, negative: string, characterTags: string[], gpt: string): BuiltPrompt => ({
     kind: spec.kind,
@@ -338,7 +346,9 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
       const mood = spec.kind === "expression" ? EXPRESSION_TAGS[spec.expression] : spec.kind === "pose" ? "" : "light smile";
       const framing = spec.kind === "pose" ? "solo, full body, dynamic pose, action pose" : FIGURE_FRAMING;
       const poseTags = spec.kind === "pose" ? spec.pose : "";
-      const charCaption = join(lead, c.tags, mood, poseTags);
+      // A card's look is prose from the reader, not tags; the reference shows who they are.
+      // Library tags (Inlay) are real tags and keep the details on-model.
+      const charCaption = join(lead, c.booru || (fromCard ? "" : c.tags), mood, poseTags);
       const prompt = join(countTag(c.sex), style, framing, naiPaletteTags(c.palette), bg.pos);
       const negative = baseNeg(join(FIGURE_NEGATIVE, spec.kind === "pose" ? "motion lines, speed lines, special effects" : ""));
       const subject =

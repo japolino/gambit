@@ -2,13 +2,15 @@
 
 *Working title. A Lumiverse (Spindle) extension: an RPG where the rules are real, your words count, and the world is drawn while you play.*
 
-Status: design draft, nothing built yet. Version 0.1, 2026-11-06.
+Status: M0 to M2 built (engine, art spike, Parley). Version 0.2, 2026-11-06. Revised the same day to be **card-first** (4.0): Gambit plays the card you selected instead of shipping its own world.
 
 ---
 
 ## 0. The pitch in one paragraph
 
 You play a roleplay in Lumiverse like you always do, but under it sits a real game. Fights run in a turn-based engine that can kill you. Merchants, guards, and bosses can be *talked* to, and what you actually type moves the dice. Classes can be fused, or forged from a sentence you write, and every new skill arrives with its own illustrated cut-in. The world remembers what you did and redraws itself to match. Behind all of it, models do the creative and judgment work: designing, judging, drawing. Code does every bit of arithmetic. Nothing the model says can save you from a bad roll, and nothing it says can cheat you out of a good one.
+
+Gambit plays **the card you have selected**. Its characters are the people you bargain with, fight, and travel beside. Its setting and lorebooks are the map. Your persona is your character sheet. The rules are fixed, but the world, the cast, and even which parts of the game exist come from the card. A cozy café card gets conversations with stakes. A dungeon-crawl card gets the whole game.
 
 ---
 
@@ -19,22 +21,23 @@ You play a roleplay in Lumiverse like you always do, but under it sits a real ga
 3. **Shape from the model, size from code.** When a model designs content (skills, classes, monsters, loot), it chooses the *structure*: which effects, which triggers, which targets, plus the name and flavor. Code chooses the *magnitudes* to fit a power budget, then simulates the result to check it.
 4. **Never make the player wait at the table.** Heavy generation happens ahead of time and during natural pauses: resting, travel, the screen before a floor. Every asset has an instant placeholder, so the game never blocks on art.
 5. **The world accumulates.** Everything generated is kept, reused, and built on. The town you burned stays burned, drawn as an edit of the same painting. The guard you kept talking to becomes a real character.
+6. **The card is canon.** Content comes from the selected card, its lorebooks, the persona, and the chat, in that order. Gambit adds only what those leave open, marks what it added, and never edits or contradicts the card. The rules are the same on every card; the shape of the game is not. A card with no fighting never shows a combat screen.
 
 ---
 
 ## 2. What a session actually feels like
 
-> You arrive in **Saltreach** at dusk. The location painting fades in and the narrator (your chat model) describes the docks. Three hotspots glow: the *Harbormaster's office*, a *fish market*, and a *drowned shrine*.
+> You open a chat with **Captain Ilse Varga**, a card you downloaded about a smuggler captain in a drowned-coast port. Her card has an avatar, a lorebook about the Tide Guild and the customs fleet, and an opening scene in a dockside tavern. Your persona is a disgraced navigator.
 >
-> At the market a merchant has the lockpicks you need for 120 silver. You have 70. You open **Parley** and type: *"The tide guild's been squeezing everyone this month. I heard they fined you twice. I'll take these off your hands now, quietly, before their auditor comes round tomorrow."*
+> You switch Gambit on for this chat. While you read her greeting, Gambit reads the card. A short sheet appears in the drawer: **Cast:** Ilse, her quartermaster Dov (named in the lorebook), a customs inspector. **Places:** the tavern, the docks, Ilse's ship, the customs house. **Facts** (each with the line it came from): *the Tide Guild fined Ilse twice this month.* **Modules:** Parley, Encounters, Places, Economy. Your navigator gets a sheet built from your persona's description, with numbers sized by code. You adjust one stat and accept.
 >
-> A strip slides up: **Marta's read: Leverage (the guild fines are real, +2); she doesn't like being reminded (−1 mood).** You get 2d20, keep the higher, plus your Presence. The dice tumble: 14 and 7, keep 14, +2, +2 = 18 against DC 15. Success. She drops to 85. Her patience pips go from four to three. You push again with a lie, *"I've got a buyer in the capital who'd pay double for your stock."* The judge flags an **unverifiable claim**, which triggers a Guile vs Insight check. You fail it. She narrows her eyes, the price goes back up to 95, and she remembers that you lied.
+> You keep roleplaying. Ilse wants half your cut to take you upriver. Under her reply a chip appears: **Haggle with Ilse?** You tap it. The Parley scene opens with *her* card art, now with an annoyed expression drawn from her avatar. You type: *"The guild's fined you twice already. Another run with an empty hold and they'll take the ship."* **Ilse's read: Leverage (the fines are real, +2), she doesn't like being reminded.** You get 2d20, keep the higher, plus your Presence: 18 against DC 15. She drops to a third. Your line and her reply land in the chat as normal messages, and the story carries on from there.
 >
-> You buy them anyway. That night you **rest at the inn**. A short "Meanwhile…" montage plays while the game prepares the next region in the background: the Harbormaster has heard about you, the drowned shrine's boss is designed, and its art is generated.
+> Two days upriver the lorebook's customs cutter shows up. The chip says **Fight the boarding party?** The battle uses the card's world: customs marines, a cutter deck, flintlocks. The engine underneath is the same timeline combat. Dov fights beside you using a kit built from the lorebook's description of him. Your navigator's signature move fires a two-second cut-in.
 >
-> In the shrine, a **Bell-Drowned Acolyte** looms in front-view, a large illustrated figure that breathes slowly and flickers when hit. Your Tidecaller companion uses *Undertow Litany*, and a two-second cut-in fires: her portrait slides across a diagonal band, ink-wash water bursts behind her, and the skill name slams in. The acolyte's poise breaks. Its morale drops. You choose **Talk**: *"Your bells are already cracked. Nobody is coming to ring them."* It surrenders and offers you its bell-shard. That shard is a fusion catalyst.
->
-> Back in town you fuse **Tidecaller + Duelist** at the Altar. The game designs **Riptide Fencer**: a new resource (*Current*, built by alternating attacks and parries), three new skills assembled from the two parents' effect families, a portrait that blends both outfits, and new cut-ins. You read the exact numbers before you accept.
+> The next week you open a slice-of-life café card. Gambit reads it and switches on **Parley** only: no combat, no map, no loot. Talking the owner into letting you run the late shift is still a real contest, with real dice.
+
+The hand-made Saltgate scenes (Marta, Pell, Vey) ship as a **demo card**, played through the same path as any other card.
 
 ---
 
@@ -54,6 +57,65 @@ The Referee follows Warp's proven pattern: the model returns a **probability dis
 ---
 
 ## 4. Core systems
+
+### 4.0 Cards first: where the content comes from
+
+Gambit does not ship a world. It reads one from the card the player selected.
+
+**Sources, in canon order:**
+1. **The card:** description, personality, scenario, first message and alternate greetings, example dialogue, creator notes, tags, avatar, and gallery. In a group chat, every member's card.
+2. **The lorebooks:** the card's attached books, the persona's book, global books, and the chat's active entries (`world_books.resolveForChat`).
+3. **The persona:** name, title, description.
+4. **The chat so far.**
+5. **Gambit's own additions,** only where 1 to 4 say nothing, each marked as Gambit-added.
+
+**The Card Reader.** When the player turns Gambit on for a chat, the Architect reads those sources and writes a **Card Sheet**: JSON, validated, and frozen in the answer ledger.
+- **Cast.** Every named character, with a role and a stance (wants, fears, likes, hates, tells). The model picks a social tier for each, and code turns the tier into stats. The card's main character is always in the cast.
+- **Facts, places, factions.** Each fact quotes the span it came from, following Warp living-play's evidence model. Parley Leverage only counts facts the player has met in the chat or in the journal, so a fact buried in the lorebook doesn't help until play surfaces it.
+- **Genre skin.** The names of things: stat names, currency, wound and damage words, and what a fight is (a sword duel, a firefight, a netrun, a court case). The engine underneath does not change.
+- **Shape and modules.** How the world is laid out, and which parts of the game this card supports (both below).
+- **Player sheet.** The persona's stats and kit, proposed from their description and sized by code. The player reviews and edits it before play.
+
+The sheet is stored per card, so every chat with that card starts fast. Campaign state is per chat. When the card changes (`updated_at`), Gambit offers to re-read it and shows what changed.
+
+**Modules, picked per card.** Gambit is a set of modules, not one campaign layout:
+
+| Module | On when the card has… |
+|---|---|
+| **Parley** | anyone to talk to (almost every card) |
+| **Encounters** (combat) | conflict, danger, or enemies |
+| **Places and travel** | more than one location |
+| **Delves** (room-graph dungeons) | ruins, dungeons, wrecks, stations: anything explored room by room |
+| **Kits and fusion** | powers, skills, classes, or gear that matters |
+| **Economy** | money, trade, or scarce goods |
+
+The Card Reader proposes the set. The player can switch any module on or off per chat.
+
+**Shapes, not one fixed map.** The world layout is one of a few shapes the reader picks from the card: a **single scene** (one place, many people), a **town**, a **journey** (a line of stops), a **frontier** (a hub plus regions), or a **delve**. Code builds and checks the graph for whichever shape it is (4.5).
+
+**Started by the roleplay.** The player keeps roleplaying in chat. After each reply, one cheap batched Referee call asks whether the scene sets up a contest (talk, fight, explore) and with whom. When it does, a chip appears under the message: "Haggle with Ilse?", "Fight the boarding party?". Nothing opens by itself, and ignoring the chip just keeps the chat going. The drawer also lists the cast, so the player can start a Parley by hand.
+
+**The card's art is the anchor.** Art the user already has always beats art Gambit draws. For each person on the sheet, `backend/card-faces.ts` looks, in order, at:
+1. their own card: its expression group for them, its expression sprites, its imported Risu assets, its avatar;
+2. the chat's card(s), for people who live in its lorebook or share a multi-character card: the expression group or Risu assets named after them (`Mira.young.surprised`, `Lark_angry`);
+3. a card in the user's library with the same name (Brannoc has his own card);
+4. a captioned image in the card's gallery.
+
+`engine/card/faces.ts` maps sprite labels to the six moods. It reads emotion words only, and skips actions and explicit variants. Sprites are shown as drawn, never keyed. Moods with no sprite are drawn from the base face with a NovelAI V4.5 character&style reference. The look's style words are left out so the reference sets the style, and there is no text-only fallback, because an off-model face is worse than the card's own. The V5 inset drew blanks from show-style card art. A rendered mood that comes back blank, or greyscale for a colourful character, is rejected in the browser and the base face stays.
+
+An opaque base, such as a card avatar with its own background, is shown as a **framed portrait** (gilt rule, dark mat, the room softened behind it), and every mood shows inside the same frame. The art key carries the reference image, so a new avatar or sprite set never shows old renders. Characters with no art at all get Gambit portraits.
+
+When Inlay Illustrator is installed, Gambit reads its character library over the shared RPC pool (`inlay_illustrator.characters.<user>.<characterId>`): Inlay has already found who is on a card, tagged their appearance from its vision pass, and chosen their outfit and an on-model reference. Those tags ride in every drawn mood's caption (card art included), and Inlay's reference is the base for anyone who has no art of their own. Without Inlay, nothing changes. The look picker (5.2a) gains a **"match the card"** option that builds a look from the avatar's style.
+
+**Never in the way.**
+- Gambit is off until the player turns it on for a chat.
+- It never edits the card, its lorebooks, or the persona.
+- The Card Sheet can be exported as a lorebook, so the narrator can know Gambit's additions even with Gambit off.
+- It stands down on chats where Warp is active (12.1).
+
+**How a contest fits the card.** A contest's *shape* comes from the scene and the sheet: its kind, what is at stake, and the track's unit (crowns, credits, favors, minutes of a guard's patience). Its *size* comes from code tables keyed to the stake and the NPC's stance tier: start, floor, DC, and patience. This is pillar 3 applied to Parley. Encounters work the same way: the card names the enemies and their style, and the budget solver sets the numbers.
+
+**Demo content.** Saltgate (Marta, Pell, Vey) ships as a demo card plus lorebook, not as built-in content, and goes through the same Card Reader. Its hand-written scenarios stay as test fixtures for the engine.
 
 ### 4.1 Parley: talking as a mechanic
 
@@ -223,7 +285,7 @@ Enemies are built from the same language, so a faction that adapts to you (see 4
 
 **A class is:** growth curves (stats per level), one class resource, one passive, a skill tree of 8 to 10 skills (unlocked by class rank), weapon affinities, and a **visual brief** (silhouette, palette, motifs, outfit).
 
-**Starting set.** About 8 base classes are hand-tuned in data (Duelist, Warden, Tidecaller, Hexwright, Scout, Brute, Chorister, Alchemist), so the core game is balanced before any generation.
+**Starting kits come from the card.** The persona and each companion get a kit built from what the card and lorebook say they can do. The Architect maps that onto atoms, and the budget solver and sim size it, the same path as the Class Forge below. About 8 base classes are still hand-tuned in data (Duelist, Warden, Tidecaller, Hexwright, Scout, Brute, Chorister, Alchemist). They are a tested **fallback** used when a description is too thin to build from, and the genre skin renames them to fit the card. They are not a fixed menu every card must use.
 
 **Fusion.** At the Altar, with two classes at rank 3+ and a catalyst item:
 - *Code:* growth curves are a weighted blend plus one mutation, rolled seeded.
@@ -242,12 +304,13 @@ The Architect compiles that into the class schema: resource *Flavor* (gains stac
 
 **Skill awakening.** A skill used 50+ times can awaken. The Architect proposes 3 mutations built from atoms, you pick 1, and it gets a new cut-in variant.
 
-### 4.5 The world: hub, regions, dungeons, compiled just ahead of time
+### 4.5 The world: the card's places, compiled just ahead of time
 
-**Structure: a spine plus generated flesh.**
-- At campaign start the Architect writes a **World Bible**: premise, tone, a central mystery with 4 to 6 revelations, 4 to 6 factions with goals and resources, a hub town, and a region graph. This is generated *while the player chooses the art look and builds a character* (see 5.2), so the latency is hidden in onboarding.
-- **Regions** are graphs of **locations**. Each location has one background painting and 3 to 6 **hotspots**: NPCs, shops, exits, investigations, and hazards. Travel is node-to-node on a stylized region map drawn in code from the graph. There is no tile walking.
-- **Dungeons** are room graphs with fog of war. Rooms hold encounters, events, traps, treasure, rest points, and a boss. Worldgen's **map contract** idea applies: code checks reachability, key-before-lock, and boss reachability, then rebuilds up to N times on failure.
+**Structure: the card is the spine, generation fills the gaps.**
+- The **Card Sheet** (4.0) is the spine: premise, tone, cast, factions, and places, all quoted from the card and its lorebooks. At campaign start the Architect extends it into a **World Bible** only where the card is silent. It adds a central thread (a goal or mystery with 4 to 6 revelations) only if the card doesn't already give one, and lays the places out in the **shape** the reader picked. This compiles *while the player reviews their sheet and picks a look* (5.2), so the latency is hidden in onboarding.
+- **Places.** In every shape except a single scene, places form a graph. Each place has one background painting and 3 to 6 **hotspots**: people, shops, exits, investigations, and hazards. The graph stays under the hood: the player moves through **menus and first-person views, not a map** (6.1). A journey is a line of stops; a frontier is a hub plus regions.
+- **Delves** (when that module is on) are room graphs with fog of war. Rooms hold encounters, events, traps, treasure, rest points, and a boss. Worldgen's **map contract** applies: code checks reachability, key-before-lock, and boss reachability, then rebuilds up to N times on failure. A delve only appears where the card has somewhere to explore: the ruin in its lorebook, the derelict ship, the haunted house.
+- **New places come from play.** When the chat goes somewhere the sheet doesn't have, the place is added to the graph (a P0 or P1 job), quoted from the chat that introduced it.
 
 **JAOT (just-ahead-of-time) compiler.** A priority queue of compile jobs:
 
@@ -280,7 +343,7 @@ The Architect compiles that into the class schema: resource *Flavor* (gains stac
 
 The nameless guard you kept bribing turns out to have a story. Code guards a cap of 3 active promotions, so the world never sprawls faster than you can follow.
 
-**Companions.** Recruited NPCs and monsters join the party with a class (base, fused, or forged), a portrait set, and a personality. They talk in chat through the Narrator, using their dossier as context. Affinity is a Parley-adjacent track that changes with your choices, and at high affinity it unlocks combo skills and their personal quest.
+**Companions.** The card's own characters are the first companions: in a single-character card, that character; in a group chat, the members. Their portraits come from their card art. Recruited NPCs and monsters join the party with a class (base, fused, or forged), a portrait set, and a personality. They talk in chat through the Narrator, using their dossier as context. Affinity is a Parley-adjacent track that changes with your choices, and at high affinity it unlocks combo skills and their personal quest.
 
 ### 4.7 Economy and loot
 
@@ -311,7 +374,7 @@ That code layer is what makes it feel like a finished game and keeps it consiste
 ### 5.2 Style lock: choose your world's look
 
 Onboarding step 2, while the World Bible compiles:
-1. The Illustrator renders the **same test subject** (the hub town's gate, plus one character bust) in 4 looks.
+1. The Illustrator renders the **same test subject** (the card's main place, plus a bust of the card's main character made from its avatar) in 4 looks. One of them is "match the card" (4.0).
 2. The player picks one. It becomes the **style anchor**: a prompt fragment per provider, a negative prompt, and the 2 anchor images.
 3. From then on every GPT Image request includes an anchor image as a style reference, and every NAI request carries the locked style tags. One look for the whole campaign.
 
@@ -428,11 +491,65 @@ The Architect tags each monster with its rig type when designing it.
 > Section 8 lists the exact Spindle surfaces and limits this relies on.
 
 - **Chat stays the story.** The normal chat is where narration happens, and the player can always just roleplay. Gambit injects the state and decided outcomes into the Narrator's context through an interceptor (Warp's pattern).
-- **The Stage** is a full-screen game layer: an app mount, or a viewport-sized chromeless float widget as the fallback. Warp's stage and Cue's overlay prove this works. It opens for **Combat**, **Parley**, **Map/Travel**, the **Altar**, and **Inventory/Sheet**, and closes back to chat. The chat log stays one tap away as a side or bottom sheet. Battle aftermath and Parley outcomes post into chat as narrated messages.
-- **Location view** is the background painting with hotspots and a slim HUD (party HP, time of day, coin). Tapping a hotspot either opens a Stage mode or drops a suggested action into the chat input.
+- **The Stage** is a full-screen game layer: an app mount, or a viewport-sized chromeless float widget as the fallback. Warp's stage and Cue's overlay prove this works. It opens for **Scenes** (6.1), **Combat**, **Parley**, the **Altar**, and **Inventory/Sheet**, and closes back to chat. The chat log stays one tap away as a side or bottom sheet. Battle aftermath and Parley outcomes post into chat as narrated messages.
+- **Scene view** replaces a map: the place's painting (flat or in 3D, 6.2), the people in it, and a **menu** of what you can do there, with a slim HUD (party HP, time of day, coin). See 6.1.
 - **Mobile first-class.** The battle layout is designed for portrait orientation: enemy art on top, a timeline strip, then the party cards and action dial. Desktop gets a wider layout with the chat docked.
 - **Drawer tab** for the Journal (facts, quests, bestiary, codex) and settings.
 - **Audio:** hit, UI, and cut-in sounds are synthesized in WebAudio (sfxr-style recipes stored as data), with a few tiny clips inlined. Extensions cannot serve bundled files yet (8.1). Ambient loops and host TTS voices come later.
+
+### 6.1 Scenes and movement: menus, not a map
+
+Decided 2026-11-06 from references the user shared (shop and street scenes with a dialogue box, a portrait lobby ringed by menu tiles, first-person card tables, first-person grid dungeons with command menus, and 1-bit dithered dungeons and battles). Gambit borrows their **mechanics and framing**, not their characters or art.
+
+**Every place is a scene.** A scene is a painting, the people in it as standing portraits, a dialogue box, and a menu:
+- **Talk to…** one entry per person present (opens Parley, or just drops a line into chat),
+- **Look around / Search** (an investigation with a check),
+- **Go to…** one entry per exit,
+- **Rest, Shop, Wait** when the place allows them.
+
+Choosing an item can also drop a suggested action into the chat input instead, so the roleplay and the menu never fight. The menu is the one control that works everywhere, on desktop and phone, so **everything is reachable from a menu** whatever movement mode is on.
+
+**Movement modes, per shape** (the player can switch to plain menus at any time):
+
+| Shape | Default movement | Feel |
+|---|---|---|
+| Single scene | none, just the scene menu | a visual novel |
+| Town | a **lobby**: the companion's portrait in the middle, places as tiles around it | a home screen you return to |
+| Journey | **next stop** menu with a progress strip, plus events on the road | a road trip |
+| Frontier | a **honeycomb** (hex) overland: step one cell per turn, spending time and supplies; cells reveal as you go | expedition |
+| Delve | **first-person grid**: step forward, turn left or right, with a command menu beside the view (Advance, Turn, Search, Light a torch, Use) and an automap that fills in as you walk | dungeon crawl |
+
+The command menu in a delve is also the input on phones: no swipe gestures to learn.
+
+**Contests in scenes.** Parley and combat open on top of the scene they start in, so the room stays visible. In the **table** theme (6.3), Parley is framed as a first-person game across a table: the NPC sits opposite, and the player's hand holds **fact cards** from the journal. Playing a fact card cites that fact as Leverage, and code still checks that the player knows it. The player still types what they say, and the Referee still reads it.
+
+### 6.2 The 3D scene layer: 3D rooms built from 2D art
+
+Generated art stays the content. 3D is how it is staged, so a scene feels like a place you are standing in rather than a picture behind a menu. A **three.js** layer renders the environment; Pixi (puppets, cut-ins, FX) and the DOM menus draw on top.
+
+Ways to turn images into 3D, from cheapest to richest:
+1. **Depth backdrop.** One painting plus its depth map (Depth Anything V2, already used for Cue's parallax, 5.6) becomes a displaced mesh. The camera can drift, dolly in when you talk, and shake on hits. Every scene gets this for free.
+2. **Billboards.** Characters, monsters, and props are transparent cut-outs standing in the 3D space at the right depth, always facing the camera. They light and fog with the scene, and Cue's puppet warp still animates them.
+3. **Diorama rooms.** A shop or tavern is a simple box room (floor, walls, counter) with tileable textures, and prop cut-outs set on the counter and shelves. The shopkeeper stands behind the counter. Props can be tapped as menu items.
+4. **Grid corridors.** A delve is built from a few generated tileable textures per area (wall, floor, ceiling, door, stairs). The corridor geometry comes from the room graph, so every step is a real 3D move. Monsters are billboards at the end of the hall.
+5. **Panoramas** (later). A wide painting wrapped on a cylinder, so you can turn your head in a key location.
+
+**Post-process is part of the look.** A screen shader (dither, halftone, paper grain, CRT, ink) is applied over the whole 3D scene. The 1-bit dither theme is especially useful: it pulls generated art from different providers into one consistent style and hides small mistakes.
+
+**Cost and fallback.** three.js adds roughly 0.6 MB to the single frontend bundle (8.1), loaded only when a scene first opens. With no WebGL, or in "low" mode, every scene falls back to the flat painting with the same menu.
+
+### 6.3 Stage themes
+
+A **stage theme** is the frame around the art: the dialogue box, menu style, font, HUD, post-process shader, and default movement modes. It is separate from the **look** (5.2a), which is how the art itself is drawn, though a theme can suggest a look. Themes ship as data like looks, and a card can suggest one. Planned set:
+
+| Theme | Frame | Pairs well with |
+|---|---|---|
+| **Storybook** (default) | painted backdrop, standing portraits, nameplate dialogue box | most cards, single scenes |
+| **Diorama** | 3D rooms with props and a counter, warm light | shops, taverns, slice of life |
+| **Lobby** | big portrait in the middle, menu tiles around it | towns, companion-focused cards |
+| **Table** | first-person table, the opponent across from you, cards in hand, candlelight | Parley-heavy cards, gambling, horror |
+| **1-bit** | dithered black and white, terminal text, prompts like "Enter the dungeon?" | delves, horror, retro cards |
+| **Command** | first-person view with a text command list and party roster | classic dungeon crawls |
 
 ---
 
@@ -481,10 +598,11 @@ Surveyed against `D:\Lumiverse` at `8e0f3945`, using the Spindle types at v0.6.7
 | `interceptor` | State and outcome injection; hiding mechanical messages from the prompt |
 | `image_gen`, `images` | The Illustrator, the asset store, and uploading sliced icon sheets |
 | `chats`, `chat_mutation` | Posting narrated outcomes, per-swipe event records, CAS metadata |
-| `characters` | Optional: create a "Gambit world" card, read a card's visual description |
+| `characters` | **Required:** read the selected card (text, avatar, gallery, attached lorebook ids) for the Card Reader (4.0) |
+| `personas` | **Required:** read the active persona for the player sheet |
 | `ui_panels` | The float widget and dock panel |
 | `app_manipulation` | Optional: the full-screen Stage |
-| `world_books` | Optional: import a lorebook into the World Bible |
+| `world_books` | **Required:** read the card's, persona's, global, and active lorebook entries for the Card Reader; optional export of the Card Sheet as a lorebook |
 | `tools` | Optional, see 8.4 |
 | `push_notification` | Optional |
 
@@ -511,6 +629,14 @@ Since you maintain a Lumiverse fork, these would each simplify Gambit:
 1. **A static asset route for extensions**, e.g. `/api/v1/spindle/{id}/assets/*` serving files from the repo's `assets/` folder. This would let Gambit ship real SFX, music, and FX textures instead of inlining or synthesizing them.
 2. **First-class NAI V5 img2img and inpaint parameters** in `imageGen` (source image, strength, mask), instead of `rawRequestOverride`.
 3. **Reference gathering on `imageGen.generate`**, so an extension can pass image ids instead of base64 references.
+4. **Multimodal embeddings.** `spindle.embeddings.embed` takes text only today. Accepting image ids (and PDF pages) for multimodal models would let Gambit:
+   - **reuse art before drawing new art:** search the asset index for "the docks at night" or "Ilse, angry" and skip a generation when a close match exists;
+   - **check identity:** compare a new expression or pose against the card's avatar, and redraw when it drifts too far (a cheap check next to Cue's face fingerprinting);
+   - **match the card's look:** pick the look preset closest to the avatar's style for "match the card" (5.2a);
+   - **pick from the gallery:** choose the card gallery image nearest to the needed mood or pose as the reference;
+   - **read setting PDFs:** a rulebook or setting guide the player attaches (for example in a character databank) becomes a Card Reader source, retrieved by chunk instead of pasted whole.
+
+   None of this blocks anything. Without it Gambit uses text embeddings of the art prompts, and the Card Reader reads lorebooks and databank text only.
 
 ---
 
@@ -560,7 +686,9 @@ gambit/
       slicing.ts         sheet slicing, alpha trim
     backend/           Spindle wiring: interceptor, storage, RPC, chat events
     frontend/
-      stage/             Pixi renderer: battle, cut-ins, FX library, map
+      stage/             Pixi renderer: battle, cut-ins, FX library
+      scene/             three.js scene layer: depth backdrops, billboards, diorama rooms, grid corridors, post-process (6.2)
+      themes/            stage themes as data (6.3)
       ui/                React or DOM panels: sheet, journal, altar, parley
       bridge/            window events for Cue and LumiDoll (optional)
   tests/  scripts/  docs/
@@ -586,11 +714,14 @@ gambit/
 | **M0 Engine core** | Dice, ledger, atoms, timeline combat, budget solver, sim; text-only harness | The game is fun with no models at all |
 | **M1 Art spike** | Style lock flow; portrait → V5 inset vs GPT edits vs V5 sheet; transparent monsters; extract Cue's puppet modules and drive one enemy and one NPC in Pixi (breathe, flinch, slump, dissolve); depth parallax on one battlefield; one cut-in template with 6 FX layers; the queue | The look works, stays consistent, and moves |
 | **M2 Parley** | Stance, claim verification, Referee via Jev, tiers, haggle track, chat integration, transparency modes | Talking is a real mechanic and resists cheese |
-| **M3 Vertical slice** | Hub town (4 locations), one 6-room dungeon, 3 base classes, 1 fusion, 1 boss with phase 2, Talk in combat, Stage UI desktop + mobile; look files (presets, import/export, Inlay styles, switching with art keyed per look, 5.2a) | A 45-minute session that feels like a game, in the look you chose |
-| **M3.5 Look skill** | The `gambit-look` skill plus validator, and the in-drawer "describe a look" flow | Anyone can make and share a look |
-| **M4 The compiler** | World Bible, JAOT queue, rest "Meanwhile…", answer ledger, validators and fallbacks | Infinite content without waiting |
-| **M5 Memory** | Deed ledger, scars with background edits, faction adaptation, Notice promotions, companions | The world reacts |
-| **M6 Forge and Codex** | Class Forge from text, skill awakening, cross-campaign codex | Long-tail replay |
+| **M3 Card Reader** | `characters`, `personas`, `world_books` permissions; the Card Reader and Card Sheet (4.0) with quoted evidence, validators, and a fallback for thin cards; the sheet review and edit in the drawer; per-chat on/off; Parley against the card's own cast (stance from the sheet, portraits and expressions from the card's avatar); contest chips started by the roleplay; contest sizes from code tables; the player sheet from the persona; Saltgate repackaged as a demo card | Parley works on a card nobody wrote content for |
+| **M4 Scenes and encounters** | Scene view with menus (6.1); the three.js layer with depth backdrops and billboards (6.2); Storybook and 1-bit themes (6.3); lobby movement for towns; modules and shapes; the genre skin; enemies and kits from the card and lorebook (base classes only as fallback); timeline combat over the scene, desktop and mobile; Talk in combat; one first-person grid delve with a boss and phase 2 where the card has one; look files (5.2a) including "match the card" | A 45-minute session that plays like a game *and* still feels like that card |
+| **M4.5 Look skill** | The `gambit-look` skill plus validator, and the in-drawer "describe a look" flow | Anyone can make and share a look |
+| **M5 The compiler** | World Bible as an extension of the Card Sheet, places added from play, honeycomb overland for frontiers, diorama rooms and the Table, Lobby, Diorama, and Command themes, JAOT queue, rest "Meanwhile…", answer ledger, fallbacks | The card's world grows without waiting |
+| **M6 Memory** | Deed ledger, scars with background edits, faction adaptation, Notice promotions from chat mentions, companions from the card's cast and group members | The world reacts |
+| **M7 Forge and Codex** | Class Forge from text, fusion, skill awakening, cross-campaign codex | Long-tail replay |
+
+**Test cards for M3 and M4.** Each milestone is checked on at least four very different cards, with no hand edits: a single-character slice-of-life card, a dark-fantasy scenario card with a lorebook, a sci-fi narrator card, and a group chat. A milestone isn't done if any of them feels like a different game was bolted on.
 
 **M2 status (2026-11-06): playable in Lumiverse.**
 - **Built:** the engine (`src/engine/parley/`, tested), three Saltgate scenarios linked by a journal, the Referee with its fallbacks, the Parley scene, and chat integration.
@@ -601,6 +732,7 @@ gambit/
   - **Gambit (default).** One short streamed quiet call voices the NPC with the outcome as the last thing in the system prompt. The player's line and the reply are posted to the chat; the reply goes under the NPC's name, without starting the chat's own generation. This mode exists because long-form chat presets overrode the short-reply rules.
   - **Chat preset.** The chat's model narrates, and the interceptor hands it the outcome.
 - **Still open:** lines typed in the normal composer always get the chat's narrator. The host does not yet apply an interceptor `finalResponse`.
+- **What M3 changes:** the three scenarios are hand-written for Saltgate and ignore the selected card. M3 replaces them with scenes the Card Reader builds from any card (4.0); Saltgate becomes a demo card.
 
 ---
 
@@ -624,3 +756,6 @@ gambit/
 3. **Default tone and content ceiling.** Mature themes are a setting. Any adult content layer stays opt-in and out of public defaults.
 4. **Desktop-first or mobile-first** for the vertical slice. The recommendation is both layouts designed from day one, with desktop polished first.
 5. **Name.** Gambit is a placeholder.
+6. **Card-first (decided 2026-11-06).** Gambit plays the selected card instead of shipping its own world (4.0). This changes the M3+ plan: the fixed hub town, 6-room dungeon, and 3 base classes are gone as requirements. They are now shapes, modules, and fallbacks the card may or may not use. It also moves Gambit closer to Warp's "engine under any card" idea, so the stand-down rule in 12.1 matters more, and Warp's evidence model is the first thing worth copying for the Card Reader.
+7. **Menus, not a map (decided 2026-11-06).** Navigation is scene menus plus a movement mode per shape (6.1), staged in a three.js layer built from the 2D art (6.2), framed by stage themes (6.3). The region map drawn from the graph is dropped; the graph stays for code checks and the delve automap. Open: whether Pixi's battle stage later moves into three.js too, so there is one renderer instead of two.
+8. **Cards with almost nothing in them.** A two-line card gives the reader little to quote. Gambit then leans on the genre the card implies, marks most of the sheet as Gambit-added, and shows that in the review so the player can fix it.

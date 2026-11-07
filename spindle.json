@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "name": "Gambit",
   "identifier": "gambit",
   "author": "japolino",
@@ -15,7 +15,10 @@
     "image_gen",
     "images",
     "chats",
-    "chat_mutation"
+    "chat_mutation",
+    "characters",
+    "personas",
+    "world_books"
   ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",

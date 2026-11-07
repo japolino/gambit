@@ -28,8 +28,11 @@ import { judge } from "./referee-host.js";
 type Send = (msg: ToFrontend, userId: string) => void;
 
 const statePath = (id: string) => `parley/${encodeURIComponent(id)}.json`;
+const scenePath = (id: string) => `parley/scene/${encodeURIComponent(id)}.json`;
 const CURRENT = "parley/current.json";
 const JOURNAL = "journal.json";
+/** Card scenes keep one journal per chat (docs/DESIGN.md 4.0); the Saltgate demo keeps the global one. */
+const journalPath = (scenario: ParleyScenario | null | undefined) => (scenario?.card ? `journal/${encodeURIComponent(scenario.card.journalKey)}.json` : JOURNAL);
 const SETTINGS = "settings.json";
 
 interface Current {
@@ -49,7 +52,17 @@ const seedOf = (s: string): number => {
 
 export function npcDna(scenario: ParleyScenario): CharacterDNA {
   const npc = scenario.npc;
-  return { id: npc.id, name: npc.name, tags: npc.look.tags, description: npc.look.description, seed: seedOf(`npc:${npc.id}`), sex: npc.look.sex, palette: npc.look.palette };
+  const inlay = scenario.card?.inlay;
+  return {
+    id: npc.id,
+    name: npc.name,
+    tags: npc.look.tags,
+    description: npc.look.description,
+    seed: seedOf(`npc:${npc.id}`),
+    sex: inlay?.sex ?? npc.look.sex,
+    palette: npc.look.palette,
+    ...(inlay?.tags ? { booru: inlay.tags } : {}),
+  };
 }
 
 const textOf = (m: LlmMessageDTO | undefined): string => {
@@ -67,11 +80,14 @@ const metaOf = (meta: unknown): ParleyMessageMeta | null => {
 
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
   const live = new Map<string, ParleyState>();
+  const scenes = new Map<string, ParleyScenario>();
   const k = (userId: string, id: string) => `${userId}\u0000${id}`;
   const busy = new Set<string>();
   /** Chat -> the exchange whose narration we are waiting for (kept for swipes). */
   const awaiting = new Map<string, { userId: string; parleyId: string; index: number }>();
   const streams = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> | null }>();
+  /** Chats whose running generation narrates a Parley exchange (cleared when it ends). */
+  const narrating = new Set<string>();
   const log = (m: string) => {
     try {
       spindle.log.info(`gambit parley: ${m}`);
@@ -92,40 +108,72 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     await spindle.userStorage.setJson(statePath(state.id), state, { userId });
   }
 
+  /** A hand-made scenario, or one built from a Card Sheet and saved when it started. */
+  async function scenarioOf(userId: string, id: string | undefined | null): Promise<ParleyScenario | null> {
+    if (!id) return null;
+    if (PARLEYS[id]) return PARLEYS[id]!;
+    const hit = scenes.get(k(userId, id));
+    if (hit) return hit;
+    const saved = await spindle.userStorage.getJson<ParleyScenario | null>(scenePath(id), { fallback: null, userId });
+    if (saved) scenes.set(k(userId, id), saved);
+    return saved;
+  }
+
   const current = (userId: string) => spindle.userStorage.getJson<Current>(CURRENT, { fallback: {}, userId });
-  const journal = async (userId: string) => (await spindle.userStorage.getJson<{ known?: string[] }>(JOURNAL, { fallback: {}, userId })).known ?? [];
+  const journal = async (userId: string, scenario?: ParleyScenario | null) => (await spindle.userStorage.getJson<{ known?: string[] }>(journalPath(scenario), { fallback: {}, userId })).known ?? [];
   const settings = (userId: string) => spindle.userStorage.getJson<Settings>(SETTINGS, { fallback: {}, userId });
   const viewMode = async (userId: string): Promise<ParleyViewMode> => (await settings(userId)).parleyView ?? "immersive";
   const narratorMode = async (userId: string): Promise<ParleyNarrator> => (await settings(userId)).parleyNarrator ?? "gambit";
 
-  async function learn(userId: string, facts: string[]): Promise<void> {
+  async function learn(userId: string, scenario: ParleyScenario, facts: string[]): Promise<void> {
     if (!facts.length) return;
-    const known = new Set(await journal(userId));
+    const known = new Set(await journal(userId, scenario));
     for (const f of facts) known.add(f);
-    await spindle.userStorage.setJson(JOURNAL, { known: [...known] }, { userId });
+    await spindle.userStorage.setJson(journalPath(scenario), { known: [...known] }, { userId });
   }
 
   async function pushState(userId: string, state: ParleyState, resumed = false): Promise<void> {
-    send({ type: "parley.state", state, journal: await journal(userId), view: await viewMode(userId), narrator: await narratorMode(userId), resumed }, userId);
+    const scenario = await scenarioOf(userId, state.scenarioId);
+    if (!scenario) return;
+    send({ type: "parley.state", state, scenario, journal: await journal(userId, scenario), view: await viewMode(userId), narrator: await narratorMode(userId), resumed }, userId);
   }
 
   function requestNpcArt(scenario: ParleyScenario, userId: string): void {
     const key = npcArtKey(scenario.npc.id);
     const dna = npcDna(scenario);
-    art.request(key, { kind: "portrait", character: dna }, 0, userId);
     art.request(placeArtKey(scenario.id), { kind: "background", location: { id: scenario.id, name: scenario.name, description: scenario.setting, palette: scenario.npc.look.palette } }, 1, userId);
-    void art.whenDone(key, userId).then((portrait) => {
-      if (portrait.state !== "ready" || !portrait.imageId) return;
-      const wanted = [...new Set(Object.values(EXPRESSION_FOR_MOOD).filter((e): e is NonNullable<typeof e> => !!e))];
+    const wanted = [...new Set(Object.values(EXPRESSION_FOR_MOOD).filter((e): e is NonNullable<typeof e> => !!e))];
+    const expressions = (imageId: string, source?: "card") => {
       for (const expression of wanted) {
-        art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: portrait.imageId } }, 2, userId);
+        art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId, ...(source ? { source } : {}) } }, 2, userId);
       }
+    };
+    // Art the user already has is canonical (docs/DESIGN.md 4.0): their sprites are the
+    // moods as they are; only moods they lack are drawn, from their base face.
+    const faces = scenario.card?.faces;
+    const avatar = scenario.card?.avatar;
+    const baseId = faces?.base ?? avatar?.imageId ?? null;
+    const baseUrl = baseId ? `/api/v1/images/${baseId}` : (avatar?.url ?? null);
+    if (baseUrl) {
+      // cutout: true means "show as drawn": the user's art is never keyed (a black ground would eat black clothes).
+      const items: Extract<ToFrontend, { type: "art.update" }>["items"] = [{ key, state: "ready", url: baseUrl, ...(baseId ? { imageId: baseId } : {}), cutout: true, via: faces ? `card-${faces.source}` : "card-avatar" }];
+      for (const expression of wanted) {
+        const have = faces?.expressions[expression];
+        if (have) items.push({ key: expressionArtKey(key, expression), state: "ready", url: `/api/v1/images/${have}`, imageId: have, cutout: true, via: `card-${faces!.source}` });
+        else if (baseId) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: baseId, source: "card" } }, 2, userId);
+      }
+      send({ type: "art.update", items }, userId);
+      return;
+    }
+    art.request(key, { kind: "portrait", character: dna }, 0, userId);
+    void art.whenDone(key, userId).then((portrait) => {
+      if (portrait.state === "ready" && portrait.imageId) expressions(portrait.imageId);
     });
   }
 
   /** After an exchange: journal entries for a win, and the frontend event. */
   async function settle(userId: string, scenario: ParleyScenario, state: ParleyState, exchange: Exchange, narrated: boolean): Promise<void> {
-    if (state.end?.kind === "won") await learn(userId, scenario.reveals ?? []);
+    if (state.end?.kind === "won") await learn(userId, scenario, scenario.reveals ?? []);
     send({ type: "parley.exchange", parleyId: state.id, state, exchange, narrated }, userId);
     if (!narrated) send({ type: "parley.reply", parleyId: state.id, index: exchange.index, text: fallbackReply(scenario, state, exchange), final: true }, userId);
   }
@@ -195,6 +243,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     if (!state.chatId) return false;
     try {
       awaiting.set(state.chatId, { userId, parleyId: state.id, index: exchange.index });
+      narrating.add(state.chatId);
       const meta: ParleyMessageMeta = { id: state.id, index: exchange.index };
       const posted = await spindle.chat.appendMessage(state.chatId, { role: "user", content: exchange.text, metadata: { gambit: { parley: meta } } } as never, { triggerGeneration: true });
       const fresh = await load(userId, state.id);
@@ -214,8 +263,17 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     async start(userId: string, scenarioId: string, chatId: string | null) {
       const scenario = PARLEYS[scenarioId];
       if (!scenario) return send({ type: "parley.error", error: `Unknown Parley ${scenarioId}` }, userId);
+      await this.startScenario(userId, scenario, chatId);
+    },
+
+    /** Start a Parley from any scenario (a card scene is saved first, so it survives reloads). */
+    async startScenario(userId: string, scenario: ParleyScenario, chatId: string | null) {
+      if (!PARLEYS[scenario.id]) {
+        scenes.set(k(userId, scenario.id), scenario);
+        await spindle.userStorage.setJson(scenePath(scenario.id), scenario, { userId });
+      }
       const base = createParley(scenario, crypto.randomUUID().slice(0, 8), chatId);
-      const known = new Set([...base.known, ...(await journal(userId)).filter((id) => scenario.facts.some((f) => f.id === id))]);
+      const known = new Set([...base.known, ...(await journal(userId, scenario)).filter((id) => scenario.facts.some((f) => f.id === id))]);
       const state: ParleyState = { ...base, known: [...known] };
       await save(userId, state);
       await spindle.userStorage.setJson(CURRENT, { id: state.id, chatId } satisfies Current, { userId });
@@ -227,7 +285,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       const cur = await current(userId);
       if (!cur.id) return;
       const state = await load(userId, cur.id);
-      const scenario = state && PARLEYS[state.scenarioId];
+      const scenario = state && (await scenarioOf(userId, state.scenarioId));
       if (state && scenario && !state.end) {
         await pushState(userId, state, true);
         requestNpcArt(scenario, userId);
@@ -242,7 +300,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       busy.add(bk);
       try {
         const state = await load(userId, parleyId);
-        const scenario = state && PARLEYS[state.scenarioId];
+        const scenario = state && (await scenarioOf(userId, state.scenarioId));
         if (!state || !scenario) return send({ type: "parley.error", error: "That Parley is gone." }, userId);
         if (state.end) return send({ type: "parley.error", error: "This Parley is over." }, userId);
         const read = await judge(spindle, scenario, state, line, userId, { log });
@@ -272,7 +330,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
 
     async close(userId: string, parleyId: string, how: "deal" | "walk") {
       const state = await load(userId, parleyId);
-      const scenario = state && PARLEYS[state.scenarioId];
+      const scenario = state && (await scenarioOf(userId, state.scenarioId));
       if (!state || !scenario) return;
       const closed = closeParley(scenario, state, how);
       await save(userId, closed);
@@ -290,10 +348,25 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     },
 
     async resetJournal(userId: string) {
-      await spindle.userStorage.setJson(JOURNAL, { known: [] }, { userId });
       const cur = await current(userId);
       const state = cur.id ? await load(userId, cur.id) : null;
+      const scenario = state ? await scenarioOf(userId, state.scenarioId) : null;
+      await spindle.userStorage.setJson(JOURNAL, { known: [] }, { userId });
+      if (scenario?.card) await spindle.userStorage.setJson(journalPath(scenario), { known: [] }, { userId });
       if (state) await pushState(userId, state);
+    },
+
+    /** The Parley open in this chat, if any (contest chips stay quiet while one is open). */
+    async openIn(userId: string, chatId: string): Promise<boolean> {
+      const cur = await current(userId);
+      if (!cur.id || cur.chatId !== chatId) return false;
+      const state = await load(userId, cur.id);
+      return !!state && !state.end;
+    },
+
+    /** The chat is waiting on a Parley narration (that reply is not roleplay to scan for contests). */
+    awaitingIn(chatId: string): boolean {
+      return narrating.has(chatId);
     },
 
     /** Prompt pipeline: inject the decided outcome (and judge composer lines inline). */
@@ -325,10 +398,11 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       const meta = metaOf(userMsg?.sourceMessageMetadata);
       if (meta) {
         const state = await load(ctx.userId, meta.id);
-        const scenario = state && PARLEYS[state.scenarioId];
+        const scenario = state && (await scenarioOf(ctx.userId, state.scenarioId));
         const ex = state?.exchanges[meta.index];
         if (state && scenario && ex) {
           awaiting.set(ctx.chatId, { userId: ctx.userId, parleyId: state.id, index: ex.index });
+          narrating.add(ctx.chatId);
           return inject(outcomeBlock(scenario, { ...state, value: ex.after.value, patience: ex.after.patience }, ex));
         }
         return messages;
@@ -338,7 +412,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       const cur = await current(ctx.userId);
       if (!cur.id || cur.chatId !== ctx.chatId) return messages;
       const state = await load(ctx.userId, cur.id);
-      const scenario = state && PARLEYS[state.scenarioId];
+      const scenario = state && (await scenarioOf(ctx.userId, state.scenarioId));
       if (!state || !scenario || state.end) return messages;
       const text = textOf(userMsg).trim();
       const already = state.exchanges.some((e) => e.messageId && e.messageId === userMsg?.sourceMessageId);
@@ -357,6 +431,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
             .catch(() => spindle.chat.updateMessage(ctx.chatId, userMsg.sourceMessageId!, { metadata_patch: { gambit: { parley: meta } } }))
             .catch((err: unknown) => log(`could not tag message: ${err instanceof Error ? err.message : String(err)}`));
           awaiting.set(ctx.chatId, { userId: ctx.userId, parleyId: state.id, index: r.exchange.index });
+          narrating.add(ctx.chatId);
           await settle(ctx.userId, scenario, r.state, r.exchange, true);
           return inject(outcomeBlock(scenario, r.state, r.exchange));
         } finally {
@@ -368,6 +443,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
 
     /** The narrator finished: hand the reply to the Parley view. */
     onGenerationEnded(chatId: string, content: string | undefined, userId?: string) {
+      narrating.delete(chatId);
       const s = streams.get(chatId);
       if (s?.timer) clearTimeout(s.timer);
       streams.delete(chatId);
@@ -400,7 +476,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       const cur = await current(userId);
       if (!cur.id || cur.chatId !== chatId) return;
       const state = await load(userId, cur.id);
-      const scenario = state && PARLEYS[state.scenarioId];
+      const scenario = state && (await scenarioOf(userId, state.scenarioId));
       const at = state?.exchanges.findIndex((e) => e.messageId === messageId) ?? -1;
       if (!state || !scenario || at < 0) return;
       const rewound = replayParley(scenario, state, state.exchanges.slice(0, at).map((e) => ({ text: e.text, read: e.read, messageId: e.messageId, reply: e.reply })));
@@ -414,7 +490,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       const cur = await current(userId);
       if (!cur.id || cur.chatId !== chatId) return;
       const state = await load(userId, cur.id);
-      const scenario = state && PARLEYS[state.scenarioId];
+      const scenario = state && (await scenarioOf(userId, state.scenarioId));
       const at = state?.exchanges.findIndex((e) => e.messageId === messageId) ?? -1;
       if (!state || !scenario || at < 0 || state.exchanges[at]!.text === content.trim()) return;
       const before = replayParley(scenario, state, state.exchanges.slice(0, at).map((e) => ({ text: e.text, read: e.read, messageId: e.messageId, reply: e.reply })));

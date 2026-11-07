@@ -5,7 +5,8 @@
 import type { SpindleFrontendContext } from "lumiverse-spindle-types";
 import { ENCOUNTERS } from "../../engine/content/index.js";
 import { PARLEYS } from "../../engine/content/parleys.js";
-import type { ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
+import type { CardStatus, ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
+import { CARD_CSS, renderCard, type CardActions } from "./card-panel.js";
 
 const ICON = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z"/></svg>`;
 
@@ -30,7 +31,7 @@ const CSS = `
 .gb .seg { display: flex; border: 1px solid var(--lumiverse-border, rgba(127,127,127,.25)); border-radius: 999px; overflow: hidden; width: max-content; }
 .gb .seg button { border: 0; border-radius: 0; padding: 4px 12px; font-size: 12px; background: none; text-align: center; }
 .gb .seg button.on { background: var(--lumiverse-primary, #c8a26a); color: var(--lumiverse-primary-contrast, #111); }
-`;
+${CARD_CSS}`;
 
 export interface Panel {
   setLook(lookId: string | null): void;
@@ -41,6 +42,8 @@ export interface Panel {
   /** The open Parley's name (null when none), the view mode, and how many facts the journal holds. */
   setParley(open: string | null, mode: ParleyViewMode, journalSize: number): void;
   setNarrator(mode: ParleyNarrator): void;
+  /** The active chat's card status (null while asking), and whether a chat is open at all. */
+  setCard(status: CardStatus | null, hasChat: boolean): void;
   destroy(): void;
 }
 
@@ -55,6 +58,8 @@ export function createPanel(
     resumeParley(): void;
     setParleyMode(mode: ParleyViewMode): void;
     setNarrator(mode: ParleyNarrator): void;
+    card: CardActions;
+    demo(): void;
   },
 ): Panel {
   const tab = ctx.ui.registerDrawerTab({
@@ -69,11 +74,14 @@ export function createPanel(
   const root = document.createElement("div");
   root.className = "gb";
   root.innerHTML = `
-    <div class="row"><button class="primary" data-open>Open the Stage</button><div class="status" data-status></div></div>
+    <button class="primary" data-parley-resume hidden>Resume the Parley</button>
+    <div class="row"><h3>This chat</h3><div class="card-sec" data-card></div><div class="status" data-status></div></div>
+    <details><summary>Saltgate demo, encounters, and art</summary><div class="gb" style="padding:8px 0 0">
+    <div class="row"><button data-demo>Add the Saltgate demo card to my library<span class="sub">A small harbor town with a lorebook, played through the Card Reader like any card</span></button>
+      <button class="primary" data-open>Open the Stage</button></div>
     <div class="row"><h3>Look</h3><div class="hint" data-look-hint>No look chosen yet: art uses the default.</div>
       <button data-probe>Draw the four looks</button><div class="looks" data-looks></div></div>
     <div class="row"><h3>Parley</h3>
-      <button class="primary" data-parley-resume hidden>Resume the Parley</button>
       ${Object.values(PARLEYS)
         .map((p) => `<button data-parley="${p.id}">${p.name}<span class="sub">${p.blurb}</span></button>`)
         .join("")}
@@ -83,8 +91,11 @@ export function createPanel(
       <div class="hint" data-parley-hint>Words move the dice. Open a chat first and the narrator plays them.</div></div>
     <div class="row"><h3>Encounters</h3>${Object.values(ENCOUNTERS)
       .map((e) => `<button data-enc="${e.id}">${e.name}${e.boss ? " ✦" : ""}<span class="sub">${e.enemies.length} foe${e.enemies.length === 1 ? "" : "s"}${e.boss ? " · boss" : ""}</span></button>`)
-      .join("")}</div>`;
+      .join("")}</div></div></details>`;
   tab.root.appendChild(root);
+  const cardEl = root.querySelector<HTMLElement>("[data-card]")!;
+  root.querySelector("[data-demo]")?.addEventListener("click", () => actions.demo());
+  renderCard(cardEl, null, false, actions.card);
   const status = root.querySelector<HTMLElement>("[data-status]")!;
   const openBtn = root.querySelector<HTMLButtonElement>("[data-open]")!;
   openBtn.addEventListener("click", () => actions.open());
@@ -147,6 +158,7 @@ export function createPanel(
     setStatus: (t) => (status.textContent = t),
     setResumable: (on) => (openBtn.textContent = on ? "Resume the fight" : "Open the Stage"),
     setNarrator: (m) => paintNarrator(m),
+    setCard: (st, hasChat) => renderCard(cardEl, st, hasChat, actions.card),
     setParley: (open, mode, journalSize) => {
       parleyResume.hidden = !open;
       if (open) parleyResume.textContent = `Resume: ${open}`;

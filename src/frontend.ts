@@ -9,10 +9,11 @@ import { createOverlay, type Overlay } from "./frontend/host/overlay.js";
 import { createPanel } from "./frontend/host/panel.js";
 import { mountBattleStage } from "./frontend/stage/index.js";
 import { registerArtFrontend } from "./frontend/art/client.js";
-import { PARLEYS } from "./engine/content/parleys.js";
-import type { ParleyState } from "./engine/parley/types.js";
+import type { ParleyScenario, ParleyState } from "./engine/parley/types.js";
+import type { ContestChip } from "./engine/card/types.js";
+import { createChips } from "./frontend/host/chips.js";
 import { mountParley, type ParleyView } from "./frontend/parley/view.js";
-import type { ParleyNarrator, ParleyViewMode } from "./shared/protocol.js";
+import type { CardStatus, ParleyNarrator, ParleyViewMode } from "./shared/protocol.js";
 
 type StageHandle = ReturnType<typeof mountBattleStage>;
 type Step = { state: BattleState; events: BattleEvent[] };
@@ -30,7 +31,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let wantStage = false;
   /** The Parley on screen, the last state the backend sent, and whether a click asked for it. */
   let parley: ParleyView | null = null;
-  let parleyState: { state: ParleyState; journal: string[] } | null = null;
+  let parleyState: { state: ParleyState; scenario: ParleyScenario; journal: string[] } | null = null;
+  /** The card status of the chat on screen. */
+  let card: CardStatus | null = null;
   let wantParley = false;
   let parleyMode: ParleyViewMode = "immersive";
   let parleyNarrator: ParleyNarrator = "gambit";
@@ -67,10 +70,52 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       send({ type: "parley.start", scenarioId, chatId: activeChatId() });
     },
     resumeParley: () => {
-      if (parleyState && !parleyState.state.end) void showParley(parleyState.state, parleyState.journal);
+      if (parleyState && !parleyState.state.end) void showParley(parleyState.state, parleyState.scenario, parleyState.journal);
     },
     setParleyMode: (mode) => send({ type: "parley.view", mode }),
     setNarrator: (mode) => send({ type: "parley.narrator", mode }),
+    card: {
+      enable: (on) => withChat((chatId) => send({ type: "card.enable", chatId, on })),
+      reread: () => withChat((chatId) => send({ type: "card.read", chatId })),
+      talk: (castId) => withChat((chatId) => startTalk(chatId, castId)),
+      social: (stat, value) => withChat((chatId) => send({ type: "card.edit", chatId, social: { [stat]: value } })),
+      module: (id, on) => withChat((chatId) => send({ type: "card.edit", chatId, modules: { [id]: on } })),
+      chips: (on) => withChat((chatId) => send({ type: "card.chips", chatId, on })),
+    },
+    demo: () => {
+      panel.setStatus("Adding the demo card…");
+      send({ type: "card.demo" });
+    },
+  });
+
+  function withChat(fn: (chatId: string) => void): void {
+    const chatId = activeChatId();
+    if (chatId) fn(chatId);
+    else panel.setCard(null, false);
+  }
+
+  function startTalk(chatId: string, castId: string, kind?: ContestChip["kind"], chipId?: string): void {
+    wantParley = true;
+    panel.setStatus("Setting the scene…");
+    send({ type: "card.talk", chatId, castId, ...(kind ? { kind } : {}), ...(chipId ? { chipId } : {}) });
+  }
+
+  const chips = createChips(
+    ctx,
+    (chip) => startTalk(chip.chatId, chip.castId, chip.kind, chip.id),
+    (chip) => panel.setStatus(`${chip.label} Open the Gambit drawer and press Talk.`),
+  );
+
+  /** Ask for the card status of whatever chat is on screen. */
+  function refreshCard(): void {
+    const chatId = activeChatId();
+    card = null;
+    panel.setCard(null, !!chatId);
+    if (chatId) send({ type: "card.status", chatId });
+  }
+  const offChat = ctx.events.on("CHAT_SWITCHED", () => {
+    chips.clear();
+    refreshCard();
   });
 
   async function ensureOverlay(): Promise<Overlay> {
@@ -95,6 +140,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   async function showStage(state: BattleState, events: BattleEvent[]): Promise<void> {
+    chips.clear(activeChatId() ?? undefined);
     const ov = await ensureOverlay();
     if (disposed) return;
     if (!ov.visible()) send({ type: "stage.opened" });
@@ -110,9 +156,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
   }
 
-  async function showParley(state: ParleyState, journal: string[]): Promise<void> {
-    const scenario = PARLEYS[state.scenarioId];
-    if (!scenario) return;
+  async function showParley(state: ParleyState, scenario: ParleyScenario, journal: string[]): Promise<void> {
     const ov = await ensureOverlay();
     if (disposed) return;
     if (!ov.visible()) send({ type: "stage.opened" });
@@ -184,22 +228,22 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       }
       case "parley.state": {
-        parleyState = { state: msg.state, journal: msg.journal };
+        parleyState = { state: msg.state, scenario: msg.scenario, journal: msg.journal };
         parleyMode = msg.view;
         parleyNarrator = msg.narrator;
         panel.setNarrator(msg.narrator);
-        panel.setParley(msg.state.end ? null : PARLEYS[msg.state.scenarioId]?.name ?? null, msg.view, msg.journal.length);
+        panel.setParley(msg.state.end ? null : msg.scenario.name, msg.view, msg.journal.length);
         panel.setStatus("");
         if (parley && parley.parleyId === msg.state.id) parley.setState(msg.state, msg.journal, msg.view);
         else if (wantParley && !msg.resumed) {
           wantParley = false;
-          void showParley(msg.state, msg.journal);
+          void showParley(msg.state, msg.scenario, msg.journal);
         }
         break;
       }
       case "parley.exchange":
         if (parleyState) parleyState = { ...parleyState, state: msg.state };
-        panel.setParley(msg.state.end ? null : PARLEYS[msg.state.scenarioId]?.name ?? null, parleyMode, parleyState?.journal.length ?? 0);
+        panel.setParley(msg.state.end ? null : (parleyState?.scenario.name ?? null), parleyMode, parleyState?.journal.length ?? 0);
         if (parley?.parleyId === msg.parleyId) parley.exchange(msg.state, msg.exchange, msg.narrated);
         break;
       case "parley.judging":
@@ -211,7 +255,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "parley.view":
         parleyMode = msg.mode;
         parley?.setMode(msg.mode);
-        panel.setParley(parleyState && !parleyState.state.end ? PARLEYS[parleyState.state.scenarioId]?.name ?? null : null, msg.mode, parleyState?.journal.length ?? 0);
+        panel.setParley(parleyState && !parleyState.state.end ? parleyState.scenario.name : null, msg.mode, parleyState?.journal.length ?? 0);
         break;
       case "parley.narrator":
         parleyNarrator = msg.mode;
@@ -219,8 +263,21 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         parley?.setNarrator(msg.mode);
         break;
       case "parley.error":
+        wantParley = false;
+        chips.clear();
         if (parley) parley.error(msg.error);
         else panel.setStatus(msg.error);
+        break;
+      case "card.status":
+        if (msg.status.chatId !== activeChatId()) break;
+        card = msg.status;
+        panel.setCard(card, true);
+        break;
+      case "card.chip":
+        if (msg.chip.chatId === activeChatId()) chips.show(msg.chip);
+        break;
+      case "card.starting":
+        panel.setStatus(`Setting the scene with ${msg.castName}…`);
         break;
       case "battle.error":
         panel.setStatus(msg.error);
@@ -232,11 +289,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   });
 
   send({ type: "hello" });
+  refreshCard();
   ctx.ready();
 
   return () => {
     disposed = true;
     unsub();
+    offChat();
+    chips.destroy();
     disposeArt();
     stage?.destroy();
     overlay?.destroy();

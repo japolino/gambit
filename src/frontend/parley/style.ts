@@ -23,6 +23,14 @@ export const PARLEY_CSS = `
 .face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%;
   opacity: 0; transition: opacity .55s ease; filter: drop-shadow(0 18px 30px rgba(0,0,0,.55)); }
 .face.on { opacity: 1; }
+/* An opaque picture (a card's avatar) as a framed portrait: gilt rule, dark mat, the room softened behind it. */
+.fig.framed { height: 80%; margin-bottom: 6%; aspect-ratio: 2 / 3; }
+.fig.framed { background: radial-gradient(90% 70% at 50% 35%, #2a2119, #0e0b09); border-radius: 4px; }
+.fig.framed .face { object-fit: cover; object-position: 50% 22%; border-radius: 4px; filter: none;
+  box-shadow: 0 0 0 1px rgba(201,168,101,.7), 0 0 0 7px rgba(18,14,11,.92), 0 0 0 8px rgba(201,168,101,.35), 0 34px 70px rgba(0,0,0,.65); }
+.fig.framed::after { content: ""; position: absolute; inset: 0; border-radius: 4px; pointer-events: none;
+  background: linear-gradient(to top, rgba(8,6,5,.55), transparent 32%), radial-gradient(120% 80% at 50% 30%, transparent 60%, rgba(8,6,5,.35)); }
+.scene:has(.fig.framed) .plate { filter: blur(3px) brightness(.78); transition: filter .8s ease; }
 .face:not([src]), .plate-img:not([src]) { display: none; }
 .silhouette { position: absolute; left: 18%; right: 18%; bottom: 0; height: 78%; border-radius: 45% 45% 8% 8% / 30% 30% 4% 4%;
   background: radial-gradient(60% 40% at 50% 22%, rgba(201,168,101,.18), rgba(23,19,15,.85) 70%); display: grid; place-items: center;

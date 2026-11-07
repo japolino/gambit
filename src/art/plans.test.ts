@@ -41,6 +41,13 @@ describe("route order", () => {
     expect(labels(spec, ctx(ALL, "modern_anime"))).toEqual(["nai:nai-v5-inset-sprite", "gpt:gpt-edit-canonical", "nai:nai45-reference", "nai:nai-v5-dna", "gpt:gpt"]);
   });
 
+  test("expressions from a card's own art lead with the V4.5 reference and never fall back to a text-only face", () => {
+    expect(variantMethods(LOOKS.modern_anime, ALL, new Set(), true)).toEqual(["nai45_reference", "gpt_edit", "v5_inset"]);
+    const spec: ArtSpec = { kind: "expression", character: HERO, expression: "sad", canonical: { imageId: "avatar", source: "card" } };
+    expect(labels(spec, ctx(ALL, "modern_anime"))).toEqual(["nai:nai45-reference", "gpt:gpt-edit-canonical", "nai:nai-v5-inset-sprite"]);
+    expect(labels(spec, ctx({ nai: null, nai45: null, gpt: null }, "modern_anime"))).toEqual([]);
+  });
+
   test("pose uses the wide inset; portrait follows the look; monster prefers NAI under the default look", () => {
     expect(labels({ kind: "pose", character: HERO, pose: "lunging thrust", canonical: { imageId: "c" } }, ctx(ALL, "modern_anime"))[0]).toBe("nai:nai-v5-inset-wide");
     expect(labels({ kind: "portrait", character: HERO }, ctx(ALL))).toEqual(["gpt:gpt", "nai:nai-v5"]);
@@ -131,6 +138,28 @@ describe("prompts", () => {
     const b = buildPrompt({ kind: "portrait", character: HERO }, LOOKS.modern_anime, { naiAlpha: false });
     expect(b.nai.prompt).toContain("white background");
     expect(b.nai.characterTags).toEqual(["girl, silver hair, green eyes, leather armor, light smile"]);
+  });
+
+  test("an expression drawn from a card's own art leaves the style to the reference", () => {
+    const spec: ArtSpec = { kind: "expression", character: { ...HERO, tags: "an ancient owl demon of the high nobility." }, expression: "sad", canonical: { imageId: "avatar", source: "card" } };
+    const b = buildPrompt(spec, LOOKS.painted_dark_fantasy, { naiAlpha: false });
+    expect(b.nai.prompt).not.toContain("oil painting");
+    expect(b.nai.negative).not.toContain("anime coloring");
+    expect(b.nai.negative).toContain("watermark");
+    expect(b.nai.characterTags[0]).not.toContain("owl demon");
+    expect(b.nai.characterTags[0]).toContain("sad");
+    expect(b.gpt.prompt).toContain("Match the reference image's art style exactly.");
+    // Gambit's own characters still get the look.
+    expect(buildPrompt({ ...spec, canonical: { imageId: "c" } }, LOOKS.painted_dark_fantasy, { naiAlpha: false }).nai.prompt).toContain("oil painting");
+  });
+
+  test("library tags (Inlay) ride on a card expression, where the reader's prose does not", () => {
+    const spec: ArtSpec = { kind: "expression", character: { ...HERO, tags: "an ancient owl demon of the high nobility.", booru: "owl head, four eyes, red eyes, dark red silk robe" }, expression: "sad", canonical: { imageId: "avatar", source: "card" } };
+    const caption = buildPrompt(spec, LOOKS.painted_dark_fantasy, { naiAlpha: false }).nai.characterTags[0]!;
+    expect(caption).toContain("four eyes");
+    expect(caption).toContain("dark red silk robe");
+    expect(caption).not.toContain("high nobility");
+    expect(caption).toContain("sad");
   });
 
   test("backgrounds are opaque and wide; probes use the probed look", () => {

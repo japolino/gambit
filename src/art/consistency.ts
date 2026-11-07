@@ -36,12 +36,19 @@ export function insetOffKey(target: Pick<NaiTarget, "connectionId">, model: stri
  * V4.5 reference, then a plain DNA render, come last. Routes the user cannot
  * run are left out.
  */
-export function variantMethods(look: LookPreset, providers: ProviderSet, insetOff: ReadonlySet<string> = new Set()): VariantMethod[] {
+export function variantMethods(look: LookPreset, providers: ProviderSet, insetOff: ReadonlySet<string> = new Set(), fromCard = false): VariantMethod[] {
   const inset = providers.nai && isNaiV5(providers.nai.model) ? novelAiInsetModelFor("novelai", providers.nai.model) : null;
   const insetOk = !!(inset && providers.nai && !insetOff.has(insetOffKey(providers.nai, inset.model)));
-  const order: VariantMethod[] = look.preferred === "nai" ? ["v5_inset", "gpt_edit", "nai45_reference"] : ["gpt_edit", "v5_inset", "nai45_reference"];
+  // A card's own art (any style, often not NovelAI's) holds best under a V4.5
+  // character&style reference; the V5 inset drew blanks from show-style art.
+  // No plain DNA render for it: an off-model face is worse than the card's own.
+  const order: VariantMethod[] = fromCard
+    ? ["nai45_reference", "gpt_edit", "v5_inset"]
+    : look.preferred === "nai"
+      ? ["v5_inset", "gpt_edit", "nai45_reference"]
+      : ["gpt_edit", "v5_inset", "nai45_reference"];
   const out = order.filter((m) => (m === "v5_inset" ? insetOk : m === "gpt_edit" ? !!providers.gpt : !!providers.nai45));
-  if (providers.nai || providers.gpt) out.push("plain");
+  if (!fromCard && (providers.nai || providers.gpt)) out.push("plain");
   return out;
 }
 
@@ -114,7 +121,7 @@ export function insetPlan(ctx: PlanContext, spec: VariantSpec, built: BuiltPromp
 
 /** All plans for an expression or pose, in route order. */
 export function variantPlans(ctx: PlanContext, spec: VariantSpec, seed: number, priority: ArtPriority): Plan[] {
-  const methods = variantMethods(ctx.look, ctx.providers, ctx.insetOff);
+  const methods = variantMethods(ctx.look, ctx.providers, ctx.insetOff, spec.canonical.source === "card");
   const plans: Plan[] = [];
   const canonical = spec.canonical.imageId;
   for (const method of methods) {

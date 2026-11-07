@@ -84,3 +84,32 @@ export function keyFlatBackground(rgba: Uint8ClampedArray | Uint8Array, width: n
   }
   return true;
 }
+
+/** How much of a picture is figure (alpha > 0.5) and how colourful that figure is (mean chroma, (max-min)/255, 0..1; dark noise does not inflate it the way HSV saturation does). */
+export function figureStats(rgba: Uint8ClampedArray | Uint8Array): { coverage: number; saturation: number } {
+  let seen = 0;
+  let solid = 0;
+  let sat = 0;
+  // Every 7th pixel is plenty for a verdict and keeps this cheap on large art.
+  for (let i = 0; i + 3 < rgba.length; i += 4 * 7) {
+    seen++;
+    if (rgba[i + 3]! < 128) continue;
+    solid++;
+    const r = rgba[i]!, g = rgba[i + 1]!, b = rgba[i + 2]!;
+    const max = Math.max(r, g, b);
+    sat += (max - Math.min(r, g, b)) / 255;
+  }
+  return { coverage: seen ? solid / seen : 0, saturation: solid ? sat / solid : 0 };
+}
+
+/**
+ * Whether a generated expression is fit to replace the face it was drawn from.
+ * Rejects a blank or keyed-away render (almost no figure left) and a greyscale
+ * render of a colourful character (the generator lost the reference).
+ */
+export function usableExpression(expr: { coverage: number; saturation: number }, base?: { saturation: number }): boolean {
+  if (expr.coverage < 0.04) return false;
+  // Relative to the reference: a card's art can be muted (Corvin measures 0.165), a lost render is ~0.
+  if (base && base.saturation > 0.08 && expr.saturation < Math.min(0.05, base.saturation * 0.35)) return false;
+  return true;
+}

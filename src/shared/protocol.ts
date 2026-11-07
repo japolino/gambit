@@ -6,7 +6,25 @@
  * Sections are owned by area; add new message types inside your section.
  */
 import type { Action, BattleEvent, BattleState } from "../engine/types.js";
-import type { Exchange, ParleyState } from "../engine/parley/types.js";
+import type { Exchange, ParleyScenario, ParleyState, SocialStat } from "../engine/parley/types.js";
+import type { CardSheet, ContestChip, ModuleId, Tier } from "../engine/card/types.js";
+
+/* ---------------------------- card --------------------------------- */
+
+/** What the drawer shows for the active chat (docs/DESIGN.md 4.0). */
+export interface CardStatus {
+  chatId: string;
+  /** Gambit is switched on for this chat. */
+  enabled: boolean;
+  /** The Card Reader is reading right now. */
+  reading: boolean;
+  sheet: CardSheet | null;
+  /** The card changed since the sheet was read. */
+  stale: boolean;
+  /** Contest chips under replies are on. */
+  chips: boolean;
+  error?: string;
+}
 
 /* ---------------------------- parley -------------------------------- */
 
@@ -90,6 +108,14 @@ export type ToBackend =
   | { type: "parley.view"; mode: ParleyViewMode }
   | { type: "parley.narrator"; mode: ParleyNarrator }
   | { type: "journal.reset" }
+  // card
+  | { type: "card.status"; chatId: string }
+  | { type: "card.enable"; chatId: string; on: boolean }
+  | { type: "card.read"; chatId: string }
+  | { type: "card.edit"; chatId: string; social?: Partial<Record<SocialStat, Tier>>; modules?: Partial<Record<ModuleId, boolean>> }
+  | { type: "card.talk"; chatId: string; castId: string; kind?: ContestChip["kind"]; chipId?: string }
+  | { type: "card.chips"; chatId: string; on: boolean }
+  | { type: "card.demo" }
   // art
   | { type: "art.request"; key: string; priority: ArtPriority }
   | { type: "art.status"; keys: string[] }
@@ -122,7 +148,7 @@ export type ToFrontend =
   | { type: "battle.state"; state: BattleState; events: BattleEvent[] }
   | { type: "battle.error"; error: string }
   // parley
-  | { type: "parley.state"; state: ParleyState; journal: string[]; view: ParleyViewMode; narrator: ParleyNarrator; resumed?: boolean }
+  | { type: "parley.state"; state: ParleyState; scenario: ParleyScenario; journal: string[]; view: ParleyViewMode; narrator: ParleyNarrator; resumed?: boolean }
   /** A decided exchange: play the read and the dice. */
   | { type: "parley.exchange"; parleyId: string; state: ParleyState; exchange: Exchange; narrated: boolean }
   /** The Referee is reading a line typed in the normal composer. */
@@ -132,6 +158,12 @@ export type ToFrontend =
   | { type: "parley.error"; error: string }
   | { type: "parley.view"; mode: ParleyViewMode }
   | { type: "parley.narrator"; mode: ParleyNarrator }
+  // card
+  | { type: "card.status"; status: CardStatus }
+  /** The roleplay just set up a contest: offer it under that reply. */
+  | { type: "card.chip"; chip: ContestChip }
+  /** Framing a contest the player asked for (the Parley follows). */
+  | { type: "card.starting"; chatId: string; castName: string }
   // art
   | { type: "art.update"; items: ArtStatus[] }
   | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus }[] }

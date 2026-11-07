@@ -4,6 +4,8 @@
  * with probabilities); code turns that read into dice, rolls them from a
  * seed fixed per exchange, and moves the contest's track.
  */
+import type { FaceSet } from "../card/faces.js";
+import type { InlayLook } from "../card/inlay.js";
 
 export type Tactic = "interest" | "logic" | "empathy" | "flattery" | "threat" | "bribe" | "bluff" | "humor" | "insult" | "nonsense";
 export const TACTICS: readonly Tactic[] = ["interest", "logic", "empathy", "flattery", "threat", "bribe", "bluff", "humor", "insult", "nonsense"];
@@ -109,6 +111,19 @@ export interface ParleyScenario {
   opening: string;
   /** Facts written into the journal when the player wins. */
   reveals?: string[];
+  /** Built from a Card Sheet (docs/DESIGN.md 4.0) rather than hand-written. */
+  card?: {
+    cardKey: string;
+    castId: string;
+    /** The journal this scene reads and writes: one per chat. */
+    journalKey: string;
+    /** The card's avatar: the NPC's canonical face. */
+    avatar?: { imageId: string | null; url: string | null };
+    /** Art the user has of this person, by Lumiverse image id; moods without one are drawn from `base`. */
+    faces?: FaceSet;
+    /** Inlay Illustrator's look for this person (tags, outfit, reference), when Inlay knows them. */
+    inlay?: InlayLook;
+  };
 }
 
 /** What the Referee (or its stand-ins) said about one argument. */

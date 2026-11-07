@@ -15,7 +15,7 @@ import { TIER_NAMES } from "../../engine/parley/types.js";
 import { expressionArtKey, isExpressionArtKey, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
 import { EXPRESSION_FOR_MOOD } from "../../shared/parley-view.js";
 import type { ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
-import { keyFlatBackground } from "../art/key-background.js";
+import { figureStats, keyFlatBackground, usableExpression } from "../art/key-background.js";
 import { paintBackground } from "../stage/placeholder.js";
 import { PARLEY_CSS } from "./style.js";
 
@@ -68,8 +68,13 @@ function renderProse(target: HTMLElement, text: string): void {
   }
 }
 
-/** Opaque art on a flat background (V5 inset expressions) keyed to a transparent PNG. */
-async function keyedUrl(url: string): Promise<string> {
+type FigureStats = ReturnType<typeof figureStats>;
+
+/**
+ * Art made ready to show, with how much figure it holds and how colourful it is.
+ * Opaque art on a flat background (V5 inset expressions) is keyed to a transparent PNG.
+ */
+async function prepareArt(url: string, key: boolean): Promise<{ url: string; stats: FigureStats }> {
   const img = new Image();
   img.decoding = "async";
   img.src = url;
@@ -79,15 +84,17 @@ async function keyedUrl(url: string): Promise<string> {
   c.height = img.naturalHeight;
   const ctx = c.getContext("2d", { willReadFrequently: true })!;
   ctx.drawImage(img, 0, 0);
+  let data: ImageData;
   try {
-    const data = ctx.getImageData(0, 0, c.width, c.height);
-    if (!keyFlatBackground(data.data, c.width, c.height)) return url;
-    ctx.putImageData(data, 0, 0);
+    data = ctx.getImageData(0, 0, c.width, c.height);
   } catch {
-    return url;
+    return { url, stats: { coverage: 1, saturation: 1 } };
   }
+  if (!key || !keyFlatBackground(data.data, c.width, c.height)) return { url, stats: figureStats(data.data) };
+  const stats = figureStats(data.data);
+  ctx.putImageData(data, 0, 0);
   const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/png"));
-  return blob ? URL.createObjectURL(blob) : url;
+  return { url: blob ? URL.createObjectURL(blob) : url, stats };
 }
 
 const colorsOf = (palette: string): number[] => palette.split(",").map((h) => parseInt(h.trim().replace("#", ""), 16)).filter((n) => Number.isFinite(n));
@@ -233,10 +240,19 @@ export function mountParley(
   /* ---------------- figure and mood ---------------- */
   let showing: "a" | "b" = "a";
   let faceKey = npcArtKey(npc.id);
+  /** The base face's figure stats, to judge expressions against. */
+  let baseStats: FigureStats | undefined;
+  /** Figure stats of every face shown, by art key (framing). */
+  const artStats = new Map<string, FigureStats>();
   function setFace(key: string) {
-    const url = art.get(key) ?? art.get(npcArtKey(npc.id));
+    const shownKey = art.has(key) ? key : npcArtKey(npc.id);
+    const url = art.get(shownKey);
     if (!url) return;
     faceKey = key;
+    // Opaque art (a card's avatar or gallery picture, not a cut-out sprite) is
+    // shown as a framed portrait instead of a rectangle pasted on the room.
+    // The base face decides, so the look holds steady from mood to mood.
+    fig.classList.toggle("framed", (baseStats?.coverage ?? artStats.get(shownKey)?.coverage ?? 0) > 0.97);
     const [cur, next] = showing === "a" ? [imgA, imgB] : [imgB, imgA];
     if (cur.src === url) return;
     next.src = url;
@@ -502,12 +518,22 @@ export function mountParley(
         return;
       }
       if (!key.startsWith(npcArtKey(npc.id))) return;
-      const needsKey = isExpressionArtKey(key) || cutout === false;
-      void (needsKey ? keyedUrl(url) : Promise.resolve(url)).then((u) => {
-        if (u !== url) objectUrls.push(u);
-        art.set(key, u);
-        if (key === npcArtKey(npc.id) || key === faceKey) setFace(faceKey);
-      });
+      // Generated expressions come on a flat ground and are keyed; art sent as drawn (cutout: true) never is.
+      const needsKey = cutout === false || (isExpressionArtKey(key) && cutout !== true);
+      void prepareArt(url, needsKey)
+        .then(({ url: u, stats }) => {
+          if (u !== url) objectUrls.push(u);
+          if (key === npcArtKey(npc.id)) baseStats = stats;
+          // A blank or off-model mood picture never replaces the face it was drawn from.
+          else if (isExpressionArtKey(key) && !usableExpression(stats, baseStats)) {
+            console.warn(`[Gambit] skipped an unusable expression for ${npc.name}: ${key}`, stats);
+            return;
+          }
+          art.set(key, u);
+          artStats.set(key, stats);
+          if (key === npcArtKey(npc.id) || key === faceKey) setFace(faceKey);
+        })
+        .catch(() => {});
     },
     setNarrator(m) {
       narrator = m;

@@ -24,7 +24,7 @@ export interface JudgeOptions {
 
 /** A Jev (TypeSafe) Decision connection when the user has one, else the default (undefined). */
 const preferred = new Map<string, { id: string | undefined; at: number }>();
-async function preferredConnection(spindle: SpindleAPI, userId: string): Promise<string | undefined> {
+export async function preferredConnection(spindle: SpindleAPI, userId: string): Promise<string | undefined> {
   const hit = preferred.get(userId);
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.id;
   let id: string | undefined;
