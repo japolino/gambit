@@ -1,0 +1,24 @@
+{
+  "version": "0.1.0",
+  "name": "Gambit",
+  "identifier": "gambit",
+  "author": "japolino",
+  "github": "https://github.com/japolino/gambit",
+  "homepage": "https://lumiverse.chat",
+  "description": "An RPG under your roleplay: deterministic turn-based combat, words that move the dice, fusable classes, and generated art that moves.",
+  "permissions": [
+    "ui_panels",
+    "app_manipulation",
+    "generation",
+    "decisions",
+    "interceptor",
+    "image_gen",
+    "images",
+    "chats",
+    "chat_mutation"
+  ],
+  "entry_backend": "dist/backend.js",
+  "entry_frontend": "dist/frontend.js",
+  "interceptorTimeoutMs": 30000,
+  "minimum_lumiverse_version": "1.2.4"
+}

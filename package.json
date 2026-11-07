@@ -1,0 +1,24 @@
+{
+  "name": "gambit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gambit: an AI-driven RPG extension for Lumiverse (Spindle).",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run scripts/build.ts",
+    "verify": "bun run test && bun run typecheck && bun run build",
+    "play": "bun run scripts/play.ts",
+    "balance": "bun run scripts/balance.ts",
+    "preview": "bun run scripts/preview.ts"
+  },
+  "dependencies": {
+    "pixi.js": "8.22.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.0",
+    "lumiverse-spindle-types": "0.6.79",
+    "typescript": "5.9.3"
+  }
+}
