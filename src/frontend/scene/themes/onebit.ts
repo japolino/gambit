@@ -518,8 +518,14 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       // in the middle stands nearest; the others a step back, smaller and a
       // shade darker. Whole figures stand on the ground with a pool of shadow;
       // half figures rise out of the dark at the bottom of the view.
-      const ppl = ctx.people(v);
+      // A crowd is drawn as its first few, plus whoever the prompt's cursor is on; the menu still lists everyone.
+      const everyone = ctx.people(v);
       const menu = ctx.menu(v);
+      let ppl = everyone.slice(0, MAX_FIGURES);
+      const onCursor = menu.find((m) => m.key === cursor);
+      const cursorWho = onCursor?.key.startsWith("talk:") ? (onCursor.target ?? onCursor.key.slice(5)) : null;
+      const pulled = cursorWho && !ppl.some((p) => p.id === cursorWho) ? everyone.find((p) => p.id === cursorWho) : undefined;
+      if (pulled) ppl = [...ppl.slice(0, MAX_FIGURES - 1), pulled];
       const baseH = Math.round(cr.h * (ppl.length > 3 ? 0.66 : 0.8));
       const n0 = ppl.length;
       const front = n0 === 2 ? 0 : Math.floor((n0 - 1) / 2);
@@ -1443,4 +1449,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   };
 };
 
+
+/** Figures drawn in the view at once; more than this crowd into one another. */
+const MAX_FIGURES = 5;
 

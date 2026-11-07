@@ -140,6 +140,12 @@ const host = (() => {
   return inner;
 })();
 const T = sheet as unknown as { cardKey: string };
+// ?crowd=<n> (n > 3): n people at the place, the extras made up here, to check how a theme copes with a big cast.
+const CROWD = Number(new URLSearchParams(location.search).get("crowd") ?? 0);
+if (CROWD > 3) {
+  const names = ["Corvin", "Hesta", "Pell", "Dagny", "Orrin", "Sefa", "Bram", "Lisk", "Vey"];
+  for (const name of names.slice(0, CROWD - 3)) (sheet.cast as { id: string }[]).push({ ...sheet.cast[1]!, id: name.toLowerCase(), name, role: "a regular here", main: false });
+}
 const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   act(id) {
     const [kind, target] = id.split(":") as [string, string];
@@ -267,10 +273,10 @@ function refresh(): void {
   handle.setView(v);
   // Stand-in art for every key the view uses.
   Object.values(r.world.places).forEach((p, i) => handle.setArt(placeKey(sheet, p.id), REAL ? `/localart/place${(i % 4) + 1}.png` : paint(p.id.length * 47 + p.id.charCodeAt(0) * 13, "place"), false));
-  for (const m of [{ id: "mara" }, { id: "tobin" }, { id: "ilse" }]) {
-    const real = REAL_PERSON[m.id]!;
-    handle.setArt(npcArtKey(`${T.cardKey}:${m.id}`), REAL ? `/localart/${real[0]}.png` : paint(m.id.charCodeAt(0) * 31, "person"), REAL ? real[1] : true);
-  }
+  sheet.cast.forEach((m, i) => {
+    const real = REAL_PERSON[m.id] ?? Object.values(REAL_PERSON)[i % 3]!;
+    handle.setArt(npcArtKey(`${T.cardKey}:${m.id}`), REAL ? `/localart/${real[0]}.png` : paint(m.id.charCodeAt(0) * 31 + i * 17, "person"), REAL ? real[1] : true);
+  });
   // With real art there is no generated wall texture, as in a fresh Lumiverse delve: the layer draws stone.
   if (r.delve && !REAL) handle.setArt(wallKey(sheet, r.delve.placeId), paint(5, "wall"), false);
   for (const t of ["plain", "wood", "hill", "ruin"]) handle.setArt(placeKey(sheet, `wild_${t}`), paint(t.length * 91 + 7, "place"), false);
@@ -278,13 +284,14 @@ function refresh(): void {
 }
 /*
  * Screenshot switches: ?delve=1 starts inside a delve, ?at=<placeId> starts
- * at a place, ?busy=1 shows the busy state, ?crowd=1 puts all three people there, ?journal=1 / ?classes=1 open those panels, ?log=1 fills the log.
+ * at a place, ?busy=1 shows the busy state, ?crowd=1 puts all three people there (?crowd=12 makes it twelve), ?journal=1 / ?classes=1 open those panels, ?log=1 fills the log.
  */
 {
   const q = new URLSearchParams(location.search);
   const at = q.get("at");
   if (at && r.world.places[at]) r = { ...r, scene: { ...r.scene, placeId: at } };
   if (q.get("crowd") === "1") (r.world.places[r.scene.placeId] as { people: string[] }).people = ["mara", "tobin", "ilse"];
+  if (CROWD > 3) (r.world.places[r.scene.placeId] as { people: string[] }).people = sheet.cast.map((m) => m.id);
   if (q.get("log") === "1") r = { ...r, log: ["You arrive by the morning ferry.", "Mara eyes your satchel and says nothing.", "You found: a torn wharf ticket.", "Tobin pours you something that might be rum.", "Time passes: afternoon."] };
   if (q.get("delve") === "1") {
     const map = generateDelve(`preview:${r.scene.placeId}`);

@@ -64,6 +64,9 @@ interface Item {
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const HANDS: Record<string, [number, number]> = { morning: [9, 0], afternoon: [15, 0], evening: [18, 30], night: [23, 0] };
 
+/** People drawn behind the counter; the rest are in the guest book. */
+const BEHIND_COUNTER = 4;
+
 export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   host.innerHTML = `<div class="dr d3">
   <div class="stage3"></div>
@@ -593,7 +596,8 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
 
   function people(v: SceneView): { id: string; x: number; name: string; role: string; talk: (() => void) | null }[] {
     if (!parts || !st) return [];
-    const list = ctx.people(v);
+    // Four fit behind the counter; anyone else is in the guest book (render: "x:others").
+    const list = ctx.people(v).slice(0, BEHIND_COUNTER);
     const n = list.length;
     const xs = n === 1 ? [0.05] : n === 2 ? [-0.5, 0.55] : list.map((_, i) => -0.95 + (1.9 * i) / Math.max(1, n - 1));
     const arts = list.map((p) => ctx.personArt(v, p.id));
@@ -692,6 +696,9 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     // People.
     const ppl = people(v);
     for (const p of ppl) for (const m of menu) if (m.key === `talk:${p.id}`) used.add(m.key);
+    const others = ctx.people(v).slice(BEHIND_COUNTER);
+    const otherTalk = menu.filter((m) => others.some((o) => m.key === `talk:${o.id}`));
+    for (const m of otherTalk) used.add(m.key);
     acts.set("journal", () => ctx.journal.toggle());
     acts.set("classes", () => ctx.classes.toggle());
     ppl.forEach((p) => {
@@ -834,7 +841,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
 
     // Supplies and anything left over, along the back of the counter.
     const leftovers = menu.filter((m) => !used.has(m.key));
-    const ek = `${s.supplies ? `${s.supplies.now}/${s.supplies.max}` : ""}|${leftovers.map((m) => m.key).join(",")}`;
+    const ek = `${s.supplies ? `${s.supplies.now}/${s.supplies.max}` : ""}|${leftovers.map((m) => m.key).join(",")}|${otherTalk.length ? "others" : ""}`;
     if (ek !== P.extrasKey) {
       P.extrasKey = ek;
       P.extras.clear();
@@ -844,11 +851,24 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
         const l = M.letterModel();
         P.extras.add(place(l, -0.2 + i * 0.32, M.TOP, 0.22, (i % 2 ? 0.2 : -0.2)));
       });
+      if (otherTalk.length) P.extras.add(place(M.letterModel(), 0.55, M.TOP, 0.3, -0.12));
     }
     leftovers.forEach((m, i) => {
       const l = P.extras.children[(s.supplies ? s.supplies.max : 0) + i];
       if (l) item(`x:${m.key}`, l, [0, 0.0, 0.1], m.label, false, { run: m.run, ring: 0.16 });
     });
+    // The guest book: everyone here who doesn't fit behind the counter.
+    const book = otherTalk.length ? P.extras.children[(s.supplies ? s.supplies.max : 0) + leftovers.length] : undefined;
+    if (book)
+      item("x:others", book, [0, 0.0, 0.1], `${others.length} others here`, true, {
+        ring: 0.16,
+        dist: 0.8,
+        panel: () => `<h4>Also here</h4><div class="trips">${otherTalk.map((m) => {
+          const o = others.find((x) => m.key === `talk:${x.id}`);
+          acts.set(`m:${m.key}`, m.run);
+          return `<button class="pb" data-act="m:${esc(m.key)}">${esc(m.label)}${o?.role ? `<small> · ${esc(o.role)}</small>` : ""}</button>`;
+        }).join("")}</div>`,
+      });
 
     /* ---------------- DOM: labels, status, narration, overlays ---------------- */
     const lbl: string[] = [];

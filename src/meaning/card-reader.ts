@@ -34,6 +34,10 @@ import {
 } from "../engine/card/types.js";
 import type { Questions } from "./referee.js";
 import { sameName } from "../engine/card/names.js";
+import { loreText } from "./lore-pick.js";
+
+/** The card's people plus the named ones the read keeps (promotions add more in play). */
+export const MAX_CAST = 12;
 
 /* ------------------------------ helpers ------------------------------ */
 
@@ -119,8 +123,8 @@ export function evidenceFor(quote: string, src: CardSources, corp = corpora(src)
 
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}…` : s);
 
-/** Labelled source text for the Architect, cut to a budget (card first, lore last). */
-export function sourcesText(src: CardSources, budget = 24_000): string {
+/** Labelled source text for the Architect, cut to a budget (card first, lore last, ranked by lore-pick). */
+export function sourcesText(src: CardSources, budget = 30_000): string {
   const parts: string[] = [];
   for (const c of src.cards) {
     parts.push(
@@ -143,13 +147,11 @@ export function sourcesText(src: CardSources, budget = 24_000): string {
   parts.push(`[PERSONA: the player — ${p.name || "unnamed"}${p.title ? `, ${p.title}` : ""}]\n${clip(p.description || "(no description)", 2000)}`);
   if (src.chat.length) parts.push(`[CHAT SO FAR]\n${src.chat.slice(-12).map((m) => `${m.name}: ${clip(m.content, 900)}`).join("\n")}`);
   let text = parts.join("\n\n");
-  const lore: string[] = [];
-  for (const l of src.lore) {
-    const block = `[LORE: ${l.title}]\n${clip(l.content, 1500)}`;
-    if (text.length + lore.join("\n\n").length + block.length > budget) break;
-    lore.push(block);
+  const room = budget - text.length - 2;
+  if (src.lore.length && room > 400) {
+    const lore = loreText(src, room);
+    if (lore.text) text += `\n\n${lore.text}`;
   }
-  if (lore.length) text += `\n\n${lore.join("\n\n")}`;
   return clip(text, budget);
 }
 
@@ -192,7 +194,7 @@ Write this JSON:
  "player": {"concept": "who the persona is, one line", "social": {"presence": 0-4, "menace": 0-4, "guile": 0-4}}
 }
 Modules: turn one on only if the card supports it. parley = anyone to talk to; encounters = conflict or danger; places = more than one location; delves = somewhere explored room by room; kits = powers, skills, classes, or gear that matters; economy = money, trade, or scarce goods.
-Cast: the card's character(s) first, then up to 7 people the sources name. Places: up to 4. Do not include the player in the cast.`,
+Cast: the card's character(s) first, then up to 11 people the sources name, the ones most likely to matter in play first. Places: up to 6. Names listed under ALSO IN THE LOREBOOK are real people and places of this world and may be picked; quote the name. Do not include the player in the cast.`,
   };
   const people = {
     system: `You are the Card Reader of a roleplay game engine. You read a character card, its lorebook, the player's persona, and the chat, and you describe how its people can be persuaded, as JSON.
@@ -335,7 +337,7 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
   const taken = new Set<string>();
   const cast: CastMember[] = [];
   const idMap = new Map<string, string>();
-  const rawCast = Array.isArray(raw.cast) ? raw.cast.slice(0, 10) : [];
+  const rawCast = Array.isArray(raw.cast) ? raw.cast.slice(0, 16) : [];
   for (const r of rawCast) {
     const o = obj(r);
     const name = str(o.name, 60);
@@ -386,7 +388,7 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
       tells,
       evidence: card ? { source: "card", quote: ev.quote || card.name, verified: true } : { source: ev.source, quote: ev.quote, verified: ev.verified },
     });
-    if (cast.length >= 8) break;
+    if (cast.length >= MAX_CAST) break;
   }
   for (const c of src.cards) {
     if (!cast.some((m) => m.characterId === c.id)) {

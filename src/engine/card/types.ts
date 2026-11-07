@@ -155,7 +155,15 @@ export interface SourceLore {
   /** Entry comment or first key, to label it. */
   title: string;
   content: string;
-  scope: "card" | "persona" | "chat";
+  scope: "card" | "persona" | "chat" | "global";
+  /** The entry's trigger keys (primary and secondary), for ranking and lookup. */
+  keys?: string[];
+  /** Always-on in the host's prompt. */
+  constant?: boolean;
+  /** The host has it active in this chat right now (keyword or vector match). */
+  active?: boolean;
+  /** The book's own order, lower first. */
+  order?: number;
 }
 
 export interface SourceMessage {

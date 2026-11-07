@@ -60,6 +60,8 @@ export interface CardsPort {
   armory(userId: string, chatId: string): Promise<CardSheet | null>;
   talk(userId: string, chatId: string, castId: string): Promise<void>;
   recent?(userId: string, chatId: string, n: number): Promise<{ name: string; content: string; isUser: boolean }[]>;
+  /** The lorebook's text about a name, for promotions (meaning/lore-pick.ts loreAbout). */
+  loreFor?(userId: string, chatId: string, name: string): Promise<string>;
   markKnown?(userId: string, chatId: string, factId: string): Promise<void>;
   /** The World Bible (M5): compiled on the JAOT queue, or the stored one. */
   bible?(userId: string, chatId: string, priority?: Priority): Promise<Bible | null>;
@@ -533,10 +535,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       const place = kind === "place" ? r0.world.places[rest] : undefined;
       const name = castMember?.name ?? recruit?.name ?? place?.name ?? rest;
       const known = castMember ? `${castMember.role}. ${castMember.look}` : recruit ? `Once a foe (${recruit.role}), now in the party.` : place ? `A place: ${place.description}` : "Someone the roleplay keeps mentioning.";
+      // Someone or somewhere the lorebook has an entry for is promoted from that entry, not invented.
+      const lore = recruit ? "" : ((await cards.loreFor?.(userId, chatId, name).catch(() => "")) ?? "");
       const companion = kind === "bond";
       const mentionedIn = recent.filter((l) => l.content.includes(name.split(" ")[0]!)).map((l) => l.content).slice(-3);
       const fallback = () => fallbackPromotion(name, places, `${chatId}:${key}`, companion);
-      const job = async () => (cards.compile ? (await cards.compile(userId, "promote", promotePrompt(sheet, { name, known }, places, mentionedIn, companion), 900, (raw) => parsePromotion(raw, name, placeIds), fallback, { tries: 1 })).value : fallback());
+      const job = async () => (cards.compile ? (await cards.compile(userId, "promote", promotePrompt(sheet, { name, known, lore }, places, mentionedIn, companion), 900, (raw) => parsePromotion(raw, name, placeIds), fallback, { tries: 1 })).value : fallback());
       const draft = await (cards.jaot ? cards.jaot.run(`promote:${chatId}:${key}`, priority, job) : job()).catch(fallback);
       const r = (await load(userId, chatId)) ?? r0;
       const m = mem(r);

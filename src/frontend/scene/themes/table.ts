@@ -41,6 +41,9 @@ const PROPS: Record<"wide" | "port", Record<PropId, Spot | null>> = {
 /** Aspect (h/w) of each prop's SVG viewBox. */
 const ASPECT: Record<PropId, number> = { skull: 290 / 200, coins: 170 / 260, ledger: 190 / 270, deck: 210 / 200, bell: 110 / 120, gavel: 160 / 250 };
 /** Where people sit: x of the stage, height and foot line as fractions of H. Index 0 is the person you face. */
+/** More talk cards than this fold into one "The room" card. */
+const ROOM_FOLD = 4;
+
 const SEATS = {
   wide: [
     { x: 0.5, h: 0.56, b: 0.63, c: "s0" },
@@ -194,6 +197,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   let themesOpen = false;
   let peek: string | null = null;
   let roads = false;
+  let room = false;
   const sig: Record<string, string> = {};
   let cards: { el: HTMLButtonElement; label: string; run: (() => void) | null; fact: boolean }[] = [];
   let facts: HTMLButtonElement[] = [];
@@ -458,6 +462,16 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   /** Deal the roads out (or put them away). */
   function openRoads(on: boolean): void {
     roads = on;
+    room = false;
+    setPeek(null);
+    if (view) renderHand(view);
+    (cards[0]?.el as HTMLElement | undefined)?.focus({ preventScroll: true });
+  }
+
+  /** Deal the room's people out as talk cards (or put them away). */
+  function openRoom(on: boolean): void {
+    room = on;
+    roads = false;
     setPeek(null);
     if (view) renderHand(view);
     (cards[0]?.el as HTMLElement | undefined)?.focus({ preventScroll: true });
@@ -475,18 +489,31 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const exits = menu.filter((m) => m.kind === "exit");
     const grouped = !v.delve && exits.length >= 2;
     if (!grouped) roads = false;
+    // A crowded room folds its talk cards into one card that deals them as a second hand, the way Roads does.
+    const talks = menu.filter((m) => m.group === "talk");
+    const crowded = talks.length > ROOM_FOLD;
+    if (!crowded) room = false;
     const deal: Deal[] = [];
     const asDeal = (m: MenuItem): Deal => {
       const [small, big] = split(m.label);
       const who = m.group === "talk" && m.target ? people.get(m.target) : null;
       return { key: m.key, motif: motifFor(m.key, m.kind), small, big, label: m.label + (who ? `: ${who.role}` : ""), art: artOf(m), run: m.run, fly: true };
     };
-    if (roads) {
+    if (room) {
+      deal.push(...talks.map((m) => ({ ...asDeal(m), run: () => ((room = false), m.run()) })));
+      deal.push({ key: "stay-room", motif: "move:left", small: "Back to", big: "your hand", label: "Back to your hand (put the faces away)", art: null, run: () => openRoom(false), fly: false });
+    } else if (roads) {
       deal.push(...exits.map((m) => ({ ...asDeal(m), run: () => ((roads = false), m.run()) })));
       deal.push({ key: "stay", motif: "move:left", small: "Back to", big: "the table", label: "Stay here (put the roads away)", art: null, run: () => openRoads(false), fly: false });
     } else {
       let folded = false;
+      let foldedTalk = false;
       for (const m of menu) {
+        if (crowded && m.group === "talk") {
+          if (!foldedTalk) deal.push({ key: "room", motif: "talk", small: `${talks.length} people`, big: "The room", label: `Talk to someone: ${talks.map((t) => split(t.label)[1]).join(", ")}`, art: null, run: () => openRoom(true), fly: false });
+          foldedTalk = true;
+          continue;
+        }
         if (grouped && m.kind === "exit") {
           if (!folded) deal.push({ key: "roads", motif: "roads", small: `${exits.length} ways out`, big: "Roads", label: `Roads: ${exits.map((e) => split(e.label)[1]).join(", ")}`, art: null, run: () => openRoads(true), fly: false });
           folded = true;
@@ -495,7 +522,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         deal.push(asDeal(m));
       }
     }
-    const key = JSON.stringify([port, roads, deal.map((d) => [d.key, d.label, d.art]), hand.map((h) => [h.id, !!h.play]), lead]);
+    const key = JSON.stringify([port, roads, room, deal.map((d) => [d.key, d.label, d.art]), hand.map((h) => [h.id, !!h.play]), lead]);
     if (key === sig.hand) return;
     sig.hand = key;
     // The card under the pointer may be gone; forget its preview.

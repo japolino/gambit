@@ -46,6 +46,9 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 let chartPaper: HTMLCanvasElement | null = null;
 
+/** People drawn behind the counter; the rest are in the guest book. */
+const BEHIND_COUNTER = 4;
+
 export function flatDiorama(ctx: ThemeCtx, host: HTMLElement): Mode {
   host.innerHTML = `<div class="dr${ctx.reducedMotion ? " still" : ""}">
   <div class="lay L0"><div class="room np"></div></div>
@@ -104,6 +107,8 @@ export function flatDiorama(ctx: ThemeCtx, host: HTMLElement): Mode {
   let acts = new Map<string, () => void>();
   let logOpen = false;
   let pickOpen = false;
+  /** The guest book's list of the people who don't fit behind the counter. */
+  let othersOpen = false;
   let last: SceneView | null = null;
   const rerender = () => {
     if (last && active) render(last);
@@ -118,13 +123,19 @@ export function flatDiorama(ctx: ThemeCtx, host: HTMLElement): Mode {
       pickOpen = !pickOpen;
       return rerender();
     }
+    if (key === "others") {
+      othersOpen = !othersOpen;
+      pickOpen = false;
+      return rerender();
+    }
     if (key.startsWith("theme:")) {
       pickOpen = false;
       ctx.setTheme(key.slice(6) as never);
       return;
     }
-    if (pickOpen) {
+    if (pickOpen || othersOpen) {
       pickOpen = false;
+      othersOpen = false;
       rerender();
     }
     acts.get(key)?.();
@@ -226,7 +237,11 @@ ${th ? `<button class="spools" data-act="journal" style="--sw:${(3 + Math.min(9,
 <button class="globe" data-act="globe" aria-haspopup="true" aria-expanded="${pickOpen}" aria-label="Change the theme" title="Theme">${A.GLOBE}</button>`);
 
     /* ---------------- People: cut-outs behind the counter, opaque art framed on the wall behind ---------------- */
-    const people = ctx.people(v);
+    // Four fit behind the counter; anyone else is in the guest book on the counter.
+    const everyone = ctx.people(v);
+    const people = everyone.slice(0, BEHIND_COUNTER);
+    const others = everyone.slice(BEHIND_COUNTER).filter((p) => p.talkable);
+    if (!others.length) othersOpen = false;
     const n = people.length;
     const step = n > 1 ? Math.min(0.155, 0.36 / (n - 1)) : 0;
     const fh = n <= 1 ? 80 : n === 2 ? 74 : 68;
@@ -261,7 +276,8 @@ ${th ? `<button class="spools" data-act="journal" style="--sw:${(3 + Math.min(9,
       if (m) used.add(m.key);
       return m;
     };
-    for (const p of people) if (p.talkable) used.add(`talk:${p.id}`);
+    for (const p of everyone) if (p.talkable) used.add(`talk:${p.id}`);
+    for (const p of others) acts.set(`p:${p.id}`, p.talk);
     const parts: string[] = [];
 
     // The easel: the place's painting (look around), the overland chart, or the delve's chart.
@@ -322,6 +338,7 @@ ${th ? `<button class="spools" data-act="journal" style="--sw:${(3 + Math.min(9,
     // The books: Journal and Classes, titles stamped on their spines.
     parts.push(`<button class="prop act p-cls" data-act="classes" aria-pressed="${ctx.classes.open}" aria-label="Classes">${P.book("green", "Classes")}${tip("Classes")}</button>`);
     parts.push(`<button class="prop act p-jour" data-act="journal" aria-pressed="${ctx.journal.open}" aria-label="Journal">${P.book("red", "Journal")}${tip("Journal")}</button>`);
+    if (others.length) parts.push(`<button class="prop p-letter" data-act="others" aria-haspopup="true" aria-expanded="${othersOpen}" aria-label="${others.length} others here" style="--x:0.66;--y:0.6">${A.LETTER}<span class="lbl">${others.length} others here</span></button>`);
     // Anything left over: sealed letters along the back, each with its label.
     menu.filter((m) => !used.has(m.key)).forEach((m, i) => {
       const x = 0.6 - (i % 5) * 0.055;
@@ -349,6 +366,7 @@ ${th ? `<button class="spools" data-act="journal" style="--sw:${(3 + Math.min(9,
     const ov: string[] = [];
     if (ctx.journal.open) ov.push(journalHtml(ctx, v));
     if (pickOpen) ov.push(pickerHtml(ctx, v));
+    if (othersOpen) ov.push(`<div class="pick" role="menu" aria-label="Also here">${others.map((p) => `<button role="menuitem" data-act="p:${esc(p.id)}">Talk to ${esc(p.name)}</button>`).join("")}</div>`);
     put(ovl, ov.join(""));
   }
 
@@ -370,8 +388,9 @@ ${th ? `<button class="spools" data-act="journal" style="--sw:${(3 + Math.min(9,
     render,
     key(e) {
       if (e.key !== "Escape") return false;
-      if (pickOpen) {
+      if (pickOpen || othersOpen) {
         pickOpen = false;
+        othersOpen = false;
         rerender();
         return true;
       }

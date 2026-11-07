@@ -13,7 +13,7 @@
  * on/off switch, chip setting, and journal are per chat. Gambit never edits
  * the card, its lorebooks, or the persona.
  */
-import type { DecisionAnswer, GenerationResponseDTO, SpindleAPI } from "lumiverse-spindle-types";
+import type { DecisionAnswer, GenerationResponseDTO, SpindleAPI, WorldBookEntryDTO } from "lumiverse-spindle-types";
 import { scenarioFromSheet } from "../engine/card/sizing.js";
 import { DEMO_CARD, DEMO_LORE } from "../engine/content/saltgate-card.js";
 import type { CardSheet, CardSources, ContestChip, ModuleId, SourceLore } from "../engine/card/types.js";
@@ -44,6 +44,11 @@ import { createFaceFinder } from "./card-faces.js";
 import { createInlayLibrary } from "./inlay-library.js";
 import { preferredConnection } from "./referee-host.js";
 import { createLedger } from "./ledger.js";
+import { loreAbout } from "../meaning/lore-pick.js";
+
+/** How much of the lorebooks the reader fetches; lore-pick decides what of it is read. */
+const MAX_BOOKS = 10;
+const MAX_ENTRIES = 1000;
 import { createJaot, type Priority } from "./jaot.js";
 import { biblePrompt, fallbackBible, parseBible, whereQuestion, type Bible } from "../meaning/bible.js";
 
@@ -138,6 +143,19 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     }
   }
 
+  /** The last lore gathered per chat, so promotions can quote the lorebook without fetching it again. */
+  const loreCache = new Map<string, { at: number; lore: SourceLore[] }>();
+
+  /** The lorebook's own text about a name the chat keeps mentioning, or "". */
+  async function loreFor(userId: string, chatId: string, name: string): Promise<string> {
+    let hit = loreCache.get(`${userId}:${chatId}`);
+    if (!hit || Date.now() - hit.at > 10 * 60_000) {
+      await gather(userId, chatId).catch(() => null);
+      hit = loreCache.get(`${userId}:${chatId}`);
+    }
+    return hit ? loreAbout(hit.lore, name) : "";
+  }
+
   /** Everything the reader may read, fetched through the host with macros resolved. */
   async function gather(userId: string, chatId: string): Promise<CardSources> {
     const ids = await chatCards(userId, chatId);
@@ -167,21 +185,39 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     const books: { id: string; scope: SourceLore["scope"] }[] = [];
     for (const c of raw) for (const id of c.world_book_ids ?? []) if (!books.some((b) => b.id === id)) books.push({ id, scope: "card" });
     if (persona?.attached_world_book_id && !books.some((b) => b.id === persona.attached_world_book_id)) books.push({ id: persona.attached_world_book_id, scope: "persona" });
+    // Global books apply to every chat, so they come last and only rank up when the chat uses them (meaning/lore-pick.ts).
+    for (const id of await spindle.world_books.getGlobal(userId).catch(() => [] as string[])) if (!books.some((b) => b.id === id)) books.push({ id, scope: "global" });
+    // What the host has active in this chat right now (keyword and vector matches): the strongest sign an entry matters.
+    const active = new Set((await spindle.world_books.getActivated(chatId, userId).catch(() => [])).map((e) => e.id));
     const lore: SourceLore[] = [];
     const mainName = cards[0]!.name;
-    for (const b of books.slice(0, 6)) {
+    for (const b of books.slice(0, MAX_BOOKS)) {
       try {
-        const { data } = await spindle.world_books.entries.list(b.id, { limit: 200, userId });
-        const usable = data
+        const entries: WorldBookEntryDTO[] = [];
+        for (let offset = 0; offset < MAX_ENTRIES; offset += 200) {
+          const { data, total } = await spindle.world_books.entries.list(b.id, { limit: 200, offset, userId });
+          entries.push(...data);
+          if (!data.length || entries.length >= total) break;
+        }
+        const usable = entries
           .filter((e) => !e.disabled && e.content?.trim())
-          .sort((a, z) => Number(z.constant) - Number(a.constant) || (a.order_value ?? 0) - (z.order_value ?? 0))
-          .slice(0, 40);
-        for (const e of usable) lore.push({ title: e.comment || e.key?.[0] || "entry", content: resolveMacros(e.content, mainName, userName), scope: b.scope });
+          .sort((a, z) => Number(z.constant) - Number(a.constant) || (a.order_value ?? 0) - (z.order_value ?? 0));
+        for (const e of usable)
+          lore.push({
+            title: e.comment?.trim() || e.key?.[0] || "entry",
+            content: resolveMacros(e.content, mainName, userName),
+            scope: b.scope,
+            keys: [...(e.key ?? []), ...(e.keysecondary ?? [])].filter((k) => typeof k === "string" && k.trim()),
+            constant: !!e.constant,
+            active: active.has(e.id),
+            order: e.order_value ?? 0,
+          });
       } catch (err) {
         log(`could not read lorebook ${b.id}: ${errText(err)}`);
       }
     }
     const chat = (await recent(userId, chatId, 12)).map((m) => ({ ...m, content: resolveMacros(m.content, mainName, userName) }));
+    loreCache.set(`${userId}:${chatId}`, { at: Date.now(), lore });
     return { cards, persona: { id: persona?.id ?? null, name: persona?.name ?? "", title: persona?.title ?? "", description: resolveMacros(persona?.description ?? "", mainName, userName) }, lore, chat };
   }
 
@@ -242,7 +278,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
   async function architectRead(userId: string, src: CardSources, fresh = false): Promise<CardSheet> {
     const now = Date.now();
     const prompts = readerPrompts(src);
-    const [world, people] = await Promise.all([askRaw(userId, "read-world", prompts.world, 2500, fresh), askRaw(userId, "read-people", prompts.people, 3500, fresh)]);
+    const [world, people] = await Promise.all([askRaw(userId, "read-world", prompts.world, 3200, fresh), askRaw(userId, "read-people", prompts.people, 3500, fresh)]);
     const secs = (ms: number) => `${Math.round(ms / 1000)} s`;
     log(`read: world ${world.raw ? `ok (${world.by})` : `failed (${world.why})`} in ${secs(world.ms)}, people ${people.raw ? `ok (${people.by})` : `failed (${people.why})`} in ${secs(people.ms)}`);
     // The last read's prompts, answers, and outcome, for diagnosing a model that will not answer or answers oddly.
@@ -471,6 +507,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     armory,
     saveSheet,
     recent,
+    loreFor,
 
     /** "Match the card" (5.2a): the strong model writes a look file for this card's world; code validates it. */
     async matchLook(userId: string, chatId: string): Promise<{ look: LookFile; warnings: string[] } | { error: string }> {
