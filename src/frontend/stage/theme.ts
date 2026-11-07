@@ -12,7 +12,7 @@ export const FONT_DISPLAY = '"Cormorant Garamond", "Palatino Linotype", Palatino
 export const FONT_UI = '"Segoe UI", "Helvetica Neue", system-ui, -apple-system, Roboto, sans-serif';
 export const FONT_NUMBER = '"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
 
-export const C = {
+const DEFAULTS = {
   ink: 0x0b0a09,
   ink2: 0x151210,
   panel: 0x17130f,
@@ -39,7 +39,48 @@ export const C = {
   enemy: 0xc4544a,
   ally: 0x6fa7c2,
   break: 0xffe2a0,
-} as const;
+};
+
+type Colors = { -readonly [K in keyof typeof DEFAULTS]: number };
+/** The stage's colours. A look's palette tokens (5.2a) can retint the frames, panels and sides. */
+export const C: Colors = { ...DEFAULTS };
+
+const hexNum = (v: string | undefined): number | null => (v && /^#[0-9a-f]{6}$/i.test(v) ? parseInt(v.slice(1), 16) : null);
+
+/**
+ * Apply a look's palette tokens (ink, panel, gold, ally, enemy, accent) to the
+ * code-drawn layer; null puts the defaults back. Nearby shades follow:
+ * a dimmer gold, a lighter panel, frame lines between gold and panel.
+ */
+export function applyUiTokens(ui: Partial<Record<"ink" | "panel" | "gold" | "ally" | "enemy" | "accent", string>> | null | undefined): void {
+  Object.assign(C, DEFAULTS);
+  if (!ui) return;
+  const ink = hexNum(ui.ink);
+  const panel = hexNum(ui.panel);
+  const gold = hexNum(ui.gold);
+  const ally = hexNum(ui.ally);
+  const enemy = hexNum(ui.enemy);
+  const accent = hexNum(ui.accent);
+  if (ink !== null) {
+    C.ink = ink;
+    C.ink2 = mixColor(ink, 0xffffff, 0.04);
+  }
+  if (panel !== null) {
+    C.panel = panel;
+    C.panelHi = mixColor(panel, 0xffffff, 0.07);
+  }
+  if (gold !== null) {
+    C.gold = gold;
+    C.goldDim = mixColor(gold, C.ink, 0.45);
+  }
+  C.line = mixColor(C.gold, C.panel, 0.55);
+  if (ally !== null) C.ally = ally;
+  if (enemy !== null) C.enemy = enemy;
+  if (accent !== null) {
+    C.poise = accent;
+    C.break = mixColor(accent, 0xffffff, 0.35);
+  }
+}
 
 export const ELEMENT_COLOR: Readonly<Record<Element, number>> = {
   physical: 0xe9dfcc,

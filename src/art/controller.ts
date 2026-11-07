@@ -97,6 +97,8 @@ export interface ArtApi {
   forget(key: string, userId?: string): Promise<void>;
   /** Save a look file as one of the user's looks (import, "match the card"). */
   addLook(file: LookFile, source: "user" | "card", userId?: string): Promise<void>;
+  /** The locked look's palette tokens for the code-drawn layer, or null (5.2a). */
+  lookUi(userId?: string): LookFile["ui"] | null;
   dispose(): Promise<void>;
 }
 
@@ -511,7 +513,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     const lock: StyleLock = { version: 1, lookId: look.id, lockedAt: Date.now(), anchors };
     s.lock = lock;
     await spindle.userStorage.setJson(stylePath(s.campaignId), lock, s.userId ? { userId: s.userId } : undefined);
-    send({ type: "style.locked", lookId: look.id }, s.userId);
+    send({ type: "style.locked", lookId: look.id, ui: s.looks.get(look.id)?.file.ui ?? null }, s.userId);
   }
 
   async function setCampaign(campaignId: string | null, userId?: string): Promise<StyleLock | null> {
@@ -673,6 +675,10 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     look: (userId) => currentLook(state(userId)),
     refreshProviders: (userId) => ensureProviders(state(userId), true),
     addLook: (file, source, userId) => addLook(state(userId), file, source),
+    lookUi: (userId) => {
+      const s = state(userId);
+      return (s.lock && s.looks.get(s.lock.lookId)?.file.ui) || null;
+    },
     forget: async (bare, userId) => {
       const s = state(userId);
       const key = scopedKey(currentLook(s).id, bare);

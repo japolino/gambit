@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { registerArt } from "./controller.js";
-import { lookFromInlayArtist, validateLook } from "./look-file.js";
+import { contrast, describedLookId, describeLookPrompt, lookFromInlayArtist, validateLook } from "./look-file.js";
 import { stylePath } from "./looks.js";
 import { INDEX_PATH } from "./store.js";
 import { connection, createFakeHost } from "./testing/fake-host.js";
@@ -46,6 +46,40 @@ describe("look files", () => {
     expect(f!.gpt.style).toContain("watercolor medium, pastel colors");
     expect(f!.gpt.style).not.toContain("foo");
     expect(f!.gpt.style).not.toContain("::");
+  });
+});
+
+describe("describing a look (M4.5)", () => {
+  test("the prompt carries the words and the rules; the id comes from the label", () => {
+    const p = describeLookPrompt("ukiyo-e woodblock with gold leaf");
+    expect(p.user).toContain("<<<ukiyo-e woodblock with gold leaf>>>");
+    expect(p.user).toContain("Never ask for text");
+    expect(p.user).toContain("Do not name living artists");
+    expect(describedLookId("Ukiyo-e Gold!")).toBe("look-ukiyo-e-gold");
+    expect(validateLook({ ...GOOD, id: describedLookId("A very long label that goes on and on past the limit") }).ok).toBe(true);
+  });
+
+  test("hard-to-read palette tokens and odd tag counts are warned about, not refused", () => {
+    expect(contrast("#000000", "#ffffff")).toBeCloseTo(21, 0);
+    const r = validateLook({ ...GOOD, nai: { positive: "ukiyo-e, gold leaf", negative: "" }, ui: { panel: "#222222", gold: "#2a2a2a" } });
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toContain('"ui.gold" is hard to see on "ui.panel"');
+    expect(r.warnings.join(" ")).toContain("2 tags");
+  });
+
+  test("a locked look's palette tokens go to the page with the lock", async () => {
+    const fake = createFakeHost({ connections: [connection({ id: "nai", provider: "novelai", model: "nai-diffusion-5-full", is_default: true })] });
+    const sent: ToFrontend[] = [];
+    const api = registerArt(fake.host, (m) => sent.push(m), { batchMs: 0, sleep: async () => {}, timeoutMs: 0 });
+    const checked = validateLook(GOOD);
+    if (!checked.ok) throw new Error("bad fixture");
+    await api.addLook(checked.look, "user");
+    expect(api.lookUi()).toBeNull();
+    api.handle({ type: "style.pick", lookId: "ukiyo-gold" });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(api.lookUi()).toEqual({ gold: "#d4a017" });
+    expect(sent.find((m) => m.type === "style.locked")).toMatchObject({ lookId: "ukiyo-gold", ui: { gold: "#d4a017" } });
+    await api.dispose();
   });
 });
 

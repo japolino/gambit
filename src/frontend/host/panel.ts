@@ -32,6 +32,9 @@ const CSS = `
 .gb .look .pics { cursor: pointer; }
 .gb .lookbar { display: flex; gap: 6px; flex-wrap: wrap; }
 .gb .lookbar button { padding: 6px 10px; font-size: 12px; }
+.gb .describe { display: flex; gap: 6px; align-items: stretch; margin-top: 6px; }
+.gb .describe textarea { flex: 1; min-width: 0; resize: vertical; font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--lumiverse-border, rgba(255,255,255,.2)); background: var(--lumiverse-fill-subtle, rgba(255,255,255,.05)); color: inherit; }
+.gb .describe button { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
 .gb .hint { font-size: 11px; opacity: .6; }
 .gb .seg { display: flex; border: 1px solid var(--lumiverse-border, rgba(127,127,127,.25)); border-radius: 999px; overflow: hidden; width: max-content; }
 .gb .seg button { border: 0; border-radius: 0; padding: 4px 12px; font-size: 12px; background: none; text-align: center; }
@@ -59,7 +62,7 @@ export function createPanel(
     open(): void;
     probe(lookId?: string): void;
     pick(lookId: string): void;
-    looks: { list(): void; importJson(json: string): void; exportLook(lookId: string): void; remove(lookId: string): void; match(): void };
+    looks: { list(): void; importJson(json: string): void; exportLook(lookId: string): void; remove(lookId: string): void; match(): void; describe(text: string): void };
     parley(scenarioId: string): void;
     resumeParley(): void;
     setParleyMode(mode: ParleyViewMode): void;
@@ -85,6 +88,7 @@ export function createPanel(
     <details data-looks-sec><summary>Looks: how the art is drawn</summary><div class="row" style="padding-top:8px">
       <div class="hint" data-look-hint>No look chosen yet: art uses the default.</div>
       <div class="lookbar"><button data-probe>Draw the presets</button><button data-match>Match this card</button><button data-import>Import a look file</button><input type="file" accept=".json,application/json" data-import-file hidden></div>
+      <div class="describe"><textarea data-describe rows="2" maxlength="800" placeholder="Describe a look: &quot;ukiyo-e woodblock with gold leaf&quot;, &quot;90s OVA cel, film grain&quot;…"></textarea><button data-describe-go>Make this look</button></div>
       <div class="hint">Art is kept per look: switching back shows what was drawn before, and the new look is drawn as it is needed.</div>
       <div class="looks" data-looks></div></div></details>
     <details><summary>Saltgate demo, encounters, and art</summary><div class="gb" style="padding:8px 0 0">
@@ -134,6 +138,20 @@ export function createPanel(
     if ((e.target as HTMLDetailsElement).open) actions.looks.list();
   });
   root.querySelector("[data-match]")!.addEventListener("click", () => actions.looks.match());
+  const describeBox = root.querySelector<HTMLTextAreaElement>("[data-describe]")!;
+  const describeGo = root.querySelector<HTMLButtonElement>("[data-describe-go]")!;
+  describeGo.addEventListener("click", () => {
+    const text = describeBox.value.trim();
+    if (!text) return describeBox.focus();
+    describeGo.disabled = true;
+    describeGo.textContent = "Writing…";
+    actions.looks.describe(text);
+    // The look list comes back when the look is saved; the button frees up then (or after a while).
+    setTimeout(() => {
+      describeGo.disabled = false;
+      describeGo.textContent = "Make this look";
+    }, 20000);
+  });
   const importFile = root.querySelector<HTMLInputElement>("[data-import-file]")!;
   root.querySelector("[data-import]")!.addEventListener("click", () => importFile.click());
   importFile.addEventListener("change", () => {

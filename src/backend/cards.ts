@@ -38,7 +38,7 @@ import {
 } from "../meaning/card-reader.js";
 import { firstJson, typedAnswers, typedPrompt } from "../meaning/referee.js";
 import { armoryPrompt, parseArmory } from "../meaning/armory.js";
-import { matchCardPrompt, validateLook, type LookFile } from "../art/look-file.js";
+import { matchCardPrompt, describeLookPrompt, describedLookId, validateLook, type LookFile } from "../art/look-file.js";
 import type { CardStatus, ToFrontend } from "../shared/protocol.js";
 import { createFaceFinder } from "./card-faces.js";
 import { createInlayLibrary } from "./inlay-library.js";
@@ -495,6 +495,30 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       );
       if (!res.value) return { error: errors.length ? `The model's look did not pass the checks: ${errors.join(" ")}` : `The model gave no look (${res.why ?? "no answer"}).` };
       log(`look: matched "${res.value.look.label}" to ${sheet.cardName} (${res.by}, ${res.tries} ask${res.tries === 1 ? "" : "s"})`);
+      return { look: res.value.look, warnings: res.value.warnings };
+    },
+
+    /** "Describe a look" (5.2a): the player's words become a look file; code validates it. */
+    async describeLook(userId: string, text: string): Promise<{ look: LookFile; warnings: string[] } | { error: string }> {
+      const t = text.replace(/\s+/g, " ").trim();
+      if (t.length < 4) return { error: "Describe the look in a few words first." };
+      let errors: string[] = [];
+      const res = await ledger.compile(
+        userId,
+        "describe-look",
+        describeLookPrompt(t),
+        1200,
+        (raw) => {
+          const label = typeof raw.label === "string" && raw.label.trim() ? raw.label.trim().slice(0, 60) : t.slice(0, 40);
+          const checked = validateLook({ format: "gambit-look", v: 1, ...raw, label, id: describedLookId(label), author: "You (described in Gambit)" });
+          if (!checked.ok) errors = checked.errors;
+          return checked.ok ? checked : null;
+        },
+        () => null,
+        { fresh: true },
+      );
+      if (!res.value) return { error: errors.length ? `The model's look did not pass the checks: ${errors.join(" ")}` : `The model gave no look (${res.why ?? "no answer"}).` };
+      log(`look: described "${res.value.look.label}" (${res.by}, ${res.tries} ask${res.tries === 1 ? "" : "s"})`);
       return { look: res.value.look, warnings: res.value.warnings };
     },
 

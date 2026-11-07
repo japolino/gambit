@@ -11,6 +11,8 @@ import type { CardSheet, ContestChip, ModuleId, Tier } from "../engine/card/type
 import type { DelveMove } from "../engine/world/delve.js";
 import type { SceneView, ThemeId } from "./scene-view.js";
 import type { ForgeOp, ForgeView } from "./forge-view.js";
+/** A look's palette tokens for the code-drawn layer (5.2a). */
+export type LookUi = Partial<Record<"ink" | "panel" | "gold" | "ally" | "enemy" | "accent", string>>;
 
 /* ---------------------------- card --------------------------------- */
 
@@ -140,6 +142,8 @@ export type ToBackend =
   | { type: "look.delete"; lookId: string }
   /** Ask the strong model for a look that fits this chat's card (5.2a). */
   | { type: "look.match"; chatId: string }
+  /** "Describe a look" (5.2a): words in, a validated look file out. */
+  | { type: "look.describe"; text: string }
   | { type: "inset.result"; requestId: string; part: "image" | "mask"; chunk: string; index: number; total: number }
   | { type: "inset.error"; requestId: string; error: string }
   | {
@@ -162,7 +166,7 @@ export type ToBackend =
 /* ---------------------------- backend -> frontend ------------------ */
 
 export type ToFrontend =
-  | { type: "welcome"; version: string; styleLook: string | null }
+  | { type: "welcome"; version: string; styleLook: string | null; ui?: LookUi | null }
   // battle
   | { type: "battle.state"; state: BattleState; events: BattleEvent[] }
   | { type: "battle.error"; error: string }
@@ -194,7 +198,7 @@ export type ToFrontend =
   | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus; source?: "preset" | "user" | "inlay" | "card"; description?: string }[] }
   /** A look file to save (export). */
   | { type: "look.file"; lookId: string; json: string }
-  | { type: "style.locked"; lookId: string }
+  | { type: "style.locked"; lookId: string; ui?: LookUi | null }
   | { type: "inset.compose"; request: InsetComposeRequest }
   | { type: "art.pixels"; job: PixelJob }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string };

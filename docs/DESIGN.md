@@ -380,7 +380,7 @@ Onboarding step 2, while the World Bible compiles:
 
 **Status (0.1):** the four presets above ship. Painted Dark Fantasy is the default and the first lock. The lock is optional: with none, art uses the default.
 
-### 5.2a Looks are data: presets, your own, and AI-made (planned)
+### 5.2a Looks are data: presets, your own, and AI-made (built in M4 and M4.5)
 
 The lock above is the 0.1 shape, not the goal. The goal is the same idea as Cue's theme presets: **a shelf of looks people can use, share, or make their own.** A look is already a small data object in code (`src/art/looks.ts`: label, preferred provider per art kind, NAI tags and negative, GPT style and avoid text). It becomes a file format.
 
@@ -742,6 +742,14 @@ gambit/
 - **Looks are files** (`src/art/look-file.ts`, `scripts/validate-look.ts`, `looks/`): import and export in the drawer, Inlay's art styles offered as looks, and "Match this card" (the strong model writes a look file for the card; the validator checks it; its previews draw before you switch). Art is keyed by look, so switching looks keeps the old art and draws the new look as needed.
 - **Checked live:** the scene, Look around, Talk into a Parley and back, and two card battles (one lost, one won) on a scene-shaped card. The delve, the lobby, the journey strip and the 1-bit and flat fallbacks are checked in the local preview (`bun run preview`, `/scene`) and in tests (`tests/play.test.ts`, `tests/world.test.ts`).
 - **Still open:** the four-card check below (only one real card has been played); a real depth model instead of the depth guess; the shop itself (it only suggests a line for now).
+
+**M4.5 status (2026-11-07): built; checked in tests and once in Lumiverse.**
+- **Describe a look** in the drawer (Looks section): a sentence such as "1990s anime OVA cel, film grain, muted teal and amber" goes to the strong model through the answer ledger. The prompt asks for style only and no living artists' names. The answer must pass the same validator as an imported file; a failed one is asked once more, and there is no code fallback for taste. The look is saved as yours, and its gate and bust previews draw at once.
+- **The validator** (`src/art/look-file.ts`) also warns about NovelAI tag counts outside 5 to 24, and about palette tokens under 2.5:1 contrast on the panel and ink colours.
+- **Palette tokens now apply:** a locked look's `ui` tokens go to the page with the lock, and retint the battle stage's code-drawn layer: ink, panels, gold frames and their dimmer shades, the ally and enemy colours, and the cut-in bands of skills without their own palette. A look without tokens, like every preset, keeps the stock colours.
+- **The `gambit-look` skill** (`.claude/skills/gambit-look/` in this repo, picked up by Claude Code when working here) writes a look file from a description or from reference images. It carries the format reference and a validator script that runs Gambit's own `validateLook`. To use it elsewhere, copy the folder into `~/.claude/skills/` and pass `--repo` to the script.
+- **Checked live:** a described look ("90s OVA Cel") came back from the model with all six palette tokens, passed the validator, and drew both previews in its style.
+- **Still open:** reference images as input to the in-app flow (the skill takes them; the drawer takes words only), and palette tokens for the scene view, which keeps its own colours.
 
 **M5 status (2026-11-07): built; checked in tests, the local preview, and once in Lumiverse.**
 - **Answer ledger** (`src/backend/ledger.ts`): every Architect answer the world is built from is stored by a hash of the question (`ledger/<kind>/<hash>.json`). Each answer passes a validator; a failed one is asked once more, then code falls back. The card read, the armory, the World Bible, "match the card", "Meanwhile…" and places from the chat all go through it, so re-reading an unchanged card costs no model call.

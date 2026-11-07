@@ -2,6 +2,7 @@
  * Gambit frontend entry. Owns the drawer tab and the Stage overlay, and
  * relays between the backend (authoritative engine) and the battle stage.
  */
+import { applyUiTokens } from "./frontend/stage/theme.js";
 import type { SpindleFrontendContext } from "lumiverse-spindle-types";
 import type { Action, BattleEvent, BattleState } from "./engine/types.js";
 import type { ToBackend, ToFrontend } from "./shared/protocol.js";
@@ -79,6 +80,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       exportLook: (lookId) => send({ type: "look.export", lookId }),
       remove: (lookId) => send({ type: "look.delete", lookId }),
       match: () => withChat((chatId) => send({ type: "look.match", chatId })),
+      describe: (text) => send({ type: "look.describe", text }),
     },
     parley: (scenarioId) => {
       panel.setStatus("Finding them…");
@@ -275,12 +277,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "welcome":
         panel.setStatus("");
         panel.setLook(msg.styleLook);
+        applyUiTokens(msg.ui);
         break;
       case "style.probes":
         panel.showProbes(msg.looks);
         break;
       case "style.locked":
         panel.setLook(msg.lookId);
+        applyUiTokens(msg.ui);
         break;
       case "look.file": {
         // Save the look file through the browser.

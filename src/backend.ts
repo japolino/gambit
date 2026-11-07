@@ -14,7 +14,7 @@ import type { ToBackend, ToFrontend } from "./shared/protocol.js";
 
 declare const spindle: SpindleAPI;
 
-const VERSION = "0.7.0";
+const VERSION = "0.8.0";
 
 const send = (msg: ToFrontend, userId?: string) => spindle.sendToFrontend(msg, userId);
 // Without image connections the art pipeline reports "placeholder art" and
@@ -73,7 +73,7 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
     switch (msg.type) {
       case "hello": {
         await art.setCampaign(CAMPAIGN, userId);
-        send({ type: "welcome", version: VERSION, styleLook: art.styleLock(userId)?.lookId ?? null }, userId);
+        send({ type: "welcome", version: VERSION, styleLook: art.styleLock(userId)?.lookId ?? null, ui: art.lookUi(userId) }, userId);
         await battles.resume(userId);
         await parleys.resume(userId);
         break;
@@ -156,6 +156,18 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         // Draw its gate and bust so it can be judged before switching (5.2a).
         art.handle({ type: "style.probe", lookId: res.look.id }, userId);
         send({ type: "notice", level: "info", text: `Made the look "${res.look.label}" for this card. Its previews are drawing.` }, userId);
+        break;
+      }
+      case "look.describe": {
+        send({ type: "notice", level: "info", text: "Writing a look from your description…" }, userId);
+        const res = await cards.describeLook(userId, msg.text);
+        if ("error" in res) {
+          send({ type: "notice", level: "warn", text: res.error }, userId);
+          break;
+        }
+        await art.addLook(res.look, "user", userId);
+        art.handle({ type: "style.probe", lookId: res.look.id }, userId);
+        send({ type: "notice", level: "info", text: `Made the look "${res.look.label}". Its previews are drawing.${res.warnings.length ? ` Notes: ${res.warnings.join(" ")}` : ""}` }, userId);
         break;
       }
       case "battle.start":

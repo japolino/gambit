@@ -32,7 +32,8 @@ export const CUTIN_SECONDS = 1.5;
 
 export async function playCutIn(o: CutInOptions): Promise<void> {
   const { w, h, ui, clock } = o;
-  const palette = parsePalette(o.visual?.palette, [0x1a1414, 0xc8a26a, 0xf3ede2]);
+  // A skill's own palette, else the look's ink and gold (5.2a).
+  const palette = parsePalette(o.visual?.palette, [C.ink, C.gold, 0xf3ede2]);
   const dark = palette[0]!;
   const mid = palette[1] ?? mixColor(dark, 0xffffff, 0.4);
   const light = palette[2] ?? 0xf3ede2;
