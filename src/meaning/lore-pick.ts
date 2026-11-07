@@ -3,8 +3,9 @@
  *
  * A big lorebook does not fit the read. Entries are ranked by what matters
  * to this chat: active in the chat right now (the host's own keyword and
- * vector match), always-on, triggered by the chat, by the card, or by the
- * persona; then the book's own order. The top entries are read in full,
+ * vector match), always-on, triggered by the chat, close to the chat in
+ * meaning (lore-vectors.ts), triggered by the card or by the persona; then
+ * the book's own order. The top entries are read in full,
  * the next ones as a short excerpt, and the rest are listed by name so the
  * reader still knows who and what exists. Pure: the backend fetches the
  * entries (backend/cards.ts gather).
@@ -43,6 +44,9 @@ export function hits(keys: readonly string[], text: string): number {
   return n;
 }
 
+/** What the closest entry in meaning adds to its rank: a little more than a key the chat names. */
+export const SEMANTIC_WEIGHT = 35;
+
 export interface RankedLore {
   lore: SourceLore;
   score: number;
@@ -65,6 +69,8 @@ export function rankLore(src: CardSources): RankedLore[] {
       if (inChat) score += 30 + 5 * Math.min(3, inChat - 1);
       if (hits(keys, card)) score += 20;
       if (hits(keys, persona)) score += 10;
+      // Close in meaning to the chat (the user's embedding model): ranks like a keyword hit, without the keyword.
+      if (lore.semantic) score += Math.round(SEMANTIC_WEIGHT * lore.semantic);
       if (lore.scope === "global" && !lore.active && !inChat) score -= 15;
       return { lore, score, at };
     })

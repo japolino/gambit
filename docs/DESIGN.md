@@ -71,7 +71,7 @@ Gambit does not ship a world. It reads one from the card the player selected.
 
 **The Card Reader.** When the player turns Gambit on for a chat, the Architect reads those sources and writes a **Card Sheet**: JSON, validated, and frozen in the answer ledger.
 
-**Big lorebooks** (`src/meaning/lore-pick.ts`). The read has room for about 30,000 characters, card first. Gambit fetches every enabled entry (up to 1,000 per book, 10 books, global books included) and ranks them: entries the host has active in this chat right now, then always-on entries, then entries whose keys the chat, the card or the persona mention, then the book's own order. Global books only rank up when the chat uses them. About two thirds of the room goes to the top entries in full, then short excerpts, and the rest are listed by name under "also in the lorebook", so the reader knows who and what exists even when it can't read them. When the chat keeps mentioning someone or somewhere the sheet doesn't have and Notice promotes them (4.6), the promotion is written from their lorebook entry, as canon, instead of being invented.
+**Big lorebooks** (`src/meaning/lore-pick.ts`). The read has room for about 30,000 characters, card first. Gambit fetches every enabled entry (up to 1,000 per book, 10 books, global books included) and ranks them: entries the host has active in this chat right now, then always-on entries, then entries whose keys the chat names, then entries close to the chat in meaning, then entries the card or the persona name, then the book's own order. "Close in meaning" uses the user's primary embedding model in Lumiverse (the `embeddings` permission, `src/meaning/lore-vectors.ts`): each entry is embedded once and kept at 8 bits per dimension in `lore-vec/<model>/<book>.bin`, and each read embeds the recent chat as the query. A read spends at most 10 seconds embedding entries and ranks with what it has; the rest are embedded in the background and saved as they land, so the next read has them. A connection that fails a request with several texts (NVIDIA's Nemotron embed model did, live) is sent one entry per request from then on, and five failures in a row stop the fill until the next read. The outcome of the last run is in `lore-vec/last.json`. Without the permission or a model it ranks by keywords alone. Global books only rank up when the chat uses them. About two thirds of the room goes to the top entries in full, then short excerpts, and the rest are listed by name under "also in the lorebook", so the reader knows who and what exists even when it can't read them. When the chat keeps mentioning someone or somewhere the sheet doesn't have and Notice promotes them (4.6), the promotion is written from their lorebook entry, as canon, instead of being invented.
 
 - **Cast.** The card's character(s) and up to 11 more named people, the ones most likely to matter first; 2 or 3 of them get a full stance at once (wants, fears, likes, hates, tells), and the rest when play reaches them. The model picks a social tier for each, and code turns the tier into stats. The card's main character is always in the cast. Themes draw a crowd as its first few people and keep everyone reachable: the Table folds a crowded room into one "The room" card, the Diorama keeps four behind the counter and the rest in a guest book, and 1-bit draws five figures plus whoever the cursor is on.
 - **Facts, places, factions.** Each fact quotes the span it came from, following Warp living-play's evidence model. Parley Leverage only counts facts the player has met in the chat or in the journal, so a fact buried in the lorebook doesn't help until play surfaces it.
@@ -166,7 +166,7 @@ The Architect writes it when the NPC is created; it is stored as data:
 | Compelling | 3d20 keep highest |
 
    Then add `+ the character's stat` (Presence, Menace, or Guile depending on tactic) `+ Leverage (max +4)` against the **DC**. The DC comes from how big the ask is relative to what the NPC would accept, plus rapport.
-5. **Repetition decays.** Code compares the argument with earlier ones in the same Parley (n-gram or embedding overlap), and repeated arguments drop a tier. You cannot win by pasting the same speech.
+5. **Repetition decays.** Code compares the argument with earlier ones in the same Parley (word n-gram overlap, `src/engine/parley/similarity.ts`), and repeated arguments drop a tier. You cannot win by pasting the same speech.
 6. **Outcome tiers move the state track** for the contest (price, suspicion, morale, affection) and spend **patience**:
 
 | Result | Haggle effect | Patience |
@@ -641,7 +641,7 @@ Since you maintain a Lumiverse fork, these would each simplify Gambit:
    - **pick from the gallery:** choose the card gallery image nearest to the needed mood or pose as the reference;
    - **read setting PDFs:** a rulebook or setting guide the player attaches (for example in a character databank) becomes a Card Reader source, retrieved by chunk instead of pasted whole.
 
-   None of this blocks anything. Without it Gambit uses text embeddings of the art prompts, and the Card Reader reads lorebooks and databank text only.
+   None of this blocks anything. Today Gambit embeds text only, to rank lorebook entries by meaning (4.0), and the Card Reader reads lorebook text only.
 
 ---
 

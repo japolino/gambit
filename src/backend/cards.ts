@@ -45,10 +45,16 @@ import { createInlayLibrary } from "./inlay-library.js";
 import { preferredConnection } from "./referee-host.js";
 import { createLedger } from "./ledger.js";
 import { loreAbout } from "../meaning/lore-pick.js";
+import { cosine, entryText, packVectors, quantize, semanticScores, textHash, unpackVectors, type PackedVec } from "../meaning/lore-vectors.js";
 
 /** How much of the lorebooks the reader fetches; lore-pick decides what of it is read. */
 const MAX_BOOKS = 10;
 const MAX_ENTRIES = 1000;
+/** Entries embedded in one read at most (the rest wait for the next); and the time the whole step may take. */
+const MAX_EMBED = 1024;
+const EMBED_READ_MS = 10_000;
+const FILL_MS = 10 * 60_000;
+const EMBED_BATCH = 16;
 import { createJaot, type Priority } from "./jaot.js";
 import { biblePrompt, fallbackBible, parseBible, whereQuestion, type Bible } from "../meaning/bible.js";
 
@@ -156,8 +162,164 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     return hit ? loreAbout(hit.lore, name) : "";
   }
 
+  /** Entry vectors per embedding model and book, as loaded from or saved to user storage. */
+  const vecCache = new Map<string, Map<string, PackedVec>>();
+  let embedWarned = false;
+  /** Connections that failed a request with several texts: from then on they get one text per request. */
+  const singleOnly = new Set<string>();
+  /** Background fills running, per user and model. */
+  const filling = new Set<string>();
+
+  interface VecJob {
+    userId: string;
+    connId: string;
+    model: string;
+    lore: SourceLore[];
+    texts: string[];
+    hashes: string[];
+    packOf: (i: number) => Map<string, PackedVec>;
+  }
+
+  /**
+   * Embed these entries until the deadline, saving what lands. Batches of
+   * EMBED_BATCH; a connection that fails a batch drops to one text per
+   * request, and five single failures in a row stop the run.
+   */
+  async function embedInto(job: VecJob, todo: number[], deadline: number): Promise<{ done: number; failed: number; left: number; lastErr: string; stopped: boolean }> {
+    let at = 0;
+    let done = 0;
+    let failed = 0;
+    let streak = 0;
+    let lastErr = "";
+    let stopped = false;
+    let sinceSave = 0;
+    const changed = new Set<string>();
+    const save = async () => {
+      for (const b of changed) {
+        // Keep only what the book still has, so an edited lorebook doesn't grow its file forever.
+        const live = new Set(job.lore.map((l, i) => ((l.bookId ?? "loose") === b ? job.hashes[i]! : "")).filter(Boolean));
+        const m = job.packOf(job.lore.findIndex((l) => (l.bookId ?? "loose") === b));
+        for (const h of [...m.keys()]) if (!live.has(h)) m.delete(h);
+        await spindle.userStorage.writeBinary(`lore-vec/${job.model}/${b}.bin`, packVectors(m), job.userId).catch((err) => log(`could not save lore vectors: ${errText(err)}`));
+      }
+      changed.clear();
+      sinceSave = 0;
+    };
+    while (at < todo.length && Date.now() < deadline) {
+      const size = singleOnly.has(job.connId) ? 1 : EMBED_BATCH;
+      const batch = todo.slice(at, at + size);
+      try {
+        const res = await spindle.embeddings.embed(
+          { texts: batch.map((i) => job.texts[i]!), connection_id: job.connId, input_type: "passage", userId: job.userId },
+          { signal: AbortSignal.timeout(Math.max(1000, Math.min(30_000, deadline - Date.now()))) },
+        );
+        batch.forEach((i, j) => {
+          const v = res.embeddings[j];
+          if (!v?.length) return;
+          job.packOf(i).set(job.hashes[i]!, quantize(v));
+          changed.add(job.lore[i]!.bookId ?? "loose");
+          done++;
+          sinceSave++;
+        });
+        at += batch.length;
+        streak = 0;
+        if (sinceSave >= 32) await save();
+      } catch (err) {
+        if (Date.now() >= deadline) break;
+        lastErr = errText(err);
+        if (size > 1) {
+          singleOnly.add(job.connId);
+          log(`lore by meaning: the embedding connection failed a batch (${lastErr.slice(0, 100)}); sending one entry per request from now on`);
+          continue;
+        }
+        failed++;
+        at++;
+        if (++streak >= 5) {
+          stopped = true;
+          break;
+        }
+      }
+    }
+    await save();
+    return { done, failed, left: todo.length - at, lastErr, stopped };
+  }
+
+  /**
+   * Score each lorebook entry by how close it is in meaning to the chat
+   * (meaning/lore-vectors.ts), with the user's primary embedding model.
+   * Vectors are kept per model and book, so an unchanged lorebook is only
+   * embedded once. A read spends at most EMBED_READ_MS embedding entries and
+   * ranks with what it has; the rest are embedded in the background for the
+   * next read. Each read embeds the chat as the query. Without the
+   * permission or a model, the entries keep keyword ranking only.
+   */
+  async function semanticLore(userId: string, src: CardSources): Promise<void> {
+    const status = (v: Record<string, unknown>) => spindle.userStorage.setJson("lore-vec/last.json", { at: Date.now(), ...v }, { userId }).catch(() => {});
+    if (!src.lore.length) return void (await status({ ok: false, why: "no lorebook entries" }));
+    try {
+      const conns = await spindle.embeddings.listConnections({ userId });
+      const conn = conns.find((c) => c.is_primary && c.enabled) ?? null;
+      if (!conn) return void (await status({ ok: false, why: "no primary embedding connection" }));
+      const model = `${conn.id}-${conn.model}-${conn.dimensions ?? "n"}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
+      const texts = src.lore.map((l) => entryText(l));
+      const hashes = texts.map(textHash);
+      const packs = new Map<string, Map<string, PackedVec>>();
+      for (const b of new Set(src.lore.map((l) => l.bookId ?? "loose"))) {
+        const k = `${userId}:${model}:${b}`;
+        let m = vecCache.get(k);
+        if (!m) {
+          const path = `lore-vec/${model}/${b}.bin`;
+          m = (await spindle.userStorage.exists(path, userId).catch(() => false)) ? unpackVectors(await spindle.userStorage.readBinary(path, userId)) : new Map();
+          vecCache.set(k, m);
+        }
+        packs.set(b, m);
+      }
+      const job: VecJob = { userId, connId: conn.id, model, lore: src.lore, texts, hashes, packOf: (i) => packs.get(src.lore[i]!.bookId ?? "loose")! };
+      const missing = src.lore.map((_, i) => i).filter((i) => !job.packOf(i).has(hashes[i]!));
+      const fillKey = `${userId}:${model}`;
+      const now = filling.has(fillKey) ? { done: 0, failed: 0, left: missing.length, lastErr: "", stopped: false } : await embedInto(job, missing, Date.now() + EMBED_READ_MS);
+      // The query: what the chat is about now, or the card's setup before anyone has spoken.
+      const c0 = src.cards[0];
+      const query = (src.chat.length ? src.chat.slice(-6).map((m) => m.content).join("\n") : [c0?.scenario, c0?.firstMes, c0?.description].filter(Boolean).join("\n")).slice(-6000);
+      const q = query.trim() ? (await spindle.embeddings.embed({ texts: [query], connection_id: conn.id, input_type: "query", userId }, { signal: AbortSignal.timeout(15_000) })).embeddings[0] : undefined;
+      const have = () => src.lore.filter((_, i) => job.packOf(i).has(hashes[i]!)).length;
+      let close = 0;
+      let top: string[] = [];
+      if (q?.length) {
+        const scores = semanticScores(
+          src.lore.map((_, i) => {
+            const v = job.packOf(i).get(hashes[i]!);
+            return v ? cosine(q, v) : null;
+          }),
+        );
+        src.lore.forEach((l, i) => (l.semantic = scores[i]));
+        close = scores.filter((x) => x > 0.25).length;
+        top = src.lore.map((l, i) => [l.title, scores[i]!] as const).filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t, x]) => `${t.slice(0, 40)} ${x.toFixed(2)}`);
+      }
+      const filled = !!now.left && !now.stopped;
+      log(`lore by meaning: ${conn.model}, ${have()} of ${src.lore.length} entries embedded (${now.done} now${now.failed ? `, ${now.failed} failed: ${now.lastErr.slice(0, 80)}` : ""}), ${close} close to the chat${filled ? "; the rest fill in the background" : ""}`);
+      await status({ ok: true, model: conn.model, entries: src.lore.length, embedded: have(), now: now.done, failed: now.failed, ...(now.lastErr ? { lastError: now.lastErr.slice(0, 200) } : {}), close, top, filling: filled });
+      // The rest fill in while you play; the next read ranks with them.
+      if (filled && !filling.has(fillKey)) {
+        filling.add(fillKey);
+        const rest = missing.filter((i) => !job.packOf(i).has(hashes[i]!)).slice(0, MAX_EMBED);
+        void embedInto(job, rest, Date.now() + FILL_MS)
+          .then(async (r) => {
+            log(`lore by meaning: filled ${r.done} more${r.failed ? `, ${r.failed} failed` : ""}${r.left ? `, ${r.left} left for later` : ""}`);
+            await status({ ok: true, model: conn.model, entries: src.lore.length, embedded: have(), filled: r.done, failed: r.failed, ...(r.lastErr ? { lastError: r.lastErr.slice(0, 200) } : {}), filling: false });
+          })
+          .catch(() => {})
+          .finally(() => filling.delete(fillKey));
+      }
+    } catch (err) {
+      if (!embedWarned) log(`lore by meaning is off (${errText(err).slice(0, 160)}); keywords only`);
+      embedWarned = true;
+      await status({ ok: false, why: errText(err).slice(0, 300) });
+    }
+  }
+
   /** Everything the reader may read, fetched through the host with macros resolved. */
-  async function gather(userId: string, chatId: string): Promise<CardSources> {
+  async function gather(userId: string, chatId: string, opts: { semantic?: boolean } = {}): Promise<CardSources> {
     const ids = await chatCards(userId, chatId);
     const persona = await spindle.personas.getActive(userId).catch(() => null);
     // Without a persona, {{user}} reads as "the player" in the sources (never "you", which garbles the card's prose).
@@ -211,6 +373,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
             constant: !!e.constant,
             active: active.has(e.id),
             order: e.order_value ?? 0,
+            bookId: b.id,
           });
       } catch (err) {
         log(`could not read lorebook ${b.id}: ${errText(err)}`);
@@ -218,7 +381,9 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     }
     const chat = (await recent(userId, chatId, 12)).map((m) => ({ ...m, content: resolveMacros(m.content, mainName, userName) }));
     loreCache.set(`${userId}:${chatId}`, { at: Date.now(), lore });
-    return { cards, persona: { id: persona?.id ?? null, name: persona?.name ?? "", title: persona?.title ?? "", description: resolveMacros(persona?.description ?? "", mainName, userName) }, lore, chat };
+    const src: CardSources = { cards, persona: { id: persona?.id ?? null, name: persona?.name ?? "", title: persona?.title ?? "", description: resolveMacros(persona?.description ?? "", mainName, userName) }, lore, chat };
+    if (opts.semantic) await semanticLore(userId, src);
+    return src;
   }
 
   /**
@@ -334,6 +499,8 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     let job = reading.get(rk);
     if (!job) {
       job = (async () => {
+        // Only a read that will happen ranks the lore by meaning (an embedding call).
+        await semanticLore(userId, src);
         const sheet = { ...(await faces.attachFaces(userId, mergeEdits(await architectRead(userId, src, force), old))), facesAt: Date.now() };
         await saveSheet(userId, sheet);
         log(`read ${sheet.cardName}: ${sheet.by}, ${sheet.cast.length} cast, ${sheet.facts.length} facts, modules ${Object.entries(sheet.modules).filter(([, v]) => v).map(([k]) => k).join("+")}`);
@@ -424,7 +591,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     const stored = await spindle.userStorage.getJson<{ sheetAt?: number; shape?: string; bible?: Bible } | null>(biblePath(sheet.cardKey), { fallback: null, userId }).catch(() => null);
     if (stored?.bible && stored.sheetAt === sheet.readAt && stored.shape === sheet.shape && (stored.bible.by === "architect" || Date.now() - stored.bible.at < BIBLE_RETRY_MS)) return stored.bible;
     return jaot.run(`bible:${userId}:${sheet.cardKey}`, priority, async () => {
-      const src = await gather(userId, chatId).catch(() => null);
+      const src = await gather(userId, chatId, { semantic: true }).catch(() => null);
       const all = src ? Object.values(corpora(src)).join(" ") : "";
       const verify = (q: string) => !!all && quoteFound(q, all);
       let rejected: unknown = null;
@@ -465,7 +632,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     let job = arming.get(rk);
     if (!job) {
       job = (async () => {
-        const src = await gather(userId, chatId).catch(() => null);
+        const src = await gather(userId, chatId, { semantic: true }).catch(() => null);
         const all = src ? Object.values(corpora(src)).join(" ") : "";
         const verify = (q: string) => !!all && quoteFound(q, all);
         // A usable answer names foes; one with none is asked again, then the genre's foes stand in.

@@ -18,7 +18,8 @@
     "chat_mutation",
     "characters",
     "personas",
-    "world_books"
+    "world_books",
+    "embeddings"
   ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",

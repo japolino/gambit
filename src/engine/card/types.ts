@@ -164,6 +164,10 @@ export interface SourceLore {
   active?: boolean;
   /** The book's own order, lower first. */
   order?: number;
+  /** The book it is from, for the vector cache. */
+  bookId?: string;
+  /** How close it is in meaning to the chat, 0..1 (meaning/lore-vectors.ts semanticScores), when the user has an embedding model. */
+  semantic?: number;
 }
 
 export interface SourceMessage {
