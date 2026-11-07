@@ -21,6 +21,9 @@ import type { ContestKind, SocialStat } from "../engine/parley/types.js";
 import {
   cardKey as cardKeyOf,
   chipFromAnswers,
+  corpora,
+  quoteFound,
+  sourcesText,
   detectorQuestions,
   detectorState,
   fallbackFrame,
@@ -34,6 +37,8 @@ import {
   resolveMacros,
 } from "../meaning/card-reader.js";
 import { firstJson, typedAnswers, typedPrompt } from "../meaning/referee.js";
+import { armoryPrompt, parseArmory } from "../meaning/armory.js";
+import { matchCardPrompt, validateLook, type LookFile } from "../art/look-file.js";
 import type { CardStatus, ToFrontend } from "../shared/protocol.js";
 import { createFaceFinder } from "./card-faces.js";
 import { createInlayLibrary } from "./inlay-library.js";
@@ -343,8 +348,61 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     return fallbackFrame(sheet, castId, lines, kind);
   }
 
+  const arming = new Map<string, Promise<CardSheet>>();
+
+  /** The sheet with the card's foes and the party's kits, read once (meaning/armory.ts). */
+  async function armory(userId: string, chatId: string): Promise<CardSheet | null> {
+    const sheet = await sheetFor(userId, chatId);
+    if (!sheet || sheet.foes?.length) return sheet;
+    const rk = `${userId}:${sheet.cardKey}`;
+    let job = arming.get(rk);
+    if (!job) {
+      job = (async () => {
+        const src = await gather(userId, chatId).catch(() => null);
+        const all = src ? Object.values(corpora(src)).join(" ") : "";
+        const r = await architect(userId, armoryPrompt(sheet, src ? sourcesText(src, 12_000) : sheet.premise), 4000);
+        const a = parseArmory(r.raw, sheet, (q) => !!all && quoteFound(q, all));
+        log(`armory ${sheet.cardName}: ${a.by}${r.raw ? "" : ` (${r.why})`}, ${a.foes.length} foes (${a.foes.map((f) => `${f.name}:${f.role}${f.tier}`).join(", ")}), ${a.kits.length} kits`);
+        void spindle.userStorage.setJson("cards/debug/last-armory.json", { at: Date.now(), raw: r.raw, why: r.why ?? null }, { userId }).catch(() => {});
+        const fresh = (await loadSheet(userId, sheet.cardKey)) ?? sheet;
+        const next: CardSheet = { ...fresh, foes: a.foes, kits: a.kits, armoryBy: a.by };
+        await saveSheet(userId, next);
+        return next;
+      })().finally(() => arming.delete(rk));
+      arming.set(rk, job);
+    }
+    return job;
+  }
+
   return {
     status,
+    sheetFor,
+    armory,
+    saveSheet,
+    recent,
+
+    /** "Match the card" (5.2a): the strong model writes a look file for this card's world; code validates it. */
+    async matchLook(userId: string, chatId: string): Promise<{ look: LookFile; warnings: string[] } | { error: string }> {
+      const sheet = await sheetFor(userId, chatId);
+      if (!sheet) return { error: "Gambit has not read this card yet. Turn it on for this chat first." };
+      const prompt = matchCardPrompt({ name: sheet.cardName, premise: sheet.premise, tone: sheet.tone, genre: sheet.skin.genre, looks: sheet.cast.map((c) => c.look).filter(Boolean).slice(0, 4) });
+      const res = await architect(userId, prompt, 1200);
+      if (!res.raw) return { error: `The model gave no look (${res.why ?? "no answer"}).` };
+      const slug = sheet.cardName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "card";
+      const checked = validateLook({ format: "gambit-look", v: 1, ...res.raw, id: `card-${slug}`, author: "Gambit (matched to the card)" });
+      if (!checked.ok) return { error: `The model's look did not pass the checks: ${checked.errors.join(" ")}` };
+      log(`look: matched "${checked.look.label}" to ${sheet.cardName} in ${Math.round(res.ms / 1000)} s`);
+      return { look: checked.look, warnings: checked.warnings };
+    },
+
+    /** A fact turned up in play counts as known: Parley Leverage can use it (4.0). */
+    async markKnown(userId: string, chatId: string, factId: string) {
+      const sheet = await sheetFor(userId, chatId);
+      const f = sheet?.facts.find((x) => x.id === factId);
+      if (!sheet || !f || f.known) return;
+      f.known = true;
+      await saveSheet(userId, sheet);
+    },
 
     /** Add the Saltgate demo card and its lorebook to the user's library (once). */
     async installDemo(userId: string) {

@@ -115,5 +115,6 @@ export function makeEnemy(state: Pick<BattleState, "skills" | "passives" | "phas
     rig: d.visual.rig,
     phase: 1,
     ai: d.ai,
+    talks: d.talks,
   };
 }

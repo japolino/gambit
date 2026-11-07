@@ -19,7 +19,8 @@ export type ProviderKind = "nai" | "gpt";
 export type LookId = "painted_dark_fantasy" | "ink_wash" | "modern_anime" | "grim_realism";
 
 export interface LookPreset {
-  id: LookId;
+  /** A preset's LookId, or the id of a look file (5.2a). */
+  id: string;
   label: string;
   /** The provider this look is strongest on (DESIGN 5.1: anime -> NAI V5, realism -> GPT Image). */
   preferred: ProviderKind;
@@ -141,7 +142,7 @@ export interface StyleAnchor {
 
 export interface StyleLock {
   version: 1;
-  lookId: LookId;
+  lookId: string;
   lockedAt: number;
   /**
    * The probe images of the chosen look (5.2: "the 2 anchor images"). GPT
@@ -162,10 +163,10 @@ export function safeSegment(id: string): string {
   return clean && !/^_+$/.test(clean) ? clean : "default";
 }
 
-export function normalizeStyleLock(value: unknown): StyleLock | null {
+export function normalizeStyleLock(value: unknown, resolve: (id: unknown) => LookPreset | null = lookById): StyleLock | null {
   if (!value || typeof value !== "object") return null;
   const r = value as Record<string, unknown>;
-  const look = lookById(r.lookId);
+  const look = resolve(r.lookId);
   if (!look) return null;
   const anchors: StyleLock["anchors"] = {};
   const raw = r.anchors && typeof r.anchors === "object" ? (r.anchors as Record<string, unknown>) : {};

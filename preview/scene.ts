@@ -1,0 +1,139 @@
+/**
+ * Scene preview (docs/DESIGN.md 6.1-6.3): the real world builder, delve
+ * generator and Scene view, on a made-up harbor card with painted stand-in
+ * art. No Lumiverse needed: http://localhost:4174/scene
+ */
+import { clearRoom, enterDelve, generateDelve, stepDelve } from "../src/engine/world/delve.js";
+import { buildWorld, moveScene, newScene, TIMES } from "../src/engine/world/places.js";
+import { buildSceneView, placeKey, wallKey, type PlayRecord } from "../src/shared/scene-build.js";
+import { npcArtKey } from "../src/shared/art-keys.js";
+import type { ThemeId } from "../src/shared/scene-view.js";
+import { mountScene } from "../src/frontend/scene/view.js";
+
+const ev = { source: "card" as const, quote: "", verified: true };
+const sheet = {
+  v: 1,
+  cardKey: "preview-harbor-0001",
+  cardName: "Saltmarsh",
+  characterIds: [],
+  premise: "A fog-bound harbor town where smugglers and wardens share the same taverns.",
+  tone: "moody",
+  shape: (new URLSearchParams(location.search).get("shape") ?? "town") as "town",
+  modules: { parley: true, encounters: true, places: true, delves: true, kits: true, economy: true },
+  skin: { genre: "low fantasy", currency: "crowns", fight: "brawl", stats: { presence: "Presence", menace: "Menace", guile: "Guile" } },
+  player: { name: "Wren", concept: "a courier", social: { presence: 2, menace: 1, guile: 3 } },
+  cast: [
+    { id: "mara", name: "Mara", role: "the harbormaster, usually at the docks", look: "", main: true, pronoun: "she", evidence: ev },
+    { id: "tobin", name: "Tobin", role: "keeps the tavern", look: "", main: false, pronoun: "he", evidence: ev },
+  ],
+  places: [
+    { id: "docks", name: "The Docks", description: "Wet planks, gulls, and crates under tarps", evidence: ev },
+    { id: "tavern", name: "The Drowned Lantern", description: "A low tavern with rooms to rent and a market stall", evidence: ev },
+    { id: "lighthouse", name: "Old Lighthouse", description: "A dead lighthouse on dangerous rocks", evidence: ev },
+    { id: "caves", name: "Smugglers' Caves", description: "A cave tunnel and crypt under the cliffs", evidence: ev },
+  ],
+  facts: [],
+  notes: [],
+} as never;
+
+let r: PlayRecord = (() => {
+  const world = buildWorld(sheet, "preview");
+  return { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: "storybook", log: ["You arrive by the morning ferry."] };
+})();
+
+/** Painted stand-in art: a gradient sky, a horizon, and a few shapes. */
+function paint(seed: number, kind: "place" | "wall" | "person"): string {
+  const c = document.createElement("canvas");
+  c.width = kind === "person" ? 400 : 1216;
+  c.height = kind === "person" ? 640 : 832;
+  const g = c.getContext("2d")!;
+  let s = seed;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  if (kind === "person") {
+    g.fillStyle = `hsl(${seed % 360},30%,40%)`;
+    g.beginPath();
+    g.ellipse(200, 170, 80, 95, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillRect(90, 270, 220, 370);
+    return c.toDataURL();
+  }
+  if (kind === "wall") {
+    g.fillStyle = "#5a5048";
+    g.fillRect(0, 0, c.width, c.height);
+    for (let i = 0; i < 400; i++) {
+      g.fillStyle = `rgba(${rnd() > 0.5 ? "20,16,12" : "120,110,96"},.25)`;
+      g.fillRect(rnd() * c.width, rnd() * c.height, 30 + rnd() * 120, 18 + rnd() * 40);
+    }
+    return c.toDataURL();
+  }
+  const hue = seed % 360;
+  const sky = g.createLinearGradient(0, 0, 0, c.height * 0.5);
+  sky.addColorStop(0, `hsl(${hue},40%,22%)`);
+  sky.addColorStop(1, `hsl(${(hue + 30) % 360},45%,55%)`);
+  g.fillStyle = sky;
+  g.fillRect(0, 0, c.width, c.height * 0.5);
+  const ground = g.createLinearGradient(0, c.height * 0.45, 0, c.height);
+  ground.addColorStop(0, `hsl(${hue},20%,30%)`);
+  ground.addColorStop(1, `hsl(${hue},25%,12%)`);
+  g.fillStyle = ground;
+  g.fillRect(0, c.height * 0.45, c.width, c.height * 0.55);
+  for (let i = 0; i < 9; i++) {
+    g.fillStyle = `hsla(${hue},15%,${10 + rnd() * 20}%,.9)`;
+    const w = 60 + rnd() * 200;
+    const h = 80 + rnd() * 260;
+    g.fillRect(rnd() * c.width, c.height * 0.46 - h, w, h);
+  }
+  return c.toDataURL();
+}
+
+const host = document.getElementById("host")!;
+const T = sheet as unknown as { cardKey: string };
+const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
+  act(id) {
+    const [kind, target] = id.split(":") as [string, string];
+    if (kind === "go") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "go", to: target }), log: [...r.log, `You go to ${r.world.places[target]!.name}.`].slice(-6) };
+    else if (id === "rest") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "rest" }) };
+    else if (id === "wait") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "wait" }), log: [...r.log, `Time passes: ${TIMES[r.scene.time]}.`].slice(-6) };
+    else if (id === "delve") {
+      const map = generateDelve(`preview:${r.scene.placeId}`);
+      r = { ...r, delve: { placeId: r.scene.placeId, map, state: enterDelve(map) }, theme: r.theme === "storybook" ? "onebit" : r.theme };
+    } else r = { ...r, log: [...r.log, `(${id}: handled by the backend in Lumiverse)`].slice(-6) };
+    refresh();
+  },
+  step(move) {
+    if (!r.delve) return;
+    const out = stepDelve(r.delve.map, r.delve.state, move);
+    let state = out.state;
+    let line = "";
+    if (out.event.kind === "blocked") line = out.event.why === "locked" ? "A locked door. You need a key." : "A wall.";
+    if (out.event.kind === "found") line = out.event.what === "key" ? "You find a heavy iron key." : out.event.what === "treasure" ? "A cache of crowns." : "Nothing here.";
+    if (out.event.kind === "unlocked") line = "The key turns.";
+    if (out.event.kind === "room" && out.event.first && ["fight", "boss", "trap", "rest", "event"].includes(out.event.room.kind)) {
+      state = clearRoom(r.delve.map, state, out.event.room.id);
+      line = out.event.room.kind === "boss" ? "(The boss fight runs on the battle stage.)" : out.event.room.kind === "fight" ? "(A fight runs on the battle stage.)" : "";
+    }
+    r = { ...r, delve: { ...r.delve, state }, log: line ? [...r.log, line].slice(-6) : r.log };
+    refresh();
+  },
+  leave() {
+    r = { ...r, delve: undefined, theme: r.theme === "onebit" ? "storybook" : r.theme };
+    refresh();
+  },
+  theme(t: ThemeId) {
+    r = { ...r, theme: t };
+    refresh();
+  },
+  fight() {},
+  close() {},
+});
+
+function refresh(): void {
+  const v = buildSceneView(sheet, "preview", r);
+  handle.setView(v);
+  // Stand-in art for every key the view uses.
+  for (const p of Object.values(r.world.places)) handle.setArt(placeKey(sheet, p.id), paint(p.id.length * 47 + p.id.charCodeAt(0) * 13, "place"), false);
+  for (const m of [{ id: "mara" }, { id: "tobin" }]) handle.setArt(npcArtKey(`${T.cardKey}:${m.id}`), paint(m.id.charCodeAt(0) * 31, "person"), true);
+  if (r.delve) handle.setArt(wallKey(sheet, r.delve.placeId), paint(5, "wall"), false);
+  (window as unknown as { gambitScene: unknown }).gambitScene = { r, v };
+}
+refresh();

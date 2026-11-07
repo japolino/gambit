@@ -9,9 +9,9 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "..");
 const port = Number(process.env.PORT ?? 4174);
 
-async function bundle(): Promise<Response> {
+async function bundle(entry = "preview/main.ts"): Promise<Response> {
   const result = await Bun.build({
-    entrypoints: [join(root, "preview/main.ts")],
+    entrypoints: [join(root, entry)],
     target: "browser",
     format: "esm",
     splitting: false,
@@ -31,6 +31,8 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === "/main.js") return bundle();
+    if (url.pathname === "/scene.js") return bundle("preview/scene.ts");
+    if (url.pathname === "/scene") return new Response(Bun.file(join(root, "preview/scene.html")), { headers: { "content-type": "text/html", "cache-control": "no-store" } });
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return new Response(Bun.file(join(root, "preview/index.html")), { headers: { "content-type": "text/html", "cache-control": "no-store" } });
     }

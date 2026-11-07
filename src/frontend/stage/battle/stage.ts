@@ -170,6 +170,16 @@ export class BattleStage {
    * combatant appears (a phase-2 form) is used when it does.
    */
   setArt(key: string, url: string, opts: ArtOptions = {}): void {
+    if (key === this.state.meta?.backdrop) {
+      // A card battle is fought in the scene's own painting (6.1).
+      void this.art.setArt(key, url, false).then((src) => {
+        if (!src || this.destroyed) return;
+        this.bg.texture = src.texture;
+        this.plate.filters = [];
+        this.resize(this.app.screen.width, this.app.screen.height);
+      });
+      return;
+    }
     void this.art.setArt(key, url, opts.cutout ?? true).then((src) => {
       if (src && !this.destroyed) this.applyArt(key);
     });
@@ -234,7 +244,7 @@ export class BattleStage {
     p.y += ((this.reduced ? 0 : p.ty) - p.y) * a;
     this.plate.pivot.set(p.x * 6 * this.layout.ui, p.y * 3 * this.layout.ui);
     // Displacement is in screen pixels around depth 0.5: near moves one way, far the other.
-    this.depthFx.scale.set(p.x * -28 * this.layout.ui, p.y * -12 * this.layout.ui);
+    if (this.plate.filters?.length) this.depthFx.scale.set(p.x * -28 * this.layout.ui, p.y * -12 * this.layout.ui);
     this.field.pivot.set(p.x * -4 * this.layout.ui, 0);
     if (puppetQualityFrame(this.quality, performance.now())) {
       const res = this.baseResolution * puppetRenderScale(this.quality);

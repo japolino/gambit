@@ -14,6 +14,8 @@ import type { ContestChip } from "./engine/card/types.js";
 import { createChips } from "./frontend/host/chips.js";
 import { mountParley, type ParleyView } from "./frontend/parley/view.js";
 import type { CardStatus, ParleyNarrator, ParleyViewMode } from "./shared/protocol.js";
+import { mountScene, type SceneHandle } from "./frontend/scene/view.js";
+import type { SceneView } from "./shared/scene-view.js";
 
 type StageHandle = ReturnType<typeof mountBattleStage>;
 type Step = { state: BattleState; events: BattleEvent[] };
@@ -35,6 +37,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   /** The card status of the chat on screen. */
   let card: CardStatus | null = null;
   let wantParley = false;
+  /** The Scene on screen (6.1), the last view the backend sent, and whether a click asked for it. */
+  let scene: SceneHandle | null = null;
+  let sceneView: SceneView | null = null;
+  let wantScene = false;
   let parleyMode: ParleyViewMode = "immersive";
   let parleyNarrator: ParleyNarrator = "gambit";
   /** Ready art by key (Combatant.art), kept for stages mounted later. */
@@ -43,6 +49,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   const pushArt = () => {
     for (const [key, a] of artReady) stage?.setArt(key, a.url, { cutout: a.cutout });
     for (const [key, a] of artReady) parley?.setArt(key, a.url, a.cutout);
+    for (const [key, a] of artReady) scene?.setArt(key, a.url, a.cutout);
   };
   const activeChatId = (): string | null => {
     try {
@@ -62,8 +69,15 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (current) showStage(current, []);
       else panel.setStatus("Pick an encounter below.");
     },
-    probe: () => send({ type: "style.probe" }),
+    probe: (lookId) => send({ type: "style.probe", ...(lookId ? { lookId } : {}) }),
     pick: (lookId) => send({ type: "style.pick", lookId }),
+    looks: {
+      list: () => send({ type: "look.list" }),
+      importJson: (json) => send({ type: "look.import", json }),
+      exportLook: (lookId) => send({ type: "look.export", lookId }),
+      remove: (lookId) => send({ type: "look.delete", lookId }),
+      match: () => withChat((chatId) => send({ type: "look.match", chatId })),
+    },
     parley: (scenarioId) => {
       panel.setStatus("Finding them…");
       wantParley = true;
@@ -81,6 +95,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       social: (stat, value) => withChat((chatId) => send({ type: "card.edit", chatId, social: { [stat]: value } })),
       module: (id, on) => withChat((chatId) => send({ type: "card.edit", chatId, modules: { [id]: on } })),
       chips: (on) => withChat((chatId) => send({ type: "card.chips", chatId, on })),
+      play: () => withChat((chatId) => openScene(chatId)),
     },
     demo: () => {
       panel.setStatus("Adding the demo card…");
@@ -98,6 +113,60 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     wantParley = true;
     panel.setStatus("Setting the scene…");
     send({ type: "card.talk", chatId, castId, ...(kind ? { kind } : {}), ...(chipId ? { chipId } : {}) });
+  }
+
+  function openScene(chatId: string): void {
+    wantScene = true;
+    panel.setStatus("Opening the scene…");
+    send({ type: "scene.open", chatId });
+  }
+
+  async function showScene(view: SceneView): Promise<void> {
+    const ov = await ensureOverlay();
+    if (disposed) return;
+    if (!ov.visible()) send({ type: "stage.opened" });
+    ov.show();
+    parley?.destroy();
+    parley = null;
+    if (scene && scene.chatId !== view.chatId) {
+      scene.destroy();
+      scene = null;
+    }
+    if (!scene) {
+      const chatId = view.chatId;
+      scene = mountScene(ov.content, view, {
+        act: (hotspot) => {
+          if (hotspot.startsWith("talk:")) wantParley = true;
+          send({ type: "scene.act", chatId, hotspot });
+        },
+        step: (move) => send({ type: "delve.step", chatId, move }),
+        leave: () => send({ type: "delve.leave", chatId }),
+        theme: (theme) => send({ type: "scene.theme", chatId, theme }),
+        fight: () => send({ type: "play.fight", chatId }),
+        close: () => ov.hide(),
+      });
+      pushArt();
+    } else scene.setView(view);
+    if (stage) scene.hide();
+    else scene.show();
+  }
+
+  /** A card battle ended: let the banner play, then go back to the scene it started in. */
+  function backToScene(delay = 1600): void {
+    setTimeout(() => {
+      if (disposed || !current || current.outcome === "ongoing") return;
+      const chatId = current.meta?.chatId;
+      stage?.destroy();
+      stage = null;
+      if (sceneView && scene) {
+        scene.setView(sceneView);
+        scene.show();
+      } else if (chatId) {
+        // A resumed card battle has no scene under it yet: open the one it was fought in.
+        wantScene = true;
+        send({ type: "scene.open", chatId });
+      }
+    }, delay);
   }
 
   const chips = createChips(
@@ -125,6 +194,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     overlay.onClose(() => {
       stage?.destroy();
       stage = null;
+      scene?.destroy();
+      scene = null;
       parley?.destroy();
       parley = null;
     });
@@ -147,6 +218,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     ov.show();
     parley?.destroy();
     parley = null;
+    scene?.hide();
     if (!stage) {
       stage = mountBattleStage(ov.content, { state, onAction });
       pushArt();
@@ -154,6 +226,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     } else {
       await stage.update(state, events);
     }
+    if (state.meta?.chatId && state.outcome !== "ongoing") backToScene();
   }
 
   async function showParley(state: ParleyState, scenario: ParleyScenario, journal: string[]): Promise<void> {
@@ -163,6 +236,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     ov.show();
     stage?.destroy();
     stage = null;
+    scene?.hide();
     if (parley && parley.parleyId === state.id) {
       parley.setState(state, journal, parleyMode);
       return;
@@ -175,7 +249,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       leave: () => {
         parley?.destroy();
         parley = null;
-        ov.hide();
+        if (scene) scene.show();
+        else ov.hide();
       },
     });
     pushArt();
@@ -194,6 +269,15 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "style.locked":
         panel.setLook(msg.lookId);
         break;
+      case "look.file": {
+        // Save the look file through the browser.
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([msg.json], { type: "application/json" }));
+        a.download = `${msg.lookId}.gambit-look.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        break;
+      }
       case "art.update":
         for (const item of msg.items) {
           if (item.state !== "ready" || !item.url) continue;
@@ -204,6 +288,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           artReady.set(item.key, { url: item.url, cutout: item.cutout });
           stage?.setArt(item.key, item.url, { cutout: item.cutout });
           parley?.setArt(item.key, item.url, item.cutout);
+          scene?.setArt(item.key, item.url, item.cutout);
         }
         break;
       case "battle.state": {
@@ -215,15 +300,45 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           const resolve = pending;
           pending = null;
           resolve({ state: msg.state, events: msg.events });
+          // The player's last blow ended a card battle: back to its scene once the stage has played it out.
+          if (msg.state.meta?.chatId && msg.state.outcome !== "ongoing") backToScene(4500);
         } else if (fresh) {
           stage?.destroy();
           stage = null;
+          if (msg.state.meta?.chatId && scene && msg.state.outcome === "ongoing") wantStage = true;
           if (wantStage) {
             wantStage = false;
             void showStage(msg.state, msg.events);
           }
         } else if (stage) {
-          void stage.update(msg.state, msg.events);
+          void stage.update(msg.state, msg.events).then(() => {
+            if (msg.state.meta?.chatId && msg.state.outcome !== "ongoing") backToScene();
+          });
+        }
+        break;
+      }
+      case "scene.state": {
+        sceneView = msg.view;
+        panel.setStatus("");
+        if (scene && scene.chatId === msg.view.chatId) {
+          scene.setView(msg.view);
+        } else if (wantScene) {
+          wantScene = false;
+          void showScene(msg.view);
+        }
+        break;
+      }
+      case "scene.suggest": {
+        // A menu choice can become a line in the chat input instead (6.1).
+        const composer = (ctx as unknown as { composer?: { setText(t: string): void; focus(): void } }).composer;
+        try {
+          composer?.setText(msg.text);
+          overlay?.hide();
+          scene?.destroy();
+          scene = null;
+          composer?.focus();
+        } catch {
+          panel.setStatus(msg.text);
         }
         break;
       }
@@ -299,6 +414,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     chips.destroy();
     disposeArt();
     stage?.destroy();
+    scene?.destroy();
     overlay?.destroy();
     panel.destroy();
   };

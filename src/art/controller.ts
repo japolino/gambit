@@ -16,6 +16,7 @@ import type { ArtPriority, ArtStatus, ToBackend, ToFrontend } from "../shared/pr
 import { InsetBridge } from "./inset-bridge.js";
 import type { PixelRect } from "./inset-geometry.js";
 import { DEFAULT_LOOK_ID, LOOKS, LOOK_IDS, lookById, normalizeStyleLock, PROBE_SUBJECTS, probeKey, stylePath, type LookPreset, type StyleLock } from "./looks.js";
+import { fileFromLook, lookFromFile, lookFromInlayArtist, validateLook, type InlayArtist, type LookFile, type LookSource } from "./look-file.js";
 import { PixelBridge, type PixelItem } from "./pixel-bridge.js";
 import { imageUrl, type PlanContext } from "./plan-kit.js";
 import { plansFor } from "./plans.js";
@@ -26,7 +27,33 @@ import { ICON_SHEET_GRID, ICON_SHEET_MARGIN } from "./sheet-geometry.js";
 import { ICONS_PER_SHEET, type ArtSpec } from "./specs.js";
 import { cacheStore, CACHE_PATH, INDEX_PATH, JsonMapStore, type IndexEntry } from "./store.js";
 
-export type ArtHost = Pick<SpindleAPI, "imageGen" | "images" | "userStorage"> & { log?: SpindleAPI["log"] };
+export type ArtHost = Pick<SpindleAPI, "imageGen" | "images" | "userStorage"> & { log?: SpindleAPI["log"]; rpcPool?: SpindleAPI["rpcPool"] };
+
+/** userStorage path of the user's own looks (imported, matched to a card). */
+const USER_LOOKS = "looks/user.json";
+interface StoredLook {
+  source: Exclude<LookSource, "preset" | "inlay">;
+  file: LookFile;
+}
+interface KnownLook {
+  preset: LookPreset;
+  file: LookFile;
+  source: LookSource;
+}
+/**
+ * Art is keyed by look (5.2a): changing looks keeps the old art and draws
+ * the new look lazily. The default look keeps bare keys (art drawn before
+ * looks were switchable); card art and probes are look-independent.
+ */
+const SCOPE = "@look:";
+const scopedKey = (lookId: string, key: string): string =>
+  lookId === DEFAULT_LOOK_ID || key.startsWith("style_probe:") || key.startsWith("face:") || key.startsWith(SCOPE) ? key : `${SCOPE}${lookId}|${key}`;
+/** The frontend key of an internal one under the current look, or null when it belongs to another look. */
+function unscopedKey(lookId: string, key: string): string | null {
+  if (!key.startsWith(SCOPE)) return lookId === DEFAULT_LOOK_ID || key.startsWith("style_probe:") || key.startsWith("face:") ? key : null;
+  const bar = key.indexOf("|");
+  return key.slice(SCOPE.length, bar) === lookId ? key.slice(bar + 1) : null;
+}
 
 export type ArtSend = (msg: ToFrontend, userId?: string) => void;
 
@@ -68,6 +95,8 @@ export interface ArtApi {
   refreshProviders(userId?: string): Promise<ProviderSet>;
   /** Drop a finished key so the next request draws it again. */
   forget(key: string, userId?: string): Promise<void>;
+  /** Save a look file as one of the user's looks (import, "match the card"). */
+  addLook(file: LookFile, source: "user" | "card", userId?: string): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -97,6 +126,9 @@ interface UserState {
   local: Map<string, ArtStatus>;
   /** Sheets being sliced right now (one slice per sheet at a time). */
   slicing: Set<string>;
+  /** The user's looks beyond the presets: their files, card matches, and Inlay's styles. */
+  looks: Map<string, KnownLook>;
+  looksLoaded: Promise<void>;
 }
 
 const OWNER = "\u0000owner";
@@ -139,6 +171,8 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       enqueuing: new Map(),
       local: new Map(),
       slicing: new Set(),
+      looks: new Map(),
+      looksLoaded: Promise.resolve(),
       queue: null as unknown as ArtQueue,
     };
     created.queue = new ArtQueue({
@@ -158,8 +192,69 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
         created.queue.restore({ key, state: "ready", imageId: fixed.imageId, url: fixed.url, cutout: fixed.cutout });
       }
     });
+    created.looksLoaded = loadLooks(created);
     users.set(id, created);
     return created;
+  }
+
+  /* ---------------- looks (5.2a) ---------------- */
+
+  async function loadLooks(s: UserState): Promise<void> {
+    try {
+      const stored = await spindle.userStorage.getJson<StoredLook[]>(USER_LOOKS, { fallback: [], ...(s.userId ? { userId: s.userId } : {}) });
+      for (const item of Array.isArray(stored) ? stored : []) {
+        const checked = validateLook(item?.file);
+        if (checked.ok) s.looks.set(checked.look.id, { preset: lookFromFile(checked.look), file: checked.look, source: item.source === "card" ? "card" : "user" });
+      }
+    } catch (error) {
+      log("warn", `looks: ${errorMessage(error)}`);
+    }
+    await loadInlayLooks(s);
+  }
+
+  /** Inlay's NovelAI art styles, offered as looks (read fresh on each hello). */
+  async function loadInlayLooks(s: UserState): Promise<void> {
+    const pool = spindle.rpcPool;
+    if (!pool?.read) return;
+    for (const user of [...new Set([(s.userId ?? "").toLowerCase(), "owner"].filter((u) => /^[a-z0-9][a-z0-9_-]*$/.test(u)))]) {
+      try {
+        const raw = (await pool.read(`inlay_illustrator.artists.${user}`)) as { novelai?: InlayArtist[] } | null;
+        const list = Array.isArray(raw?.novelai) ? raw!.novelai : [];
+        for (const [id, known] of s.looks) if (known.source === "inlay") s.looks.delete(id);
+        for (const artist of list) {
+          const file = lookFromInlayArtist(artist);
+          if (file && !lookById(file.id)) s.looks.set(file.id, { preset: lookFromFile(file), file, source: "inlay" });
+        }
+        return;
+      } catch {
+        /* not shared under this user; try the next */
+      }
+    }
+  }
+
+  async function saveLooks(s: UserState): Promise<void> {
+    const out: StoredLook[] = [...s.looks.values()].filter((l) => l.source === "user" || l.source === "card").map((l) => ({ source: l.source as StoredLook["source"], file: l.file }));
+    await spindle.userStorage.setJson(USER_LOOKS, out, s.userId ? { userId: s.userId } : undefined);
+  }
+
+  function lookOf(s: UserState, id: unknown): LookPreset | null {
+    if (typeof id !== "string") return null;
+    return lookById(id) ?? s.looks.get(id)?.preset ?? null;
+  }
+
+  function allLooks(s: UserState): { id: string; label: string; source: LookSource; description?: string }[] {
+    return [
+      ...LOOK_IDS.map((id) => ({ id, label: LOOKS[id].label, source: "preset" as const })),
+      ...[...s.looks.values()].map((l) => ({ id: l.file.id, label: l.file.label, source: l.source, ...(l.file.description ? { description: l.file.description } : {}) })),
+    ];
+  }
+
+  async function addLook(s: UserState, file: LookFile, source: "user" | "card"): Promise<void> {
+    await s.looksLoaded;
+    if (lookById(file.id)) file = { ...file, id: `${file.id}-own` };
+    s.looks.set(file.id, { preset: lookFromFile(file), file, source });
+    await saveLooks(s);
+    sendProbes(s);
   }
 
   /* ---------------- statuses ---------------- */
@@ -192,9 +287,14 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     if (s.flushTimer) clearTimeout(s.flushTimer);
     s.flushTimer = null;
     if (!s.pending.size) return;
-    const items = [...s.pending.values()];
+    const look = currentLook(s).id;
+    const items = [...s.pending.values()].flatMap((i) => {
+      // The page knows bare keys; art of another look stays in the index for later.
+      const key = unscopedKey(look, i.key);
+      return key === null ? [] : [{ ...i, key }];
+    });
     s.pending.clear();
-    send({ type: "art.update", items }, s.userId);
+    if (items.length) send({ type: "art.update", items }, s.userId);
     if (items.some((i) => i.key.startsWith("style_probe:"))) sendProbes(s);
   }
 
@@ -258,6 +358,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       look,
       lock: s.lock,
       userId: s.userId,
+      lookOf: (id) => lookOf(s, id),
       readImage: (id) => readImage(s, id),
       composeInset: (layout, url) => s.inset.compose(layout, url),
       cropImage: (source, rect) => cropImage(s, source, rect),
@@ -284,13 +385,17 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
   }
 
   function currentLook(s: UserState): LookPreset {
-    return (s.lock && lookById(s.lock.lookId)) || LOOKS[DEFAULT_LOOK_ID];
+    return (s.lock && lookOf(s, s.lock.lookId)) || LOOKS[DEFAULT_LOOK_ID];
   }
 
   /* ---------------- requests ---------------- */
 
-  function request(key: string, spec: ArtSpec, priority: ArtPriority, userId?: string): ArtStatus {
+  function request(bare: string, spec: ArtSpec, priority: ArtPriority, userId?: string): ArtStatus {
     const s = state(userId);
+    const look = currentLook(s).id;
+    const key = scopedKey(look, bare);
+    // Icons sliced from a sheet are keyed under the same look as the sheet.
+    if (spec.kind === "icon_sheet") spec = { ...spec, icons: spec.icons.map((icon) => ({ ...icon, key: scopedKey(look, icon.key) })) };
     s.specs.set(key, spec);
     const prio = Math.max(0, Math.min(3, Math.floor(Number(priority) || 0))) as ArtPriority;
     if (spec.kind === "icon_sheet") s.sheetIcons.set(key, spec);
@@ -371,26 +476,29 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     send(
       {
         type: "style.probes",
-        looks: LOOK_IDS.map((lookId) => ({
-          lookId,
-          label: LOOKS[lookId].label,
-          status: statusOf(s, probeKey(lookId, "gate")) ?? { key: probeKey(lookId, "gate"), state: "queued" },
+        looks: allLooks(s).map((l) => ({
+          lookId: l.id,
+          label: l.label,
+          source: l.source,
+          ...(l.description ? { description: l.description } : {}),
+          status: statusOf(s, probeKey(l.id, "gate")) ?? { key: probeKey(l.id, "gate"), state: "queued" },
         })),
       },
       s.userId,
     );
   }
 
-  async function probe(s: UserState): Promise<void> {
-    await ensureProviders(s, true);
-    for (const lookId of LOOK_IDS) {
+  async function probe(s: UserState, only?: string): Promise<void> {
+    await Promise.all([ensureProviders(s, true), s.looksLoaded]);
+    for (const lookId of only && lookOf(s, only) ? [only] : LOOK_IDS) {
       for (const subject of PROBE_SUBJECTS) request(probeKey(lookId, subject), { kind: "style_probe", subject, lookId }, 0, s.userId);
     }
     sendProbes(s);
   }
 
   async function pick(s: UserState, lookId: string): Promise<void> {
-    const look = lookById(lookId);
+    await s.looksLoaded;
+    const look = lookOf(s, lookId);
     if (!look) {
       send({ type: "notice", level: "warn", text: `Unknown look "${lookId}".` }, s.userId);
       return;
@@ -410,8 +518,9 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     const s = state(userId);
     s.campaignId = campaignId || "default";
     try {
+      await s.looksLoaded;
       const raw = await spindle.userStorage.getJson<unknown>(stylePath(s.campaignId), { fallback: null, ...(userId ? { userId } : {}) });
-      s.lock = normalizeStyleLock(raw);
+      s.lock = normalizeStyleLock(raw, (id) => lookOf(s, id));
     } catch {
       s.lock = null;
     }
@@ -433,10 +542,9 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
           const sheet = statusOf(st, key);
           if (sheet?.state === "ready" && sheet.imageId && sheet.url) void sliceSheet(st, key, spec, { imageId: sheet.imageId, url: sheet.url, cutout: sheet.cutout === true });
         }
-        // Looks drawn before the reload: show them again so one can be picked without redrawing.
-        void st.indexLoaded.then(() => {
-          const drawn = LOOK_IDS.flatMap((lookId) => PROBE_SUBJECTS.map((subject) => statusOf(st, probeKey(lookId, subject)))).filter((x): x is ArtStatus => x?.state === "ready");
-          if (!drawn.length) return;
+        // Every look the user has, with the previews drawn before the reload.
+        void Promise.all([st.indexLoaded, st.looksLoaded.then(() => loadInlayLooks(st))]).then(() => {
+          const drawn = allLooks(st).flatMap((l) => PROBE_SUBJECTS.map((subject) => statusOf(st, probeKey(l.id, subject)))).filter((x): x is ArtStatus => x?.state === "ready");
           for (const status of drawn) queueSend(st, status);
           sendProbes(st);
         });
@@ -444,25 +552,82 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       }
       case "art.request": {
         const st = s();
-        const spec = st.specs.get(msg.key);
+        const key = scopedKey(currentLook(st).id, msg.key);
+        const spec = st.specs.get(key);
         if (spec) request(msg.key, spec, msg.priority, userId);
         else
           void st.indexLoaded.then(() =>
-            queueSend(st, statusOf(st, msg.key) ?? { key: msg.key, state: "failed", error: "Unknown art key (the backend has not asked for it)." }),
+            queueSend(st, statusOf(st, key) ?? { key, state: "failed", error: "Unknown art key (the backend has not asked for it)." }),
           );
         return true;
       }
       case "art.status": {
         const st = s();
         void st.indexLoaded.then(() => {
-          const items = (Array.isArray(msg.keys) ? msg.keys : []).slice(0, 500).map((key) => statusOf(st, key) ?? { key, state: "failed" as const, error: "Unknown art key." });
+          const look = currentLook(st).id;
+          const items = (Array.isArray(msg.keys) ? msg.keys : []).slice(0, 500).map((key) => {
+            const found = statusOf(st, scopedKey(look, key));
+            return found ? { ...found, key } : { key, state: "failed" as const, error: "Unknown art key." };
+          });
           send({ type: "art.update", items }, userId);
         });
         return true;
       }
       case "style.probe":
-        void probe(s()).catch((error) => log("error", `probe: ${errorMessage(error)}`));
+        void probe(s(), msg.lookId).catch((error) => log("error", `probe: ${errorMessage(error)}`));
         return true;
+      case "look.list": {
+        const st = s();
+        void st.looksLoaded.then(() => loadInlayLooks(st)).then(() => sendProbes(st));
+        return true;
+      }
+      case "look.import": {
+        const st = s();
+        let raw: unknown = null;
+        try {
+          raw = JSON.parse(String(msg.json ?? ""));
+        } catch {
+          send({ type: "notice", level: "warn", text: "That file is not JSON." }, userId);
+          return true;
+        }
+        const checked = validateLook(raw);
+        if (!checked.ok) {
+          send({ type: "notice", level: "warn", text: `Not a usable look: ${checked.errors.join(" ")}` }, userId);
+          return true;
+        }
+        void addLook(st, checked.look, "user").then(() =>
+          send({ type: "notice", level: "info", text: `Added the look "${checked.look.label}".${checked.warnings.length ? ` Note: ${checked.warnings.join(" ")}` : ""}` }, userId),
+        );
+        return true;
+      }
+      case "look.export": {
+        const st = s();
+        void st.looksLoaded.then(() => {
+          const known = st.looks.get(msg.lookId);
+          const preset = lookById(msg.lookId);
+          const file = known?.file ?? (preset ? fileFromLook(preset, { author: "Gambit" }) : null);
+          if (!file) return send({ type: "notice", level: "warn", text: `Unknown look "${msg.lookId}".` }, userId);
+          const anchors: Record<string, string> = {};
+          for (const subject of PROBE_SUBJECTS) {
+            const st2 = statusOf(st, probeKey(file.id, subject));
+            if (st2?.state === "ready" && st2.imageId) anchors[subject] = st2.imageId;
+          }
+          const out: LookFile = { ...file, ...(Object.keys(anchors).length ? { anchors } : {}) };
+          send({ type: "look.file", lookId: file.id, json: JSON.stringify(out, null, 2) }, userId);
+        });
+        return true;
+      }
+      case "look.delete": {
+        const st = s();
+        void st.looksLoaded.then(async () => {
+          const known = st.looks.get(msg.lookId);
+          if (!known || known.source === "inlay") return;
+          st.looks.delete(msg.lookId);
+          await saveLooks(st);
+          sendProbes(st);
+        });
+        return true;
+      }
       case "style.pick":
         void pick(s(), msg.lookId).catch((error) => {
           log("error", `pick: ${errorMessage(error)}`);
@@ -487,23 +652,30 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
 
   return {
     request,
-    status: (key, userId) => statusOf(state(userId), key),
+    status: (key, userId) => {
+      const s = state(userId);
+      const found = statusOf(s, scopedKey(currentLook(s).id, key));
+      return found ? { ...found, key } : null;
+    },
     ready: (userId) => state(userId).indexLoaded,
-    whenDone: async (key, userId) => {
+    whenDone: async (bare, userId) => {
       const s = state(userId);
       await s.indexLoaded;
+      const key = scopedKey(currentLook(s).id, bare);
       await s.enqueuing.get(key)?.done;
       const now = statusOf(s, key);
-      if (now && (now.state === "ready" || now.state === "failed")) return now;
-      return s.queue.wait(key);
+      if (now && (now.state === "ready" || now.state === "failed")) return { ...now, key: bare };
+      return { ...(await s.queue.wait(key)), key: bare };
     },
     handle,
     setCampaign,
     styleLock: (userId) => state(userId).lock,
     look: (userId) => currentLook(state(userId)),
     refreshProviders: (userId) => ensureProviders(state(userId), true),
-    forget: async (key, userId) => {
+    addLook: (file, source, userId) => addLook(state(userId), file, source),
+    forget: async (bare, userId) => {
       const s = state(userId);
+      const key = scopedKey(currentLook(s).id, bare);
       s.queue.forget(key);
       s.indexMem.delete(key);
       s.local.delete(key);

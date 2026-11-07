@@ -9,8 +9,9 @@
 import { seededRng } from "./dice.js";
 import { makeEnemy, makeMember, type EnemySpec, type PartySpec } from "./combatant.js";
 import { STATUS_RULES } from "./statuses.js";
+import { TALK_OPTIONS } from "./types.js";
 import type {
-  Action, Atom, BattleEvent, BattleState, Combatant, Condition, PassiveDef, SkillDef, StatusId, TargetRule, TriggerEvent,
+  Action, Atom, BattleEvent, BattleState, Combatant, Condition, PassiveDef, SkillDef, StatusId, TalkOption, TargetRule, TriggerEvent,
 } from "./types.js";
 
 export const BASE_DELAY = 100;
@@ -634,10 +635,100 @@ export function advance(input: BattleState, opts: { enemyPolicy: Policy; partyPo
   return { state: s, events: ctx.events };
 }
 
+/* ------------------------------------------------------------------ */
+/* Combat Talk (4.2)                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface TalkChoice {
+  option: TalkOption;
+  label: string;
+  /** Percent chance it works, from the target's morale and state. */
+  chance: number;
+  usable: boolean;
+  reason?: string;
+}
+
+const TALK_LABEL: Record<TalkOption, string> = {
+  surrender: "Demand surrender",
+  bargain: "Bargain",
+  recruit: "Recruit",
+  taunt: "Taunt",
+  deceive: "Deceive",
+};
+
+const clampPct = (n: number): number => Math.max(5, Math.min(95, Math.round(n)));
+
+/** What the active party member can say to a target, with the odds code computed. */
+export function talkOptions(state: BattleState, actorId: string, targetId: string): TalkChoice[] {
+  const c = byId(state, actorId);
+  const t = byId(state, targetId);
+  if (!c || !t || !t.alive || t.side === c.side) return [];
+  const fear = 100 - t.morale;
+  const wit = (c.stats.will + c.stats.luck) / 2;
+  const allies = living(state, t.side).length;
+  const boss = t.ai === "boss";
+  const talks = t.talks !== false;
+  const choice = (option: TalkOption, chance: number, reason?: string): TalkChoice => ({ option, label: TALK_LABEL[option], chance: clampPct(chance), usable: !reason, ...(reason ? { reason } : {}) });
+  const mute = talks ? undefined : "It cannot be reasoned with";
+  return [
+    choice("surrender", fear * 0.9 - 25 + (t.broken ? 20 : 0) + (allies <= 1 ? 15 : 0) + wit * 0.3 - (boss ? 30 : 0), mute ?? (t.morale > 70 ? "Too sure of winning" : undefined)),
+    choice("bargain", fear * 0.7 - 10 + wit * 0.4 - (boss ? 25 : 0), mute ?? (boss ? "Not for sale" : undefined)),
+    choice("recruit", fear * 0.6 - 25 + wit * 0.5, mute ?? (boss ? "Never" : t.morale > 40 ? "Not shaken enough" : undefined)),
+    choice("taunt", 70 + wit * 0.5),
+    choice("deceive", 35 + wit - t.stats.will * 0.8, mute),
+  ];
+}
+
+function performTalk(s: BattleState, c: Combatant, option: TalkOption, targetId: string, ctx: Ctx): void {
+  const t = byId(s, targetId);
+  const opt = talkOptions(s, c.id, targetId).find((o) => o.option === option);
+  if (!t || !opt || !opt.usable) throw new Error(opt?.reason ?? "Nothing to say to that.");
+  const ok = rand(s) * 100 < opt.chance;
+  ctx.events.push({ kind: "talk", actor: c.id, target: t.id, option, ok, chance: opt.chance });
+  if (ok) {
+    switch (option) {
+      case "surrender":
+      case "bargain":
+      case "recruit":
+        t.alive = false;
+        t.left = option;
+        t.statuses = [];
+        ctx.events.push({ kind: "leave", target: t.id, how: option });
+        for (const f of friends(s, t)) moraleHit(f, 15);
+        break;
+      case "taunt":
+        applyStatus(s, t, "taunt", 1, 2, c.id, ctx);
+        moraleHit(t, 5);
+        break;
+      case "deceive":
+        t.next += 60;
+        ctx.events.push({ kind: "delay", target: t.id, amount: 60 });
+        moraleHit(t, 10);
+        break;
+    }
+  } else {
+    // A failed demand steadies them a little; a failed lie is noticed.
+    t.morale = Math.min(100, t.morale + (option === "deceive" ? 10 : 5));
+  }
+  endTurn(s, c, 1, 0, ctx);
+  checkOutcome(s, ctx);
+}
+
 /** The active party member acts. Throws on an illegal action. */
 export function act(input: BattleState, action: Action): StepResult {
   if (input.outcome !== "ongoing") throw new Error("The battle is over.");
   if (input.active !== action.actor) throw new Error(`It is not ${action.actor}'s turn.`);
+  if (action.skill.startsWith("talk:")) {
+    const option = action.skill.slice(5) as TalkOption;
+    if (!(TALK_OPTIONS as readonly string[]).includes(option)) throw new Error(`Unknown talk option ${option}.`);
+    const s = clone(input);
+    const ctx: Ctx = { events: [], depth: 0 };
+    s.active = null;
+    const actor = byId(s, action.actor)!;
+    performTalk(s, actor, option, action.targets[0] ?? "", ctx);
+    seal(s, ctx);
+    return { state: s, events: ctx.events };
+  }
   const option = legalActions(input, action.actor).find((o) => o.skill.id === action.skill);
   if (!option) throw new Error(`Unknown skill ${action.skill}.`);
   if (!option.usable) throw new Error(option.reason ?? "Not usable.");

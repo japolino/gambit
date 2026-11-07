@@ -14,7 +14,7 @@ type Send = (msg: ToFrontend, userId: string) => void;
 
 const path = (battleId: string) => `battles/${encodeURIComponent(battleId)}.json`;
 
-export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state: BattleState, userId: string) => void) {
+export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state: BattleState, userId: string) => void, onEnd?: (state: BattleState, userId: string) => void) {
   const live = new Map<string, BattleState>();
   const key = (userId: string, battleId: string) => `${userId}\u0000${battleId}`;
 
@@ -41,6 +41,13 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
       onShown?.(state, userId);
     },
 
+    /** A battle built elsewhere (a card fight): saved, shown, and its art requested. */
+    async startState(userId: string, state: BattleState) {
+      await save(userId, state);
+      send({ type: "battle.state", state, events: [] }, userId);
+      onShown?.(state, userId);
+    },
+
     async resume(userId: string) {
       const current = await spindle.userStorage.getJson<{ battleId?: string }>("battles/current.json", { fallback: {}, userId });
       if (!current.battleId) return;
@@ -58,6 +65,7 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
         const r = actAndAdvance(state, action, chooseAction);
         await save(userId, r.state);
         send({ type: "battle.state", state: r.state, events: r.events }, userId);
+        if (state.outcome === "ongoing" && r.state.outcome !== "ongoing") onEnd?.(r.state, userId);
       } catch (err) {
         send({ type: "battle.error", error: err instanceof Error ? err.message : String(err) }, userId);
         send({ type: "battle.state", state, events: [] }, userId);

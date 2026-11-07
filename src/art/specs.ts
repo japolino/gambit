@@ -404,7 +404,7 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
     }
     case "style_probe": {
       const brief = PROBE_BRIEFS[spec.subject];
-      const subjectLook = LOOKS[spec.lookId as keyof typeof LOOKS] ?? look;
+      const subjectLook = look.id === spec.lookId ? look : (LOOKS[spec.lookId as keyof typeof LOOKS] ?? look);
       const prompt = join(spec.subject === "bust" ? "1boy" : "", subjectLook.nai.positive, brief.nai);
       const negative = join(NAI_BASE_NEGATIVE, subjectLook.nai.negative, spec.subject === "gate" ? "1girl, 1boy, people" : "multiple views", NAI_NO_TEXT);
       const gpt = sentences(brief.gpt, subjectLook.gpt.style, subjectLook.gpt.avoid, GPT_NO_TEXT);

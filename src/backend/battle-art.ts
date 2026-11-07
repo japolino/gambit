@@ -19,7 +19,7 @@ const seedOf = (s: string): number => {
 export function requestBattleArt(art: ArtApi, state: BattleState, userId: string): void {
   for (const c of state.combatants) {
     if (c.side === "enemy") {
-      const def = MONSTERS[c.defId];
+      const def = state.meta?.monsters?.[c.defId] ?? MONSTERS[c.defId];
       if (def) {
         art.request(c.art, { kind: "monster", monster: monsterBrief(def) }, 0, userId);
         const into = def.phase2?.into;
@@ -36,7 +36,9 @@ export function requestBattleArt(art: ArtApi, state: BattleState, userId: string
         }
       }
     } else {
-      const cls = CLASSES[c.defId];
+      // Card art is shown as it is (play.ts sends it); only the rest is drawn.
+      if (state.meta?.faces?.[c.id]) continue;
+      const cls = CLASSES[c.defId] ?? CLASSES[c.defId.split("~")[0]!];
       if (cls) {
         const dna = dnaFromClass(cls, { id: c.id, name: c.name, seed: seedOf(c.art) });
         art.request(c.art, { kind: "portrait", character: dna }, 1, userId);

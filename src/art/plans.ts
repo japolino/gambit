@@ -31,7 +31,7 @@ export function seedFor(key: string, spec: ArtSpec): number {
 
 /** Plain routes in the look's provider order for this kind. */
 function plainPlans(ctx: PlanContext, spec: ArtSpec, seed: number, priority: ArtPriority, anchor?: string): Plan[] {
-  const look = spec.kind === "style_probe" ? lookById(spec.lookId) ?? ctx.look : ctx.look;
+  const look = spec.kind === "style_probe" ? (ctx.lookOf?.(spec.lookId) ?? lookById(spec.lookId) ?? ctx.look) : ctx.look;
   const out: Plan[] = [];
   for (const p of providerOrder(look, spec.kind)) {
     if (p === "nai" && ctx.providers.nai) out.push(naiPlainPlan(ctx.providers.nai, buildPrompt(spec, look, { naiAlpha: true }), seed, priority));

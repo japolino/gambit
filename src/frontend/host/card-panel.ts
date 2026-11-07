@@ -45,6 +45,7 @@ export const CARD_CSS = `
 .gb .facts .f { opacity: .8; }
 .gb .facts .src { font-size: 10px; opacity: .55; text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }
 .gb .note { font-size: 11px; opacity: .7; border-left: 2px solid var(--lumiverse-primary, #c8a26a); padding-left: 6px; }
+.gb .play { font-weight: 600; text-align: center; padding: 9px; background: var(--lumiverse-primary, #c8a26a); color: var(--lumiverse-primary-contrast, #111); border-color: transparent; }
 .gb details > summary { cursor: pointer; font-size: 12px; opacity: .75; }
 `;
 
@@ -55,6 +56,7 @@ export interface CardActions {
   social(stat: SocialStat, value: Tier): void;
   module(id: ModuleId, on: boolean): void;
   chips(on: boolean): void;
+  play(): void;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -83,6 +85,7 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
     const sk = sheet.skin;
     parts.push(`<div class="premise">${esc(sheet.premise || sheet.cardName)}${sheet.tone ? ` <span class="hint">· ${esc(sheet.tone)}</span>` : ""}</div>`);
     if (s.reading) parts.push(`<div class="hint">Re-reading the card…</div>`);
+    parts.push(`<button class="play" data-play>Enter the scene</button>`);
     if (s.stale) parts.push(`<div class="note">The card changed since Gambit read it. <a href="#" data-reread>Read it again</a></div>`);
     for (const n of sheet.notes) parts.push(`<div class="note">${esc(n)}</div>`);
     parts.push(
@@ -102,7 +105,7 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
         .map((st) => `<div class="stat"><span>${esc(sk.stats[st])}</span><button data-dec="${st}">−</button><span class="pips">${pips(sheet.player.social[st])}</span><button data-inc="${st}">+</button></div>`)
         .join("")}</div>`,
     );
-    parts.push(`<h3>Modules</h3><div class="mods">${MODULES.map((m) => `<button data-mod="${m}" class="${sheet.modules[m] ? "on" : ""}" ${m === "parley" ? "disabled" : ""}>${MODULE_LABEL[m]}</button>`).join("")}</div><div class="hint">Only Parley is playable in this version. The others are what Gambit thinks this card supports.</div>`);
+    parts.push(`<h3>Modules</h3><div class="mods">${MODULES.map((m) => `<button data-mod="${m}" class="${sheet.modules[m] ? "on" : ""}" ${m === "parley" ? "disabled" : ""}>${MODULE_LABEL[m]}</button>`).join("")}</div><div class="hint">Turn a module off to keep it out of play on this card.</div>`);
     const known = sheet.facts.filter((f) => f.known).length;
     parts.push(
       `<details><summary>Facts: ${sheet.facts.length} (${known} you already know)</summary><div class="facts">${sheet.facts
@@ -118,6 +121,7 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
   }
   root.innerHTML = parts.join("");
   root.querySelector("[data-enable]")?.addEventListener("click", () => a.enable(!s.enabled));
+  root.querySelector("[data-play]")?.addEventListener("click", () => a.play());
   root.querySelector("[data-chips]")?.addEventListener("click", () => a.chips(!s.chips));
   root.querySelectorAll("[data-reread]").forEach((b) =>
     b.addEventListener("click", (e) => {

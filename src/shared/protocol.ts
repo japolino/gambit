@@ -8,6 +8,8 @@
 import type { Action, BattleEvent, BattleState } from "../engine/types.js";
 import type { Exchange, ParleyScenario, ParleyState, SocialStat } from "../engine/parley/types.js";
 import type { CardSheet, ContestChip, ModuleId, Tier } from "../engine/card/types.js";
+import type { DelveMove } from "../engine/world/delve.js";
+import type { SceneView, ThemeId } from "./scene-view.js";
 
 /* ---------------------------- card --------------------------------- */
 
@@ -117,10 +119,23 @@ export type ToBackend =
   | { type: "card.chips"; chatId: string; on: boolean }
   | { type: "card.demo" }
   // art
+  | { type: "scene.open"; chatId: string }
+  | { type: "scene.act"; chatId: string; hotspot: string }
+  | { type: "scene.theme"; chatId: string; theme: ThemeId }
+  | { type: "delve.step"; chatId: string; move: DelveMove }
+  | { type: "delve.leave"; chatId: string }
+  | { type: "play.fight"; chatId: string; lead?: string; boss?: boolean }
   | { type: "art.request"; key: string; priority: ArtPriority }
   | { type: "art.status"; keys: string[] }
-  | { type: "style.probe" }
+  /** Draw the gate and bust of every preset, or of one look. */
+  | { type: "style.probe"; lookId?: string }
   | { type: "style.pick"; lookId: string }
+  | { type: "look.list" }
+  | { type: "look.import"; json: string }
+  | { type: "look.export"; lookId: string }
+  | { type: "look.delete"; lookId: string }
+  /** Ask the strong model for a look that fits this chat's card (5.2a). */
+  | { type: "look.match"; chatId: string }
   | { type: "inset.result"; requestId: string; part: "image" | "mask"; chunk: string; index: number; total: number }
   | { type: "inset.error"; requestId: string; error: string }
   | {
@@ -165,8 +180,13 @@ export type ToFrontend =
   /** Framing a contest the player asked for (the Parley follows). */
   | { type: "card.starting"; chatId: string; castName: string }
   // art
+  | { type: "scene.state"; view: SceneView }
+  /** Drop a suggested action into the chat input (6.1: the menu and the roleplay never fight). */
+  | { type: "scene.suggest"; chatId: string; text: string }
   | { type: "art.update"; items: ArtStatus[] }
-  | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus }[] }
+  | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus; source?: "preset" | "user" | "inlay" | "card"; description?: string }[] }
+  /** A look file to save (export). */
+  | { type: "look.file"; lookId: string; json: string }
   | { type: "style.locked"; lookId: string }
   | { type: "inset.compose"; request: InsetComposeRequest }
   | { type: "art.pixels"; job: PixelJob }

@@ -1,0 +1,17 @@
+{
+  "format": "gambit-look",
+  "v": 1,
+  "id": "grim_realism",
+  "label": "Grim Realism",
+  "author": "Gambit",
+  "description": "Built-in look: Grim Realism.",
+  "preferred": "gpt",
+  "nai": {
+    "positive": "realistic, photorealistic, dark fantasy, gritty, desaturated, film grain, dramatic lighting, detailed skin texture",
+    "negative": "anime, cartoon, cel shading, lineart, chibi"
+  },
+  "gpt": {
+    "style": "Grim, near-photographic dark-fantasy realism: desaturated earthy palette, torch or overcast light, weathered materials with grime and wear, shallow depth of field, like a still from a prestige fantasy film.",
+    "avoid": "Avoid anime or cartoon styling, clean digital gloss and bright saturated colour."
+  }
+}

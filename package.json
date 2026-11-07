@@ -14,9 +14,11 @@
     "preview": "bun run scripts/preview.ts"
   },
   "dependencies": {
-    "pixi.js": "8.22.0"
+    "pixi.js": "8.22.0",
+    "three": "0.171.0"
   },
   "devDependencies": {
+    "@types/three": "0.171.0",
     "bun-types": "^1.4.0",
     "lumiverse-spindle-types": "0.6.79",
     "typescript": "5.9.3"

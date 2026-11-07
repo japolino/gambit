@@ -26,7 +26,12 @@ const CSS = `
 .gb .look .pics div { background-size: cover; background-position: center; }
 .gb .look .name { padding: 6px 8px; font-size: 12px; }
 .gb .look.locked { outline: 2px solid var(--lumiverse-primary, #c8a26a); }
-.gb .look[disabled] { opacity: .5; cursor: default; }
+.gb .look .src { font-size: 10px; opacity: .55; text-transform: uppercase; letter-spacing: .06em; margin-left: 4px; }
+.gb .look .acts { display: flex; gap: 4px; padding: 0 6px 6px; flex-wrap: wrap; }
+.gb .look .acts button { padding: 2px 7px; font-size: 11px; border-radius: 999px; }
+.gb .look .pics { cursor: pointer; }
+.gb .lookbar { display: flex; gap: 6px; flex-wrap: wrap; }
+.gb .lookbar button { padding: 6px 10px; font-size: 12px; }
 .gb .hint { font-size: 11px; opacity: .6; }
 .gb .seg { display: flex; border: 1px solid var(--lumiverse-border, rgba(127,127,127,.25)); border-radius: 999px; overflow: hidden; width: max-content; }
 .gb .seg button { border: 0; border-radius: 0; padding: 4px 12px; font-size: 12px; background: none; text-align: center; }
@@ -35,7 +40,7 @@ ${CARD_CSS}`;
 
 export interface Panel {
   setLook(lookId: string | null): void;
-  showProbes(looks: { lookId: string; label: string }[]): void;
+  showProbes(looks: { lookId: string; label: string; source?: string; description?: string }[]): void;
   setProbeImage(key: string, url: string): void;
   setStatus(text: string): void;
   setResumable(on: boolean): void;
@@ -52,8 +57,9 @@ export function createPanel(
   actions: {
     start(encounterId: string): void;
     open(): void;
-    probe(): void;
+    probe(lookId?: string): void;
     pick(lookId: string): void;
+    looks: { list(): void; importJson(json: string): void; exportLook(lookId: string): void; remove(lookId: string): void; match(): void };
     parley(scenarioId: string): void;
     resumeParley(): void;
     setParleyMode(mode: ParleyViewMode): void;
@@ -76,11 +82,14 @@ export function createPanel(
   root.innerHTML = `
     <button class="primary" data-parley-resume hidden>Resume the Parley</button>
     <div class="row"><h3>This chat</h3><div class="card-sec" data-card></div><div class="status" data-status></div></div>
+    <details data-looks-sec><summary>Looks: how the art is drawn</summary><div class="row" style="padding-top:8px">
+      <div class="hint" data-look-hint>No look chosen yet: art uses the default.</div>
+      <div class="lookbar"><button data-probe>Draw the presets</button><button data-match>Match this card</button><button data-import>Import a look file</button><input type="file" accept=".json,application/json" data-import-file hidden></div>
+      <div class="hint">Art is kept per look: switching back shows what was drawn before, and the new look is drawn as it is needed.</div>
+      <div class="looks" data-looks></div></div></details>
     <details><summary>Saltgate demo, encounters, and art</summary><div class="gb" style="padding:8px 0 0">
     <div class="row"><button data-demo>Add the Saltgate demo card to my library<span class="sub">A small harbor town with a lorebook, played through the Card Reader like any card</span></button>
       <button class="primary" data-open>Open the Stage</button></div>
-    <div class="row"><h3>Look</h3><div class="hint" data-look-hint>No look chosen yet: art uses the default.</div>
-      <button data-probe>Draw the four looks</button><div class="looks" data-looks></div></div>
     <div class="row"><h3>Parley</h3>
       ${Object.values(PARLEYS)
         .map((p) => `<button data-parley="${p.id}">${p.name}<span class="sub">${p.blurb}</span></button>`)
@@ -118,8 +127,20 @@ export function createPanel(
   const probeBtn = root.querySelector<HTMLButtonElement>("[data-probe]")!;
   probeBtn.addEventListener("click", () => {
     probeBtn.disabled = true;
-    probeBtn.textContent = "Drawing… (this can take a few minutes)";
+    probeBtn.textContent = "Drawing… (a few minutes)";
     actions.probe();
+  });
+  root.querySelector("[data-looks-sec]")!.addEventListener("toggle", (e) => {
+    if ((e.target as HTMLDetailsElement).open) actions.looks.list();
+  });
+  root.querySelector("[data-match]")!.addEventListener("click", () => actions.looks.match());
+  const importFile = root.querySelector<HTMLInputElement>("[data-import-file]")!;
+  root.querySelector("[data-import]")!.addEventListener("click", () => importFile.click());
+  importFile.addEventListener("change", () => {
+    const f = importFile.files?.[0];
+    if (!f) return;
+    void f.text().then((t) => actions.looks.importJson(t));
+    importFile.value = "";
   });
   let locked: string | null = null;
   const probeUrls = new Map<string, string>();
@@ -132,22 +153,30 @@ export function createPanel(
         const cell = b.querySelector<HTMLElement>(`[data-part="${part}"]`);
         if (cell && url) cell.style.backgroundImage = `url("${url}")`;
       }
-      b.disabled = !probeUrls.has(`style_probe:${id}:gate`);
     });
   };
+  const SOURCE: Record<string, string> = { preset: "", user: "yours", inlay: "Inlay", card: "card" };
+  const escHtml = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
   return {
     setLook: (id) => {
       locked = id;
-      lookHint.textContent = id ? `Locked: ${looksEl.querySelector(`[data-look="${id}"] .name`)?.textContent ?? id}. New art follows this look.` : "No look chosen yet: art uses the default.";
+      lookHint.textContent = id ? `In use: ${looksEl.querySelector(`[data-look="${globalThis.CSS.escape(id)}"] .name`)?.firstChild?.textContent ?? id}. New art follows this look.` : "No look chosen yet: art uses the default.";
       paint();
     },
     showProbes: (looks) => {
       looksEl.innerHTML = looks
-        .map((l) => `<button class="look" data-look="${l.lookId}"><div class="pics"><div data-part="gate"></div><div data-part="bust"></div></div><span class="name">${l.label}</span></button>`)
+        .map((l) => {
+          const id = escHtml(l.lookId);
+          const own = l.source === "user" || l.source === "card";
+          return `<div class="look" data-look="${id}" title="${escHtml(l.description ?? "")}"><div class="pics" data-use="${id}"><div data-part="gate"></div><div data-part="bust"></div></div><span class="name">${escHtml(l.label)}${SOURCE[l.source ?? "preset"] ? `<span class="src">${SOURCE[l.source ?? "preset"]}</span>` : ""}</span><div class="acts"><button data-use="${id}">Use</button><button data-preview="${id}">Preview</button><button data-export="${id}">Export</button>${own ? `<button data-del="${id}">Delete</button>` : ""}</div></div>`;
+        })
         .join("");
-      looksEl.querySelectorAll<HTMLButtonElement>("[data-look]").forEach((b) => b.addEventListener("click", () => actions.pick(b.dataset.look!)));
-      probeBtn.textContent = "Draw again";
+      looksEl.querySelectorAll<HTMLElement>("[data-use]").forEach((b) => b.addEventListener("click", () => actions.pick(b.dataset.use!)));
+      looksEl.querySelectorAll<HTMLElement>("[data-preview]").forEach((b) => b.addEventListener("click", () => actions.probe(b.dataset.preview!)));
+      looksEl.querySelectorAll<HTMLElement>("[data-export]").forEach((b) => b.addEventListener("click", () => actions.looks.exportLook(b.dataset.export!)));
+      looksEl.querySelectorAll<HTMLElement>("[data-del]").forEach((b) => b.addEventListener("click", () => actions.looks.remove(b.dataset.del!)));
+      probeBtn.textContent = "Draw the presets";
       probeBtn.disabled = false;
       paint();
     },

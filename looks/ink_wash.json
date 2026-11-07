@@ -1,0 +1,17 @@
+{
+  "format": "gambit-look",
+  "v": 1,
+  "id": "ink_wash",
+  "label": "Ink & Wash",
+  "author": "Gambit",
+  "description": "Built-in look: Ink & Wash.",
+  "preferred": "nai",
+  "nai": {
+    "positive": "ink wash painting, sumi-e, traditional media, brush strokes, ink splatter, limited palette, spot color, paper texture, high contrast",
+    "negative": "3d, photorealistic, cel shading, glossy, vibrant colors, gradient"
+  },
+  "gpt": {
+    "style": "Ink-and-wash illustration (sumi-e): confident wet brush strokes, ink bleeding into textured rice paper, mostly greys and blacks with one restrained accent colour, generous negative space.",
+    "avoid": "Avoid glossy digital rendering, photographic realism and saturated colour."
+  }
+}

@@ -9,19 +9,27 @@ import { requestBattleArt } from "./backend/battle-art.js";
 import { createBattles } from "./backend/battles.js";
 import { createCards } from "./backend/cards.js";
 import { createParleys } from "./backend/parleys.js";
+import { createPlay } from "./backend/play.js";
 import type { ToBackend, ToFrontend } from "./shared/protocol.js";
 
 declare const spindle: SpindleAPI;
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const send = (msg: ToFrontend, userId?: string) => spindle.sendToFrontend(msg, userId);
 // Without image connections the art pipeline reports "placeholder art" and
 // the game runs on the stage's procedural figures.
 const art = registerArt(spindle, send, { gptConcurrency: 2 });
-const battles = createBattles(spindle, send, (state, userId) => requestBattleArt(art, state, userId));
+let play: ReturnType<typeof createPlay> | null = null;
+const battles = createBattles(
+  spindle,
+  send,
+  (state, userId) => requestBattleArt(art, state, userId),
+  (state, userId) => void play?.onBattleEnd(state, userId).catch((e) => spindle.log.error(`gambit play end: ${String(e)}`)),
+);
 const parleys = createParleys(spindle, (msg, userId) => send(msg, userId), art);
 const cards = createCards(spindle, (msg, userId) => send(msg, userId), parleys);
+play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles);
 const CAMPAIGN = "default"; // one campaign until the World Bible exists (M4)
 
 // Prompt pipeline: Parley outcomes are decided before the narrator writes (docs/DESIGN.md 8.3).
@@ -103,6 +111,37 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         // In the host runtime but not yet in the published types (0.6.79).
         await (spindle as unknown as { ui?: { closeDrawer?(o: { userId: string }): Promise<void> } }).ui?.closeDrawer?.({ userId }).catch(() => {});
         break;
+      case "scene.open":
+        await play!.open(userId, msg.chatId);
+        break;
+      case "scene.act":
+        await play!.act(userId, msg.chatId, msg.hotspot);
+        break;
+      case "scene.theme":
+        await play!.setTheme(userId, msg.chatId, msg.theme);
+        break;
+      case "delve.step":
+        await play!.step(userId, msg.chatId, msg.move);
+        break;
+      case "delve.leave":
+        await play!.leave(userId, msg.chatId);
+        break;
+      case "play.fight":
+        await play!.fight(userId, msg.chatId, { ...(msg.lead ? { lead: msg.lead } : {}), ...(msg.boss ? { boss: true } : {}) });
+        break;
+      case "look.match": {
+        send({ type: "notice", level: "info", text: "Reading the card for a matching look…" }, userId);
+        const res = await cards.matchLook(userId, msg.chatId);
+        if ("error" in res) {
+          send({ type: "notice", level: "warn", text: res.error }, userId);
+          break;
+        }
+        await art.addLook(res.look, "card", userId);
+        // Draw its gate and bust so it can be judged before switching (5.2a).
+        art.handle({ type: "style.probe", lookId: res.look.id }, userId);
+        send({ type: "notice", level: "info", text: `Made the look "${res.look.label}" for this card. Its previews are drawing.` }, userId);
+        break;
+      }
       case "battle.start":
         await battles.start(userId, msg.encounterId, msg.seed);
         break;

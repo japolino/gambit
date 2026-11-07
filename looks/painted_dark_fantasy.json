@@ -1,0 +1,20 @@
+{
+  "format": "gambit-look",
+  "v": 1,
+  "id": "painted_dark_fantasy",
+  "label": "Painted Dark Fantasy",
+  "author": "Gambit",
+  "description": "Built-in look: Painted Dark Fantasy.",
+  "preferred": "gpt",
+  "prefer": {
+    "monster": "nai"
+  },
+  "nai": {
+    "positive": "painterly, oil painting (medium), dark fantasy, realistic proportions, muted colors, rim lighting, dramatic lighting, visible brush strokes, high contrast, detailed",
+    "negative": "chibi, cel shading, flat color, simple shading, anime coloring, 3d, photo"
+  },
+  "gpt": {
+    "style": "Painted dark-fantasy illustration in the manner of premium collectible card-game art: semi-realistic proportions, a muted palette with a single accent colour, strong rim light, visible oil-paint brushwork, dramatic chiaroscuro.",
+    "avoid": "Avoid chibi or cartoon proportions, flat cel shading, photographic realism and a 3D-render look."
+  }
+}

@@ -300,6 +300,35 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       if (spot) stage.floaters.label(spot.x, spot.y - 34 * l.ui, ev.name, C.gold, 10);
       return 220;
     }
+    case "talk": {
+      const actor = stage.units.get(ev.actor);
+      const target = stage.units.get(ev.target);
+      const words: Record<typeof ev.option, string> = { surrender: "Yield!", bargain: "Name your price", recruit: "Join us", taunt: "Over here!", deceive: "A ruse" };
+      void stage.floaters.banner(l.banner.x, l.banner.y, words[ev.option], `${actor?.name ?? ""} · ${ev.chance}%`, C.gold, 650);
+      stage.cards.get(ev.actor)?.bust.gesture("lean_in", 1.2);
+      await stage.clock.wait(420);
+      const spot = numberSpot(stage, ev.target);
+      if (spot) stage.floaters.label(spot.x, spot.y - 10 * l.ui, ev.ok ? "It works" : "Refused", ev.ok ? C.heal : C.textDim, 13);
+      const fig = stage.enemies.get(ev.target)?.figure;
+      if (fig) fig.gesture(ev.ok ? "slump" : "shake", 1.2);
+      void target;
+      return 420;
+    }
+    case "leave": {
+      applyEvent(stage.units, { kind: "defeat", target: ev.target }, final);
+      stage.refreshUnit(ev.target);
+      const v = stage.enemies.get(ev.target);
+      const spot = numberSpot(stage, ev.target);
+      const text = ev.how === "surrender" ? "Surrenders" : ev.how === "bargain" ? "Paid off" : "Joins you";
+      if (spot) stage.floaters.label(spot.x, spot.y, text, C.gold, 14);
+      if (v) {
+        v.setActive(false);
+        v.figure.gesture("step_back", 1.6);
+        await stage.clock.tween(stage.reduced ? 300 : 600, (k) => { v.alpha = 1 - k; }, ease.inOutCubic);
+        v.visible = false;
+      }
+      return 120;
+    }
     case "end": {
       for (const v of stage.enemies.values()) v.setActive(false);
       for (const c of stage.cards.values()) c.setActive(false);

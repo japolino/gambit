@@ -218,7 +218,15 @@ export interface Combatant {
   rig: RigKind;
   phase: 1 | 2;
   ai?: MonsterDef["ai"];
+  /** Can be talked to in combat (4.2). */
+  talks?: boolean;
+  /** Left the fight through Talk instead of falling. */
+  left?: TalkOption;
 }
+
+/** Combat Talk (4.2): a turn spent on words instead of blows. */
+export type TalkOption = "surrender" | "bargain" | "recruit" | "taunt" | "deceive";
+export const TALK_OPTIONS: readonly TalkOption[] = ["surrender", "bargain", "recruit", "taunt", "deceive"];
 
 export interface BattleState {
   id: string;
@@ -235,6 +243,23 @@ export interface BattleState {
   passives: Record<string, PassiveDef[]>;
   /** Pending second phases by combatant id. */
   phases: Record<string, { atHpPct: number; into: Omit<MonsterDef, "phase2"> }>;
+  /** Host-side context (card battles): ignored by the engine. */
+  meta?: BattleMeta;
+}
+
+/** What a card battle carries for the host and stage; the engine never reads it. */
+export interface BattleMeta {
+  title?: string;
+  /** Chat the fight belongs to. */
+  chatId?: string;
+  /** Art key of the place it happens in (the battlefield backdrop). */
+  backdrop?: string;
+  /** Monster defs by id, for art and for a resumed fight's phase 2. */
+  monsters?: Record<string, MonsterDef>;
+  /** Party portraits by combatant id: Lumiverse image ids of card art. */
+  faces?: Record<string, string>;
+  /** Delve room the fight is in, to mark it cleared. */
+  room?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -243,6 +268,7 @@ export interface BattleState {
 
 export interface Action {
   actor: string;
+  /** A skill id, or `talk:<option>` for combat Talk (one target). */
   skill: string;
   /** Chosen target ids (single-target rules use the first). */
   targets: string[];
@@ -268,4 +294,6 @@ export type BattleEvent =
   | { kind: "phase"; target: string; name: string }
   | { kind: "defeat"; target: string }
   | { kind: "passive"; actor: string; name: string }
+  | { kind: "talk"; actor: string; target: string; option: TalkOption; ok: boolean; chance: number }
+  | { kind: "leave"; target: string; how: TalkOption }
   | { kind: "end"; outcome: BattleState["outcome"] };

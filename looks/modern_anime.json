@@ -1,0 +1,17 @@
+{
+  "format": "gambit-look",
+  "v": 1,
+  "id": "modern_anime",
+  "label": "Modern Anime Illustration",
+  "author": "Gambit",
+  "description": "Built-in look: Modern Anime Illustration.",
+  "preferred": "nai",
+  "nai": {
+    "positive": "anime coloring, clean lineart, cel shading, vibrant colors, detailed eyes, dramatic lighting, detailed",
+    "negative": "realistic, photo, 3d, sketch, monochrome"
+  },
+  "gpt": {
+    "style": "Modern high-end anime illustration: clean confident lineart, crisp cel shading with soft gradients, vivid but controlled colours, expressive eyes, cinematic lighting, key-visual polish.",
+    "avoid": "Avoid photographic realism, western comic inking and 3D-render shading."
+  }
+}

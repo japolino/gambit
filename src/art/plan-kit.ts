@@ -16,6 +16,8 @@ import { GPT_STYLE_REFERENCE, type BuiltPrompt } from "./specs.js";
 export interface PlanContext {
   providers: ProviderSet;
   look: LookPreset;
+  /** Any look this user has (presets, files, Inlay styles), for probes of a look not in use. */
+  lookOf?: (id: string) => LookPreset | null;
   lock: StyleLock | null;
   userId?: string;
   /** Bytes of a stored image as base64 (spindle.images.readBinary). */

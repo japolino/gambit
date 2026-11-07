@@ -6,6 +6,8 @@
  */
 import type { Mood, SocialStat, Tactic } from "../parley/types.js";
 import type { FaceSet } from "./faces.js";
+import type { SheetFoe } from "./foes.js";
+import type { CardKit } from "./kits.js";
 
 export type ModuleId = "parley" | "encounters" | "places" | "delves" | "kits" | "economy";
 export const MODULES: readonly ModuleId[] = ["parley", "encounters", "places", "delves", "kits", "economy"];
@@ -125,6 +127,10 @@ export interface CardSheet {
   notes: string[];
   /** When the cast's existing art was last looked up (card-faces.ts). */
   facesAt?: number;
+  /** The card's enemies and the party's kits (meaning/armory.ts), read the first time a fight is needed. */
+  foes?: SheetFoe[];
+  kits?: CardKit[];
+  armoryBy?: "architect" | "fallback";
 }
 
 /* ------------------------------ sources ------------------------------ */
