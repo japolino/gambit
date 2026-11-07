@@ -36,6 +36,8 @@ export interface ParleyView {
   setMode(mode: ParleyViewMode): void;
   setNarrator(mode: ParleyNarrator): void;
   error(text: string): void;
+  /** Put words in the input (a fact card played from the Table theme). */
+  prefill(text: string): void;
   destroy(): void;
 }
 
@@ -105,7 +107,7 @@ export function mountParley(
   initial: ParleyState,
   journal: string[],
   mode: ParleyViewMode,
-  where: { chatBound: boolean; narrator: ParleyNarrator },
+  where: { chatBound: boolean; narrator: ParleyNarrator; table?: boolean },
   cb: ParleyCallbacks,
 ): ParleyView {
   const chatBound = where.chatBound;
@@ -125,6 +127,8 @@ export function mountParley(
   style.textContent = PARLEY_CSS;
   const wrap = el("div", "pl");
   wrap.dataset.mode = viewMode;
+  // The Table theme (6.1): a game across a table, with what you know as a hand of cards.
+  if (where.table) wrap.classList.add("table");
 
   /* ---------------- scene ---------------- */
   const scene = el("div", "scene");
@@ -194,6 +198,7 @@ export function mountParley(
   const sayBtn = el("button", "say", "Say");
   sayBtn.type = "submit";
   form.append(input, sayBtn);
+  const hand = el("div", "hand");
   const actions = el("div", "actions");
   const dealBtn = el("button", "deal");
   const walkBtn = el("button", "walk", "Walk away");
@@ -211,7 +216,7 @@ export function mountParley(
         : `Your words go to the chat; the chat's preset voices ${npc.name}.`);
   paintHint();
   const endBox = el("div", "end");
-  foot.append(status, form, actions, hint, endBox);
+  foot.append(status, hand, form, actions, hint, endBox);
   side.append(head, log, foot);
   wrap.append(scene, side);
   root.append(style, wrap);
@@ -287,6 +292,20 @@ export function mountParley(
     journalBtn.textContent = `What you know (${facts.length})`;
     journalList.textContent = "";
     for (const f of facts) journalList.append(el("li", state.usedFacts.includes(f.id) ? "used" : "", f.text));
+    hand.textContent = "";
+    facts.forEach((f, i) => {
+      const card = el("button", `fact-card${state.usedFacts.includes(f.id) ? " used" : ""}`, f.text);
+      card.type = "button";
+      card.title = "Play this card: cite it in what you say";
+      card.style.setProperty("--tilt", `${(i - (facts.length - 1) / 2) * 6}deg`);
+      card.addEventListener("click", () => {
+        // Playing a card cites the fact; the Referee still reads the words, and code still checks you know it.
+        const cite = `I know this: ${f.text.replace(/\.?$/, ".")}`;
+        input.value = input.value.trim() ? `${input.value.trim()} ${cite}` : cite;
+        input.focus();
+      });
+      hand.append(card);
+    });
     if (!facts.length) journalList.append(el("li", "empty", "Nothing yet. Others in Saltgate may know things."));
   }
   function bumpValue(from: number, to: number) {
@@ -543,6 +562,10 @@ export function mountParley(
       viewMode = m;
       paintHead();
       tellLine.textContent = "";
+    },
+    prefill(text) {
+      input.value = input.value.trim() ? `${input.value.trim()} ${text}` : text;
+      input.focus();
     },
     error(text) {
       busy = false;

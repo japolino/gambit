@@ -62,8 +62,19 @@ export interface SceneView {
   tiles: { id: string; name: string; art: string }[];
   /** Journey: the stops, and where you are. */
   route: { id: string; name: string }[];
-  /** Frontier: the honeycomb overland (M5). */
-  hex?: { cells: { q: number; r: number; placeId: string | null; seen: boolean; here: boolean; terrain: string }[] };
+  /** Frontier: the honeycomb overland (M5). Out in the wild, `place` is the cell's terrain. */
+  hex?: {
+    cells: { q: number; r: number; placeId: string | null; name: string | null; seen: boolean; here: boolean; terrain: string }[];
+    supplies: number;
+    max: number;
+    wild: boolean;
+  };
+  /** The central thread from the World Bible, and what has come out of it so far. */
+  thread?: { goal: string; found: string[]; total: number };
+  /** Facts the player knows: the hand of cards in the Table theme (6.1). */
+  hand: { id: string; text: string }[];
+  /** An indoor place (a shop, inn, room): the Diorama theme builds it as a box room (6.2). */
+  indoor: boolean;
   people: ScenePerson[];
   menu: Hotspot[];
   /** Fights are on for this card (the Encounters module). */

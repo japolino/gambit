@@ -43,6 +43,9 @@ import type { CardStatus, ToFrontend } from "../shared/protocol.js";
 import { createFaceFinder } from "./card-faces.js";
 import { createInlayLibrary } from "./inlay-library.js";
 import { preferredConnection } from "./referee-host.js";
+import { createLedger } from "./ledger.js";
+import { createJaot, type Priority } from "./jaot.js";
+import { biblePrompt, fallbackBible, parseBible, whereQuestion, type Bible } from "../meaning/bible.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
 interface ParleysPort {
@@ -58,6 +61,15 @@ interface ChatConf {
 }
 
 const sheetPath = (key: string) => `cards/sheet/${encodeURIComponent(key)}.json`;
+const biblePath = (key: string) => `cards/bible/${encodeURIComponent(key)}.json`;
+/** A Bible that fell back to code is asked for again after this long. */
+const BIBLE_RETRY_MS = 10 * 60_000;
+
+/** Play's side of "where is the scene now" (4.5: new places come from play). */
+export interface PlaceHook {
+  where(userId: string, chatId: string): Promise<{ here: { id: string; name: string }; places: { id: string; name: string }[] } | null>;
+  moved(userId: string, chatId: string, pick: string, p: number, lines: { name: string; content: string }[]): Promise<void>;
+}
 const chatPath = (chatId: string) => `cards/chat/${encodeURIComponent(chatId)}.json`;
 const DEMO = "cards/demo.json";
 const READ_MS = 240_000;
@@ -211,13 +223,24 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     }
   }
 
+  /** Every Architect answer is kept by question (4.5): a re-read of an unchanged card costs no model call. */
+  const jaot = createJaot({ concurrency: 2, log });
+  let placeHook: PlaceHook | null = null;
+  const ledger = createLedger(spindle.userStorage as never, (userId) => (prompt, max) => architect(userId, prompt, max), log);
+  type Raw = Record<string, unknown>;
+  const askRaw = async (userId: string, kind: string, prompt: { system: string; user: string }, max: number, fresh: boolean) => {
+    const started = Date.now();
+    const r = await ledger.compile<Raw | null>(userId, kind, prompt, max, (raw) => raw, () => null, { fresh });
+    return { raw: r.value, ms: Date.now() - started, by: r.by, ...(r.why ? { why: r.why } : {}) };
+  };
+
   /** The Architect's read: the world and the people, asked at the same time, merged and checked in code. */
-  async function architectRead(userId: string, src: CardSources): Promise<CardSheet> {
+  async function architectRead(userId: string, src: CardSources, fresh = false): Promise<CardSheet> {
     const now = Date.now();
     const prompts = readerPrompts(src);
-    const [world, people] = await Promise.all([architect(userId, prompts.world, 2500), architect(userId, prompts.people, 3500)]);
+    const [world, people] = await Promise.all([askRaw(userId, "read-world", prompts.world, 2500, fresh), askRaw(userId, "read-people", prompts.people, 3500, fresh)]);
     const secs = (ms: number) => `${Math.round(ms / 1000)} s`;
-    log(`read: world ${world.raw ? "ok" : `failed (${world.why})`} in ${secs(world.ms)}, people ${people.raw ? "ok" : `failed (${people.why})`} in ${secs(people.ms)}`);
+    log(`read: world ${world.raw ? `ok (${world.by})` : `failed (${world.why})`} in ${secs(world.ms)}, people ${people.raw ? `ok (${people.by})` : `failed (${people.why})`} in ${secs(people.ms)}`);
     // The last read's prompts, answers, and outcome, for diagnosing a model that will not answer or answers oddly.
     void spindle.userStorage
       .setJson("cards/debug/last-read.json", { at: now, world: { ...world, prompt: prompts.world }, people: { ...people, prompt: prompts.people } }, { userId })
@@ -271,9 +294,11 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     let job = reading.get(rk);
     if (!job) {
       job = (async () => {
-        const sheet = { ...(await faces.attachFaces(userId, mergeEdits(await architectRead(userId, src), old))), facesAt: Date.now() };
+        const sheet = { ...(await faces.attachFaces(userId, mergeEdits(await architectRead(userId, src, force), old))), facesAt: Date.now() };
         await saveSheet(userId, sheet);
         log(`read ${sheet.cardName}: ${sheet.by}, ${sheet.cast.length} cast, ${sheet.facts.length} facts, modules ${Object.entries(sheet.modules).filter(([, v]) => v).map(([k]) => k).join("+")}`);
+        // The World Bible compiles while the player reviews the sheet (4.5).
+        void bible(userId, chatId, 1).catch(() => {});
         return sheet;
       })().finally(() => reading.delete(rk));
       reading.set(rk, job);
@@ -348,6 +373,48 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     return fallbackFrame(sheet, castId, lines, kind);
   }
 
+  /**
+   * The card's World Bible (meaning/bible.ts), stored per card. It is built
+   * from the sheet it was compiled against, so a re-read rebuilds it (from
+   * the ledger when the question is unchanged).
+   */
+  async function bible(userId: string, chatId: string, priority: Priority = 1): Promise<Bible | null> {
+    const sheet = await sheetFor(userId, chatId);
+    if (!sheet) return null;
+    const stored = await spindle.userStorage.getJson<{ sheetAt?: number; shape?: string; bible?: Bible } | null>(biblePath(sheet.cardKey), { fallback: null, userId }).catch(() => null);
+    if (stored?.bible && stored.sheetAt === sheet.readAt && stored.shape === sheet.shape && (stored.bible.by === "architect" || Date.now() - stored.bible.at < BIBLE_RETRY_MS)) return stored.bible;
+    return jaot.run(`bible:${userId}:${sheet.cardKey}`, priority, async () => {
+      const src = await gather(userId, chatId).catch(() => null);
+      const all = src ? Object.values(corpora(src)).join(" ") : "";
+      const verify = (q: string) => !!all && quoteFound(q, all);
+      let rejected: unknown = null;
+      const r = await ledger.compile(
+        userId,
+        "bible",
+        biblePrompt(sheet, src ? sourcesText(src, 10_000) : sheet.premise),
+        2500,
+        (raw) => {
+          const parsed = parseBible(raw, sheet, verify);
+          if (!parsed) rejected = raw;
+          return parsed;
+        },
+        () => fallbackBible(sheet),
+      );
+      const b = r.value;
+      void spindle.userStorage.setJson("cards/debug/last-bible.json", { at: Date.now(), by: r.by, tries: r.tries, why: r.why ?? null, rejected }, { userId }).catch(() => {});
+      log(`bible ${sheet.cardName}: ${b.by} (${r.by}${r.why ? `: ${r.why}` : ""}), ${b.places.length} places (${b.places.map((p) => p.name).join(", ")}), thread ${b.thread ? `"${b.thread.goal}"` : "none"}, ${b.factions.length} factions`);
+      await spindle.userStorage.setJson(biblePath(sheet.cardKey), { sheetAt: sheet.readAt, shape: sheet.shape, bible: b }, { userId });
+      return b;
+    });
+  }
+
+  /** The stored Bible, without compiling one; with a sheet, only one built for that read and shape. */
+  async function storedBible(userId: string, cardKey: string, sheet?: Pick<CardSheet, "readAt" | "shape">): Promise<Bible | null> {
+    const stored = await spindle.userStorage.getJson<{ sheetAt?: number; shape?: string; bible?: Bible } | null>(biblePath(cardKey), { fallback: null, userId }).catch(() => null);
+    if (sheet && (stored?.sheetAt !== sheet.readAt || stored?.shape !== sheet.shape)) return null;
+    return stored?.bible ?? null;
+  }
+
   const arming = new Map<string, Promise<CardSheet>>();
 
   /** The sheet with the card's foes and the party's kits, read once (meaning/armory.ts). */
@@ -360,10 +427,22 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       job = (async () => {
         const src = await gather(userId, chatId).catch(() => null);
         const all = src ? Object.values(corpora(src)).join(" ") : "";
-        const r = await architect(userId, armoryPrompt(sheet, src ? sourcesText(src, 12_000) : sheet.premise), 4000);
-        const a = parseArmory(r.raw, sheet, (q) => !!all && quoteFound(q, all));
-        log(`armory ${sheet.cardName}: ${a.by}${r.raw ? "" : ` (${r.why})`}, ${a.foes.length} foes (${a.foes.map((f) => `${f.name}:${f.role}${f.tier}`).join(", ")}), ${a.kits.length} kits`);
-        void spindle.userStorage.setJson("cards/debug/last-armory.json", { at: Date.now(), raw: r.raw, why: r.why ?? null }, { userId }).catch(() => {});
+        const verify = (q: string) => !!all && quoteFound(q, all);
+        // A usable answer names foes; one with none is asked again, then the genre's foes stand in.
+        const r = await ledger.compile(
+          userId,
+          "armory",
+          armoryPrompt(sheet, src ? sourcesText(src, 12_000) : sheet.premise),
+          4000,
+          (raw) => {
+            const parsed = parseArmory(raw, sheet, verify);
+            return parsed.by === "architect" ? parsed : null;
+          },
+          () => parseArmory(null, sheet, verify),
+        );
+        const a = r.value;
+        log(`armory ${sheet.cardName}: ${a.by} (${r.by}${r.why ? `: ${r.why}` : ""}), ${a.foes.length} foes (${a.foes.map((f) => `${f.name}:${f.role}${f.tier}`).join(", ")}), ${a.kits.length} kits`);
+        void spindle.userStorage.setJson("cards/debug/last-armory.json", { at: Date.now(), by: r.by, tries: r.tries, why: r.why ?? null }, { userId }).catch(() => {});
         const fresh = (await loadSheet(userId, sheet.cardKey)) ?? sheet;
         const next: CardSheet = { ...fresh, foes: a.foes, kits: a.kits, armoryBy: a.by };
         await saveSheet(userId, next);
@@ -376,6 +455,14 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
 
   return {
     status,
+    jaot,
+    bible,
+    storedBible,
+    /** A validated model answer through the ledger (4.5), for play's own compiles. */
+    compile: ledger.compile,
+    setPlaceHook(h: PlaceHook) {
+      placeHook = h;
+    },
     sheetFor,
     armory,
     saveSheet,
@@ -386,13 +473,25 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       const sheet = await sheetFor(userId, chatId);
       if (!sheet) return { error: "Gambit has not read this card yet. Turn it on for this chat first." };
       const prompt = matchCardPrompt({ name: sheet.cardName, premise: sheet.premise, tone: sheet.tone, genre: sheet.skin.genre, looks: sheet.cast.map((c) => c.look).filter(Boolean).slice(0, 4) });
-      const res = await architect(userId, prompt, 1200);
-      if (!res.raw) return { error: `The model gave no look (${res.why ?? "no answer"}).` };
       const slug = sheet.cardName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "card";
-      const checked = validateLook({ format: "gambit-look", v: 1, ...res.raw, id: `card-${slug}`, author: "Gambit (matched to the card)" });
-      if (!checked.ok) return { error: `The model's look did not pass the checks: ${checked.errors.join(" ")}` };
-      log(`look: matched "${checked.look.label}" to ${sheet.cardName} in ${Math.round(res.ms / 1000)} s`);
-      return { look: checked.look, warnings: checked.warnings };
+      let errors: string[] = [];
+      // A look that fails the validator is asked for once more; there is no code fallback for taste.
+      const res = await ledger.compile(
+        userId,
+        "match-look",
+        prompt,
+        1200,
+        (raw) => {
+          const checked = validateLook({ format: "gambit-look", v: 1, ...raw, id: `card-${slug}`, author: "Gambit (matched to the card)" });
+          if (!checked.ok) errors = checked.errors;
+          return checked.ok ? checked : null;
+        },
+        () => null,
+        { fresh: true },
+      );
+      if (!res.value) return { error: errors.length ? `The model's look did not pass the checks: ${errors.join(" ")}` : `The model gave no look (${res.why ?? "no answer"}).` };
+      log(`look: matched "${res.value.look.label}" to ${sheet.cardName} (${res.by}, ${res.tries} ask${res.tries === 1 ? "" : "s"})`);
+      return { look: res.value.look, warnings: res.value.warnings };
     },
 
     /** A fact turned up in play counts as known: Parley Leverage can use it (4.0). */
@@ -485,14 +584,27 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     async afterReply(userId: string, chatId: string, messageId: string | undefined, generationType: string | undefined) {
       if (!messageId || generationType === "impersonate") return;
       const c = await conf(userId, chatId);
-      if (!c.enabled || c.chips === false || !c.cardKey) return;
+      if (!c.enabled || !c.cardKey) return;
       if (parleys.awaitingIn(chatId) || (await parleys.openIn(userId, chatId))) return log("chip: skipped, a Parley is open in this chat");
       const sheet = await loadSheet(userId, c.cardKey);
       if (!sheet) return log("chip: skipped, the card has not been read");
+      const wantChip = c.chips !== false;
+      // Where the scene is now: asked in the same call when this chat has a scene (places from play).
+      const where = placeHook ? await placeHook.where(userId, chatId).catch(() => null) : null;
+      if (!wantChip && !where) return;
       const lines = await recent(userId, chatId, 4);
       const t0 = Date.now();
-      const answers = await ask(userId, detectorState(sheet, lines), detectorQuestions(sheet));
+      const questions = { ...(wantChip ? detectorQuestions(sheet) : {}), ...(where ? whereQuestion(where.here, where.places) : {}) };
+      const state = { ...detectorState(sheet, lines), ...(where ? { scene_was_at: where.here.name, known_places: where.places.map((p) => p.name) } : {}) };
+      const answers = await ask(userId, state, questions);
       if (!answers) return log("chip: the detector gave no answer");
+      const w = answers.where;
+      if (where && w && w.type === "choice" && w.choice !== "same") {
+        const p = Number(w.probabilities?.[w.choice] ?? w.confidence ?? 0);
+        log(`where: ${w.choice} (p ${Math.round(p * 100) / 100})`);
+        void placeHook!.moved(userId, chatId, w.choice, p, lines).catch((err) => log(`where: ${errText(err).slice(0, 160)}`));
+      }
+      if (!wantChip) return;
       const chip = chipFromAnswers(sheet, answers, { chatId, messageId });
       const pick = (a: DecisionAnswer | undefined) => (a && "pick" in a ? `${String(a.pick)} ${JSON.stringify((a as { probs?: unknown }).probs ?? {}).slice(0, 140)}` : "?");
       if (!chip) return log(`chip: none in ${Math.round((Date.now() - t0) / 1000)} s (contest ${pick(answers.contest)}; target ${pick(answers.target)})`);

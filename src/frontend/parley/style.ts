@@ -119,6 +119,14 @@ export const PARLEY_CSS = `
 
 .foot { padding: 12px 20px 16px; border-top: 1px solid #2c241b; display: grid; gap: 8px; }
 .status { min-height: 1.2em; font-style: italic; color: #9d927f; font-size: 14px; }
+.hand { display: none; }
+.pl.table .hand { display: flex; justify-content: center; gap: 0; padding: 4px 0 2px; min-height: 0; flex-wrap: nowrap; overflow-x: auto; }
+.pl.table .fact-card { flex: 0 0 auto; width: 132px; min-height: 92px; margin: 0 -10px; padding: 10px 10px 8px; text-align: left; font: 12px/1.3 Georgia, serif; color: #2a1f14; background: linear-gradient(#f3e6c8, #e2cfa3); border: 1px solid #8a6d3f; border-radius: 8px; box-shadow: 0 6px 14px #0008; transform: rotate(var(--tilt, 0deg)) translateY(6px); transition: transform .15s ease, margin .15s ease; cursor: pointer; }
+.pl.table .fact-card:hover, .pl.table .fact-card:focus-visible { transform: rotate(0deg) translateY(-10px) scale(1.06); margin: 0 4px; z-index: 2; }
+.pl.table .fact-card.used { opacity: .45; }
+.pl.table .scene { background: radial-gradient(ellipse at 50% 110%, #6b3d16 0%, #2a170b 45%, #0c0805 75%); }
+.pl.table .scene::after { content: ""; position: absolute; left: -10%; right: -10%; bottom: -2%; height: 22%; background: linear-gradient(#5a3a1e, #2b1a0c); border-top: 3px solid #7a532c; border-radius: 50% 50% 0 0 / 30% 30% 0 0; box-shadow: 0 -30px 60px #ffb35a22 inset; pointer-events: none; }
+.pl.table .foot { background: linear-gradient(#1a110a, #120c07); }
 .composer { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .composer textarea { resize: none; background: #0f0c0a; border: 1px solid #3c3125; border-radius: 10px; padding: 9px 12px; font-size: 16px; line-height: 1.35; }
 .composer textarea:focus { outline: none; border-color: #c9a865; }

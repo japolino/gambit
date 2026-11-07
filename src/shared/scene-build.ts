@@ -5,7 +5,9 @@
  */
 import type { CardSheet } from "../engine/card/types.js";
 import { roomAt, type DelveMap, type DelveState } from "../engine/world/delve.js";
-import { hotspotsOf, TIMES, type SceneState, type World } from "../engine/world/places.js";
+import { fightLabel, hotspotsOf, TIMES, type Hotspot, type SceneState, type World } from "../engine/world/places.js";
+import { hexKey, SUPPLY_MAX, TERRAIN_NAME, type HexMap, type HexState, type Terrain } from "../engine/world/hex.js";
+import type { Thread } from "../meaning/bible.js";
 import { npcArtKey, placeArtKey } from "./art-keys.js";
 import type { DelveView, Movement, SceneView, ThemeId } from "./scene-view.js";
 
@@ -19,11 +21,45 @@ export interface PlayRecord {
   delve?: { placeId: string; map: DelveMap; state: DelveState };
   /** The battle running for this chat, if any. */
   battleId?: string;
+  /** Frontier cards: the honeycomb overland and where you stand on it. */
+  hex?: { map: HexMap; state: HexState };
+  /** When the World Bible last merged into this world (its `at`). */
+  bibleAt?: number;
+  /** The central thread, copied from the Bible, and the revelation ids found so far. */
+  thread?: Thread;
+  revealed?: string[];
+}
+
+const INDOOR = /(inn|tavern|shop|store|room|rooms|bar|cafe|café|parlou?r|hall|kitchen|library|office|apartment|bedroom|chamber|study|salon|lounge|club|pub|smithy|forge|bakery|apothecary|mess|quarters|house|home|manor|mansion|palace|castle)/i;
+export const WILD_TEXT: Record<Terrain, string> = {
+  plain: "Open country under a wide sky, the road a faint line through the grass",
+  wood: "Close trees and deep shade, the path half lost",
+  hill: "Windy hilltops with a long view of the land around",
+  water: "Water",
+  ruin: "Broken walls and old stones, overgrown and watchful",
+};
+
+/** The overland cell you stand on, when it is not a place. */
+export function wildCell(r: PlayRecord): Terrain | null {
+  if (!r.hex) return null;
+  const c = r.hex.map.cells[hexKey(r.hex.state.q, r.hex.state.r)];
+  return c && !c.place ? c.t : null;
+}
+
+/** The menu for where you are: a place's hotspots, or the wild's (camp, forage, fight). */
+export function menuFor(sheet: CardSheet, r: PlayRecord): Hotspot[] {
+  if (r.delve) return [];
+  const t = wildCell(r);
+  if (!t) return hotspotsOf(r.world, r.scene.placeId, sheet);
+  const out: Hotspot[] = [{ id: "forage", kind: "search", label: "Forage for supplies" }];
+  if (sheet.modules.encounters && (t === "wood" || t === "ruin" || t === "hill")) out.push({ id: "fight", kind: "fight", label: fightLabel(sheet.skin.fight) });
+  out.push({ id: "camp", kind: "rest", label: "Make camp" }, { id: "wait", kind: "wait", label: "Wait a while" });
+  return out;
 }
 
 export const cardTag = (cardKey: string) => cardKey.replace(/[^a-z0-9]/gi, "").slice(0, 8).toLowerCase();
 const tag = cardTag;
-const MOVEMENT: Record<string, Movement> = { scene: "scene", town: "lobby", journey: "stops", frontier: "lobby", delve: "scene" };
+const MOVEMENT: Record<string, Movement> = { scene: "scene", town: "lobby", journey: "stops", frontier: "hex", delve: "scene" };
 
 export function placeKey(sheet: CardSheet, placeId: string): string {
   return placeArtKey(`${tag(sheet.cardKey)}.${placeId}`);
@@ -72,12 +108,13 @@ export function delveView(sheet: CardSheet, r: PlayRecord): DelveView | undefine
 
 export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, busy?: string): SceneView {
   const p = r.world.places[r.scene.placeId]!;
+  const wild = wildCell(r);
   const cast = new Map(sheet.cast.map((c) => [c.id, c]));
-  const people = p.people
+  const people = (wild ? [] : p.people)
     .map((id) => cast.get(id))
     .filter((m): m is NonNullable<typeof m> => !!m)
     .map((m) => ({ id: m.id, name: m.name, role: m.role, imageId: m.faces?.base ?? m.avatarImageId ?? null, art: npcArtKey(`${sheet.cardKey}:${m.id}`) }));
-  const movement: Movement = r.delve ? "delve" : (MOVEMENT[r.world.shape] ?? "scene");
+  const movement: Movement = r.delve ? "delve" : r.hex ? "hex" : (MOVEMENT[r.world.shape] ?? "scene");
   const others = Object.values(r.world.places).filter((q) => q.id !== p.id);
   return {
     chatId,
@@ -86,17 +123,41 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     shape: r.world.shape,
     movement,
     skin: { currency: sheet.skin.currency, fight: sheet.skin.fight, genre: sheet.skin.genre },
-    place: { id: p.id, name: p.name, description: p.description, art: placeKey(sheet, p.id), added: p.added },
+    place: wild ? { id: `wild_${wild}`, name: TERRAIN_NAME[wild], description: WILD_TEXT[wild], art: placeKey(sheet, `wild_${wild}`), added: true } : { id: p.id, name: p.name, description: p.description, art: placeKey(sheet, p.id), added: p.added },
     tiles: movement === "lobby" ? others.filter((q) => p.exits.includes(q.id)).map((q) => ({ id: q.id, name: q.name, art: placeKey(sheet, q.id) })) : [],
     route: r.world.route.map((id) => ({ id, name: r.world.places[id]?.name ?? id })),
     people,
-    menu: r.delve ? [] : hotspotsOf(r.world, p.id, sheet),
+    menu: menuFor(sheet, r),
     canFight: sheet.modules.encounters !== false,
     clock: { day: r.scene.day, time: TIMES[r.scene.time]! },
     coin: r.scene.coin,
     vigor: r.scene.vigor,
     log: r.log,
     ...(r.delve ? { delve: delveView(sheet, r)! } : {}),
+    ...(r.hex ? { hex: hexView(r) } : {}),
+    ...(r.thread ? { thread: { goal: r.thread.goal, found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text), total: r.thread.revelations.length } } : {}),
+    hand: sheet.facts.filter((f) => f.known || r.scene.found.includes(f.id)).map((f) => ({ id: f.id, text: f.text })),
+    indoor: !wild && !r.delve && (p.shop || INDOOR.test(`${p.name} ${p.description}`)),
     ...(busy ? { busy } : {}),
+  };
+}
+
+function hexView(r: PlayRecord): NonNullable<SceneView["hex"]> {
+  const { map, state } = r.hex!;
+  // Places the world added later are known of before you reach them.
+  const seen = new Set([...state.seen, ...Object.values(map.cells).filter((c) => c.place && c.known).map((c) => hexKey(c.q, c.r))]);
+  return {
+    cells: Object.values(map.cells).map((c) => ({
+      q: c.q,
+      r: c.r,
+      placeId: c.place ?? null,
+      name: c.place && seen.has(hexKey(c.q, c.r)) ? (r.world.places[c.place]?.name ?? null) : null,
+      seen: seen.has(hexKey(c.q, c.r)),
+      here: c.q === state.q && c.r === state.r,
+      terrain: c.t,
+    })),
+    supplies: state.supplies,
+    max: SUPPLY_MAX,
+    wild: !!wildCell(r),
   };
 }

@@ -14,7 +14,7 @@ import type { ToBackend, ToFrontend } from "./shared/protocol.js";
 
 declare const spindle: SpindleAPI;
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const send = (msg: ToFrontend, userId?: string) => spindle.sendToFrontend(msg, userId);
 // Without image connections the art pipeline reports "placeholder art" and
@@ -30,6 +30,8 @@ const battles = createBattles(
 const parleys = createParleys(spindle, (msg, userId) => send(msg, userId), art);
 const cards = createCards(spindle, (msg, userId) => send(msg, userId), parleys);
 play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles);
+// New places come from play (4.5): the reply detector asks where the scene went.
+cards.setPlaceHook({ where: (u, c) => play!.where(u, c), moved: (u, c, pick, p, lines) => play!.moved(u, c, pick, p, lines) });
 const CAMPAIGN = "default"; // one campaign until the World Bible exists (M4)
 
 // Prompt pipeline: Parley outcomes are decided before the narrator writes (docs/DESIGN.md 8.3).
@@ -125,6 +127,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         break;
       case "delve.leave":
         await play!.leave(userId, msg.chatId);
+        break;
+      case "hex.step":
+        await play!.hexStep(userId, msg.chatId, msg.q, msg.r);
         break;
       case "play.fight":
         await play!.fight(userId, msg.chatId, { ...(msg.lead ? { lead: msg.lead } : {}), ...(msg.boss ? { boss: true } : {}) });

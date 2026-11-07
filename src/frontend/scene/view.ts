@@ -6,6 +6,11 @@
  * companion, a journey's stops, or a first-person delve with an automap and
  * a command menu. Everything is reachable from the menu, on desktop and
  * phone; the delve also takes arrow keys and WASD.
+ *
+ * M5: frontier cards walk a honeycomb overland; the Table theme seats the
+ * person you face across a table with what you know as a hand of cards;
+ * the Diorama theme builds indoor places as little 3D rooms; resting plays
+ * the "Meanwhile…" montage over the scene.
  */
 import { fightLabel, type Hotspot } from "../../engine/world/places.js";
 import type { DelveMove } from "../../engine/world/delve.js";
@@ -20,7 +25,13 @@ export interface SceneActions {
   theme(theme: ThemeId): void;
   fight(): void;
   close(): void;
+  /** Step to a neighbouring overland cell. */
+  hex(q: number, r: number): void;
+  /** Table theme: play a fact card on someone (talk to them, citing it). */
+  cite(personId: string, text: string): void;
 }
+
+export type MeanwhileItem = { text: string; art?: string; imageId?: string | null };
 
 export interface SceneHandle {
   readonly chatId: string;
@@ -29,15 +40,21 @@ export interface SceneHandle {
   hide(): void;
   show(): void;
   destroy(): void;
+  /** "Meanwhile…": null opens the montage; the vignettes then play in turn. */
+  meanwhile(day: number, items: MeanwhileItem[] | null): void;
 }
 
-/** The themes this build draws; the rest of THEMES arrive with M5. */
+/** The stage themes (6.3), all drawn as of M5. */
 export const SCENE_THEMES: { id: ThemeId; label: string }[] = [
   { id: "storybook", label: "Storybook" },
-  { id: "onebit", label: "1-bit" },
+  { id: "diorama", label: "Diorama" },
   { id: "lobby", label: "Lobby" },
+  { id: "table", label: "Table" },
+  { id: "onebit", label: "1-bit" },
   { id: "command", label: "Command" },
 ];
+const TERRAIN_FILL: Record<string, string> = { plain: "#6f7d4a", wood: "#3d5a33", hill: "#8f7c55", water: "#2d4c66", ruin: "#6b5d5a" };
+const HEX_DIRS: [number, number][] = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 
 const POST: Record<ThemeId, PostFx> = { storybook: "paper", onebit: "dither", lobby: "paper", diorama: "paper", table: "paper", command: "scan" };
 const KIND_ICON: Record<Hotspot["kind"], string> = { talk: "💬", search: "🔍", exit: "➜", rest: "☾", shop: "⚖", fight: "⚔", delve: "▼", wait: "⌛" };
@@ -126,7 +143,53 @@ const CSS = `
 .gs.command .plate { background: #c8d2f0; color: #0f1838; border-radius: 2px; font-family: inherit; }
 .gs.command .menu button, .gs.command .cmd button { font-family: inherit; }
 .gs.command .menu button:hover, .gs.command .cmd button:hover { background: rgba(200,210,240,.18); border-color: #c8d2f0; }
-@media (prefers-reduced-motion: reduce) { .gs .flat { transition: none; } .gs .tiles button:hover { transform: none; } }
+/* Honeycomb overland (frontier). */
+.gs .hexwrap { position: absolute; top: var(--hud, 56px); right: 12px; width: min(460px, 48vw); height: min(340px, 44vh); background: rgba(11,10,9,.72); border: 1px solid rgba(201,168,101,.45); border-radius: 12px; backdrop-filter: blur(4px); }
+.gs .hexwrap svg { width: 100%; height: 100%; display: block; }
+.gs .hexwrap polygon { stroke: rgba(11,10,9,.85); stroke-width: 1.2; }
+.gs .hexwrap .fog { fill: #17130f; }
+.gs .hexwrap .step { cursor: pointer; }
+.gs .hexwrap .step:hover polygon, .gs .hexwrap .step:focus-visible polygon { stroke: #f1d9b0; stroke-width: 2.4; }
+.gs .hexwrap .here polygon { stroke: #c9a865; stroke-width: 3; }
+.gs .hexwrap .goto { cursor: pointer; }
+.gs .hexwrap text { font: 600 9px "Segoe UI", system-ui, sans-serif; fill: #ece3cf; paint-order: stroke; stroke: rgba(11,10,9,.9); stroke-width: 3px; pointer-events: none; }
+.gs .hexwrap .pin { fill: #c9a865; stroke: #17130f; stroke-width: 1.5; }
+.gs .hexwrap .you { fill: #f1d9b0; stroke: #17130f; stroke-width: 1.5; }
+.gs .hexwrap .key { position: absolute; left: 10px; bottom: 6px; font: 11px "Segoe UI", system-ui, sans-serif; opacity: .75; pointer-events: none; }
+/* Table: the person you face across a table, and your hand of fact cards. */
+.gs .tabletop { position: absolute; left: -6%; right: -6%; bottom: 0; height: 40%; background: radial-gradient(ellipse at 50% 0%, #6e4a26 0%, #3d2713 55%, #1c1209 100%); border-top: 4px solid #8a6436; border-radius: 50% 50% 0 0 / 22% 22% 0 0; box-shadow: 0 -40px 90px rgba(255,180,90,.18) inset, 0 -8px 40px rgba(0,0,0,.6); pointer-events: none; }
+.gs .tabletop::before { content: ""; position: absolute; left: 50%; top: 10%; width: 18px; height: 34px; margin-left: -9px; border-radius: 4px 4px 2px 2px; background: linear-gradient(#f3e3c0, #cdb68a); box-shadow: 0 -16px 30px 10px rgba(255,190,100,.35); }
+.gs .hand { position: absolute; left: 12px; right: 12px; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 150px); display: flex; justify-content: center; pointer-events: none; }
+.gs .hand button { pointer-events: auto; flex: 0 0 auto; width: 128px; min-height: 86px; margin: 0 -9px; padding: 9px 9px 7px; text-align: left; font: 12px/1.3 Georgia, serif; color: #2a1f14; background: linear-gradient(#f3e6c8, #dcc79a); border: 1px solid #8a6d3f; border-radius: 8px; box-shadow: 0 6px 14px rgba(0,0,0,.55); transform: rotate(var(--tilt, 0deg)) translateY(8px); transition: transform .15s ease, margin .15s ease; cursor: pointer; }
+.gs .hand button:hover, .gs .hand button:focus-visible { transform: rotate(0deg) translateY(-12px) scale(1.06); margin: 0 4px; z-index: 2; outline: none; }
+.gs .hand button[disabled] { cursor: default; opacity: .6; }
+.gs .hand .none { pointer-events: none; font: italic 13px Georgia, serif; opacity: .7; }
+.gs.table .lobbyface { bottom: 34%; height: 50%; }
+.gs.table .say, .gs.table .menu { background: linear-gradient(180deg, rgba(40,26,14,.94), rgba(20,13,7,.96)); border-color: rgba(214,170,100,.55); }
+/* Diorama: warm, close, a little toy-like. */
+.gs.diorama .say, .gs.diorama .menu { background: linear-gradient(180deg, rgba(48,32,20,.92), rgba(26,18,11,.95)); border-color: rgba(230,180,110,.5); }
+.gs.diorama .plate { background: #e3b26a; }
+.gs.diorama .flat { filter: sepia(.25) saturate(1.1); }
+/* Meanwhile… */
+.gs .mw { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,16,12,.86), rgba(5,4,3,.97)); cursor: pointer; animation: mwIn .6s ease; }
+.gs .mw-in { display: grid; justify-items: center; gap: 16px; width: min(640px, 90vw); }
+.gs .mw-title { font: italic 34px/1 "Cormorant Garamond", Georgia, serif; color: #e9d4ad; letter-spacing: .03em; }
+.gs .mw.waiting .mw-title { animation: mwPulse 1.6s ease-in-out infinite; }
+.gs .mw-art { width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; background: #17130f center/cover no-repeat; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.gs .mw-art.none { display: none; }
+.gs .mw-text { font: 19px/1.5 "Cormorant Garamond", Georgia, serif; text-align: center; color: #f1e6cf; min-height: 3em; margin: 0; }
+.gs .mw-card { display: grid; gap: 14px; width: 100%; animation: mwIn .5s ease; }
+.gs .mw-dots { display: flex; gap: 6px; } .gs .mw-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
+.gs .mw-hint { font: 12px "Segoe UI", system-ui, sans-serif; opacity: .55; }
+@keyframes mwIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes mwPulse { 50% { opacity: .45; } }
+@media (max-width: 720px) {
+  .gs .hexwrap { left: 12px; right: 12px; width: auto; height: 32vh; }
+  .gs .hand { bottom: 320px; }
+  .gs .hand button { width: 104px; min-height: 76px; font-size: 11px; }
+}
+.gs.onebit .hexwrap { filter: grayscale(1) contrast(1.6); border-radius: 0; background: #0c0b0a; border: 2px solid #e8e2d0; }
+@media (prefers-reduced-motion: reduce) { .gs .flat { transition: none; } .gs .tiles button:hover { transform: none; } .gs .mw, .gs .mw-card { animation: none; } .gs .hand button { transition: none; } }
 `;
 
 export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions): SceneHandle {
@@ -136,7 +199,9 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   const style = document.createElement("style");
   style.textContent = CSS;
   el.innerHTML = `
-    <div class="world"><div class="flat"></div><canvas class="delve2d gone"></canvas><div class="folk"></div><div class="lobbyface gone"></div></div>
+    <div class="world"><div class="flat"></div><canvas class="delve2d gone"></canvas><div class="folk"></div><div class="tabletop gone"></div><div class="lobbyface gone"></div></div>
+    <div class="hexwrap gone"><svg role="group" aria-label="The overland"></svg><div class="key"></div></div>
+    <div class="hand gone"></div>
     <div class="tiles gone"></div>
     <div class="route gone"></div>
     <canvas class="automap gone" width="150" height="150"></canvas>
@@ -158,6 +223,11 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   const log = $<HTMLDivElement>(".log");
   const busy = $<HTMLDivElement>(".busy");
   const menu = $<HTMLDivElement>(".menu");
+  const hexwrap = $<HTMLDivElement>(".hexwrap");
+  const hexsvg = hexwrap.querySelector("svg") as SVGSVGElement;
+  const hexkey = $<HTMLDivElement>(".hexwrap .key");
+  const hand = $<HTMLDivElement>(".hand");
+  const tabletop = $<HTMLDivElement>(".tabletop");
 
   const art = new Map<string, { url: string; cutout: boolean }>();
   let view = first;
@@ -173,6 +243,10 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   if (!low && webglOk()) {
     try {
       layer = new SceneLayer3D(world);
+      // Clicking someone standing in the room talks to them, when you can.
+      layer.onPick = (id) => {
+        if (view.menu.some((h) => h.id === `talk:${id}`)) a.act(`talk:${id}`);
+      };
       // For debugging from devtools: the scene element carries its 3D layer.
       (el as unknown as { gambitLayer?: SceneLayer3D }).gambitLayer = layer;
       // The 3D layer draws the room; the DOM keeps the menus and HUD.
@@ -210,6 +284,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       <span class="chip">Day ${v.clock.day} · ${esc(v.clock.time)}</span>
       <span class="chip">${v.coin} ${esc(v.skin.currency || "coin")}</span>
       <span class="chip" title="How fresh the party is">Vigor<span class="vig"><i style="width:${Math.round(v.vigor * 100)}%"></i></span></span>
+      ${v.hex ? `<span class="chip" title="Each step on the overland eats a day's supplies; rest in a town to refill">Supplies <b>${v.hex.supplies}/${v.hex.max}</b></span>` : ""}
+      ${v.thread ? `<span class="chip" title="${esc(`${v.thread.goal}${v.thread.found.length ? `\n\n${v.thread.found.map((f) => `• ${f}`).join("\n")}` : ""}`)}">🧵 <b>${v.thread.found.length}/${v.thread.total}</b></span>` : ""}
       <select class="chip" aria-label="Scene theme">${themes}</select>`;
     hud.querySelector("select")!.addEventListener("change", (e) => a.theme((e.target as HTMLSelectElement).value as ThemeId));
     // What sits under the HUD starts below it, however many rows it wraps to.
@@ -262,10 +338,94 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     busy.classList.toggle("gone", !v.busy);
   }
 
+  function hexPoints(cx: number, cy: number, size: number): string {
+    const out: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const ang = ((60 * i - 30) * Math.PI) / 180;
+      out.push(`${(cx + size * Math.cos(ang)).toFixed(1)},${(cy + size * Math.sin(ang)).toFixed(1)}`);
+    }
+    return out.join(" ");
+  }
+
+  /** The honeycomb overland: seen cells in their terrain, fog elsewhere; neighbours are steps, known places are trips. */
+  function drawHex(v: SceneView): void {
+    const h = v.hex!;
+    const size = 20;
+    const pos = (q: number, r: number) => ({ x: size * Math.sqrt(3) * (q + r / 2), y: size * 1.5 * r });
+    const here = h.cells.find((c) => c.here)!;
+    const near = new Set(HEX_DIRS.map(([dq, dr]) => `${here.q + dq},${here.r + dr}`));
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const c of h.cells) {
+      if (!c.seen) continue;
+      const p = pos(c.q, c.r);
+      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+    }
+    const pad = size * 2.2;
+    hexsvg.setAttribute("viewBox", `${(x0 - pad).toFixed(0)} ${(y0 - pad).toFixed(0)} ${(x1 - x0 + pad * 2).toFixed(0)} ${(y1 - y0 + pad * 2).toFixed(0)}`);
+    const goes = new Set(v.menu.filter((m) => m.kind === "exit").map((m) => m.target));
+    const parts: string[] = [];
+    const labels: string[] = [];
+    for (const c of h.cells) {
+      const p = pos(c.q, c.r);
+      const step = c.seen && near.has(`${c.q},${c.r}`) && c.terrain !== "water";
+      const trip = !step && c.placeId && c.seen && goes.has(c.placeId);
+      const cls = c.here ? "here" : step ? "step" : trip ? "goto" : "";
+      const fill = c.seen ? TERRAIN_FILL[c.terrain] ?? "#555" : "";
+      const attrs = step ? ` data-q="${c.q}" data-r="${c.r}" tabindex="0" role="button" aria-label="Step ${c.name ? `to ${esc(c.name)}` : `into ${esc(c.terrain)}`}"` : trip ? ` data-go="${esc(c.placeId!)}" tabindex="0" role="button" aria-label="Travel to ${esc(c.name ?? "")}"` : "";
+      parts.push(`<g class="${cls}"${attrs}><polygon points="${hexPoints(p.x, p.y, size - 0.6)}" ${c.seen ? `style="fill:${fill}"` : `class="fog"`}><title>${esc(c.name ?? (c.seen ? c.terrain : "Unknown"))}</title></polygon></g>`);
+      if (c.placeId && c.seen) {
+        parts.push(`<circle class="pin" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5"/>`);
+        if (c.name) labels.push(`<text x="${p.x.toFixed(1)}" y="${(p.y + size * 0.95).toFixed(1)}" text-anchor="middle">${esc(c.name.length > 18 ? `${c.name.slice(0, 17)}…` : c.name)}</text>`);
+      }
+    }
+    const hp = pos(here.q, here.r);
+    parts.push(`<circle class="you" cx="${hp.x.toFixed(1)}" cy="${(hp.y - (here.placeId ? 9 : 0)).toFixed(1)}" r="6"/>`);
+    hexsvg.innerHTML = parts.join("") + labels.join("");
+    hexkey.textContent = h.wild ? "Out in the wild. Step to a lit cell, or make camp." : "Step to a neighbouring cell, or tap a place to travel there.";
+    hexsvg.querySelectorAll<SVGGElement>("[data-q]").forEach((g) => {
+      const go = () => a.hex(Number(g.dataset.q), Number(g.dataset.r));
+      g.addEventListener("click", go);
+      g.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), go()));
+    });
+    hexsvg.querySelectorAll<SVGGElement>("[data-go]").forEach((g) => {
+      const go = () => a.act(`go:${g.dataset.go}`);
+      g.addEventListener("click", go);
+      g.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), go()));
+    });
+  }
+
+  /** Table: what you know as a hand of cards; playing one on the person across the table starts a Parley citing it. */
+  function drawHand(v: SceneView): void {
+    const lead = v.people[0];
+    const canTalk = !!lead && v.menu.some((h) => h.id === `talk:${lead.id}`);
+    if (!v.hand.length) {
+      hand.innerHTML = `<span class="none">You hold no cards yet. Look around; people let things slip.</span>`;
+      return;
+    }
+    hand.innerHTML = v.hand
+      .map((f, i) => `<button data-fact="${esc(f.id)}" style="--tilt:${((i - (v.hand.length - 1) / 2) * 5).toFixed(1)}deg" ${canTalk ? `title="Play this on ${esc(lead!.name)}"` : `disabled title="Nobody here to play it on"`}>${esc(f.text)}</button>`)
+      .join("");
+    hand.querySelectorAll<HTMLButtonElement>("[data-fact]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const f = v.hand.find((x) => x.id === b.dataset.fact);
+        if (f && lead) a.cite(lead.id, f.text);
+      }),
+    );
+  }
+
   function renderWorld(v: SceneView): void {
-    const lobby = !v.delve && v.movement === "lobby";
-    tiles.classList.toggle("gone", !lobby || !v.tiles.length);
-    lobbyface.classList.toggle("gone", !lobby);
+    const table = !v.delve && v.theme === "table";
+    const lobby = !v.delve && (v.movement === "lobby" || table);
+    const hexOn = !v.delve && !!v.hex && !table;
+    // An indoor place in the Diorama theme: people stand in the 3D room, not as the lobby portrait.
+    const room = !!layer && !v.delve && v.theme === "diorama" && v.indoor;
+    hexwrap.classList.toggle("gone", !hexOn);
+    if (hexOn) drawHex(v);
+    hand.classList.toggle("gone", !table);
+    tabletop.classList.toggle("gone", !table);
+    if (table) drawHand(v);
+    tiles.classList.toggle("gone", !lobby || table || !v.tiles.length);
+    lobbyface.classList.toggle("gone", !lobby || room);
     route.classList.toggle("gone", !!v.delve || v.movement !== "stops" || v.route.length < 2);
     automap.classList.toggle("gone", !v.delve);
     delve2d.classList.toggle("gone", !v.delve || !!layer);
@@ -292,18 +452,19 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       return;
     }
     const bg = urlOf(v.place.art);
-    const shown = lobby ? [] : v.people.map((p) => ({ p, a: personArt(p) })).filter((x) => x.a);
+    const shown = lobby && !room ? [] : v.people.map((p) => ({ p, a: personArt(p) })).filter((x) => x.a);
     if (layer) {
       layer.setPost(POST[v.theme]);
-      layer.setDolly(0);
-      void layer.showBackdrop(bg);
+      layer.setDolly(table ? 0.5 : 0);
+      if (room) void layer.showDiorama(bg, { counter: v.menu.some((h) => h.kind === "shop") });
+      else void layer.showBackdrop(bg);
       void layer.showPeople(shown.map((x) => ({ id: x.p.id, url: x.a!.url, cutout: x.a!.cutout })));
     } else {
       flat.style.backgroundImage = bg ? `url('${bg.replace(/'/g, "%27")}')` : "";
       flat.classList.toggle("dim", lobby);
       folk.innerHTML = shown.map((x) => `<img alt="${esc(x.p.name)}" class="${x.a!.cutout ? "" : "opaque"}" src="${esc(x.a!.url)}">`).join("");
     }
-    if (layer && lobby) {
+    if (layer && lobby && !table && !room) {
       // The lobby keeps its tiles readable over the 3D room.
       layer.setDolly(-0.4);
     }
@@ -378,6 +539,53 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   }
   render(first);
 
+  /* ----------------------------- Meanwhile… ---------------------------- */
+  let mw: { day: number; items: MeanwhileItem[] | null; i: number; box: HTMLDivElement; timer: number } | null = null;
+  function closeMeanwhile(): void {
+    if (!mw) return;
+    clearTimeout(mw.timer);
+    mw.box.remove();
+    mw = null;
+  }
+  function openMeanwhile(day: number): void {
+    closeMeanwhile();
+    const box = document.createElement("div");
+    box.className = "mw waiting";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Meanwhile");
+    box.innerHTML = `<div class="mw-in"><div class="mw-title">Meanwhile…</div><div class="mw-body"></div><div class="mw-hint">Night falls on day ${day - 1}</div></div>`;
+    box.addEventListener("click", () => {
+      if (!mw?.items) return;
+      if (mw.i + 1 < mw.items.length) {
+        mw.i++;
+        paintMeanwhile();
+      } else closeMeanwhile();
+    });
+    el.append(box);
+    mw = { day, items: null, i: 0, box, timer: 0 };
+    // Nothing came back: never leave the player stuck behind the curtain.
+    mw.timer = window.setTimeout(() => !mw?.items && closeMeanwhile(), 45_000);
+  }
+  function paintMeanwhile(): void {
+    if (!mw?.items) return;
+    const m = mw;
+    const item = m.items![m.i];
+    if (!item) return closeMeanwhile();
+    m.box.classList.remove("waiting");
+    const url = item.imageId ? `/api/v1/images/${item.imageId}` : urlOf(item.art);
+    const body = m.box.querySelector(".mw-body")!;
+    body.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><p class="mw-text">${esc(item.text)}</p></div><div class="mw-dots" style="justify-content:center;margin-top:10px">${m.items!.map((_, i) => `<i class="${i === m.i ? "on" : ""}"></i>`).join("")}</div>`;
+    m.box.querySelector(".mw-hint")!.textContent = m.i + 1 < m.items!.length ? "Tap to continue" : "Tap to wake";
+    clearTimeout(m.timer);
+    m.timer = window.setTimeout(() => {
+      if (mw !== m) return;
+      if (m.i + 1 < m.items!.length) {
+        m.i++;
+        paintMeanwhile();
+      } else closeMeanwhile();
+    }, 5200);
+  }
+
   return {
     chatId: first.chatId,
     setView(v) {
@@ -390,6 +598,18 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       const v = view;
       const used = key === v.place.art || v.tiles.some((t) => t.art === key) || v.people.some((p) => p.art === key) || key === v.delve?.textures.wall;
       if (used && !destroyed) renderWorld(v);
+      if (mw && mw.items?.[mw.i]?.art === key) paintMeanwhile();
+    },
+    meanwhile(day, items) {
+      if (destroyed) return;
+      if (!items) {
+        openMeanwhile(day);
+        return;
+      }
+      if (!mw || mw.day !== day) openMeanwhile(day);
+      mw!.items = items;
+      mw!.i = 0;
+      paintMeanwhile();
     },
     hide() {
       el.classList.add("gone");
@@ -401,6 +621,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     },
     destroy() {
       destroyed = true;
+      closeMeanwhile();
       window.removeEventListener("keydown", onKey);
       ro.disconnect();
       layer?.destroy();

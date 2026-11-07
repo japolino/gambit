@@ -5,6 +5,8 @@
  */
 import { clearRoom, enterDelve, generateDelve, stepDelve } from "../src/engine/world/delve.js";
 import { buildWorld, moveScene, newScene, TIMES } from "../src/engine/world/places.js";
+import { buildHex, cellOf, hexKey, newHex, stepHex } from "../src/engine/world/hex.js";
+import { fallbackMeanwhile } from "../src/meaning/fallbacks.js";
 import { buildSceneView, placeKey, wallKey, type PlayRecord } from "../src/shared/scene-build.js";
 import { npcArtKey } from "../src/shared/art-keys.js";
 import type { ThemeId } from "../src/shared/scene-view.js";
@@ -24,7 +26,7 @@ const sheet = {
   player: { name: "Wren", concept: "a courier", social: { presence: 2, menace: 1, guile: 3 } },
   cast: [
     { id: "mara", name: "Mara", role: "the harbormaster, usually at the docks", look: "", main: true, pronoun: "she", evidence: ev },
-    { id: "tobin", name: "Tobin", role: "keeps the tavern", look: "", main: false, pronoun: "he", evidence: ev },
+    { id: "tobin", name: "Tobin", role: "keeps The Drowned Lantern", look: "", main: false, pronoun: "he", evidence: ev },
   ],
   places: [
     { id: "docks", name: "The Docks", description: "Wet planks, gulls, and crates under tarps", evidence: ev },
@@ -32,13 +34,24 @@ const sheet = {
     { id: "lighthouse", name: "Old Lighthouse", description: "A dead lighthouse on dangerous rocks", evidence: ev },
     { id: "caves", name: "Smugglers' Caves", description: "A cave tunnel and crypt under the cliffs", evidence: ev },
   ],
-  facts: [],
+  facts: [
+    { id: "f1", text: "Mara takes a cut from every smuggled crate.", about: ["mara"], weight: 2, known: true, evidence: ev },
+    { id: "f2", text: "Tobin hides a ledger under the bar.", about: ["tobin"], weight: 1, known: true, evidence: ev },
+    { id: "f3", text: "The lighthouse went dark the night the warden vanished.", about: [], weight: 3, known: true, evidence: ev },
+  ],
   notes: [],
 } as never;
 
 let r: PlayRecord = (() => {
   const world = buildWorld(sheet, "preview");
-  return { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: "storybook", log: ["You arrive by the morning ferry."] };
+  const base: PlayRecord = { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: (new URLSearchParams(location.search).get("theme") ?? "storybook") as ThemeId, log: ["You arrive by the morning ferry."] };
+  base.thread = { goal: "Find out why the lighthouse went dark", revelations: [1, 2, 3, 4].map((i) => ({ id: `rev${i}`, text: `Revelation ${i}` })), by: "fallback" };
+  base.revealed = ["rev1"];
+  if (world.shape === "frontier") {
+    const map = buildHex(world, "preview-hex");
+    base.hex = { map, state: newHex(map, cellOf(map, world.start)) };
+  }
+  return base;
 })();
 
 /** Painted stand-in art: a gradient sky, a horizon, and a few shapes. */
@@ -92,7 +105,12 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   act(id) {
     const [kind, target] = id.split(":") as [string, string];
     if (kind === "go") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "go", to: target }), log: [...r.log, `You go to ${r.world.places[target]!.name}.`].slice(-6) };
-    else if (id === "rest") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "rest" }) };
+    else if (id === "rest" || id === "camp") {
+      if (id === "rest") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "rest" }) };
+      handle.meanwhile(r.scene.day, null);
+      const vs = fallbackMeanwhile({ cast: (sheet as unknown as { cast: never }).cast, places: Object.values(r.world.places) as never, cardKey: "preview" }, r.scene.day, [{ name: "The Wardens", want: "Find the smugglers' route" }]);
+      setTimeout(() => handle.meanwhile(r.scene.day, vs.map((v) => ({ text: v.text, ...(v.where ? { art: placeKey(sheet, v.where) } : {}) }))), 1200);
+    }
     else if (id === "wait") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "wait" }), log: [...r.log, `Time passes: ${TIMES[r.scene.time]}.`].slice(-6) };
     else if (id === "delve") {
       const map = generateDelve(`preview:${r.scene.placeId}`);
@@ -125,6 +143,21 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   },
   fight() {},
   close() {},
+  hex(q, rr) {
+    if (!r.hex) return;
+    try {
+      const out = stepHex(r.hex.map, r.hex.state, { q, r: rr });
+      const scene = moveScene(r.world, r.scene, { kind: "wait" });
+      r = { ...r, hex: { ...r.hex, state: out.state }, scene: out.place ? { ...scene, placeId: out.place } : scene, log: [...r.log, out.place ? `You reach ${r.world.places[out.place]!.name}.` : `${r.hex.map.cells[hexKey(q, rr)]!.t}.`].slice(-6) };
+    } catch (err) {
+      r = { ...r, log: [...r.log, String((err as Error).message)].slice(-6) };
+    }
+    refresh();
+  },
+  cite(personId, text) {
+    r = { ...r, log: [...r.log, `(Parley with ${personId}, citing: ${text})`].slice(-6) };
+    refresh();
+  },
 });
 
 function refresh(): void {
@@ -134,6 +167,7 @@ function refresh(): void {
   for (const p of Object.values(r.world.places)) handle.setArt(placeKey(sheet, p.id), paint(p.id.length * 47 + p.id.charCodeAt(0) * 13, "place"), false);
   for (const m of [{ id: "mara" }, { id: "tobin" }]) handle.setArt(npcArtKey(`${T.cardKey}:${m.id}`), paint(m.id.charCodeAt(0) * 31, "person"), true);
   if (r.delve) handle.setArt(wallKey(sheet, r.delve.placeId), paint(5, "wall"), false);
+  for (const t of ["plain", "wood", "hill", "ruin"]) handle.setArt(placeKey(sheet, `wild_${t}`), paint(t.length * 91 + 7, "place"), false);
   (window as unknown as { gambitScene: unknown }).gambitScene = { r, v };
 }
 refresh();

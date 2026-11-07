@@ -13,11 +13,17 @@ import { kitClass } from "../engine/card/kits.js";
 import type { CardSheet } from "../engine/card/types.js";
 import type { BattleState, MonsterDef } from "../engine/types.js";
 import { clearRoom, enterDelve, generateDelve, stepDelve, type DelveMove } from "../engine/world/delve.js";
-import { buildWorld, hotspotsOf, moveScene, newScene, searchScene, TIMES } from "../engine/world/places.js";
+import { addPlace, buildWorld, moveScene, newScene, searchScene, sleepScene, TIMES } from "../engine/world/places.js";
+import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
+import { fallbackPlaceFromChat, parsePlaceFromChat, placeFromChatPrompt, type Bible } from "../meaning/bible.js";
+import { fallbackVignettes, meanwhilePrompt, meanwhileText, parseMeanwhile, type Vignette } from "../meaning/meanwhile.js";
+import { slug } from "../meaning/card-reader.js";
+import type { Ledger } from "./ledger.js";
+import type { Jaot, Priority } from "./jaot.js";
 import { npcArtKey } from "../shared/art-keys.js";
 import type { ToFrontend } from "../shared/protocol.js";
 import type { ThemeId } from "../shared/scene-view.js";
-import { buildSceneView, cardTag, placeKey, wallKey, type PlayRecord } from "../shared/scene-build.js";
+import { buildSceneView, cardTag, menuFor, placeKey, wallKey, WILD_TEXT, wildCell, type PlayRecord } from "../shared/scene-build.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
 
@@ -27,6 +33,11 @@ export interface CardsPort {
   armory(userId: string, chatId: string): Promise<CardSheet | null>;
   talk(userId: string, chatId: string, castId: string): Promise<void>;
   markKnown?(userId: string, chatId: string, factId: string): Promise<void>;
+  /** The World Bible (M5): compiled on the JAOT queue, or the stored one. */
+  bible?(userId: string, chatId: string, priority?: Priority): Promise<Bible | null>;
+  storedBible?(userId: string, cardKey: string, sheet?: Pick<CardSheet, "readAt" | "shape">): Promise<Bible | null>;
+  compile?: Ledger["compile"];
+  jaot?: Jaot;
 }
 
 export interface BattlesPort {
@@ -57,12 +68,62 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
   }
 
+  /** Merge the World Bible's places and thread into a chat's world (4.5). True when anything changed. */
+  function mergeBible(sheet: CardSheet, r: PlayRecord, b: Bible): boolean {
+    if (r.bibleAt === b.at) return false;
+    let world = r.world;
+    for (const p of b.places) world = addPlace(world, sheet, { ...p, added: !p.evidence.verified }, p.near);
+    if (sheet.shape === "frontier" && Object.keys(world.places).length > 1) world = { ...world, shape: "frontier" };
+    r.world = world;
+    r.bibleAt = b.at;
+    if (b.thread && !r.thread) r.thread = b.thread;
+    if (r.hex) for (const p of b.places) r.hex.map = addHexPlace(r.hex.map, r.world, p.id, p.near);
+    return true;
+  }
+
+  /** Frontier worlds walk on the honeycomb overland (6.1). */
+  function ensureHex(r: PlayRecord, chatId: string): boolean {
+    if (r.world.shape !== "frontier" || r.hex) return false;
+    const map = buildHex(r.world, `${r.cardKey}:${chatId}:hex`);
+    r.hex = { map, state: newHex(map, cellOf(map, r.scene.placeId)) };
+    return true;
+  }
+
+  const growing = new Set<string>();
+  /** No Bible yet: compile it (P1) and grow the world when it lands, without making the player wait. */
+  function growLater(userId: string, chatId: string): void {
+    const k = `${userId}:${chatId}`;
+    if (!cards.bible || growing.has(k)) return;
+    growing.add(k);
+    void cards
+      .bible(userId, chatId, 1)
+      .then(async (b) => {
+        if (!b) return;
+        const sheet = await cards.sheetFor(userId, chatId);
+        const r = await load(userId, chatId);
+        if (!sheet || !r || r.cardKey !== sheet.cardKey || !mergeBible(sheet, r, b)) return;
+        ensureHex(r, chatId);
+        if (b.places.length) note(r, `The world grows: ${b.places.map((p) => p.name).join(", ")}.`);
+        await save(userId, chatId, r);
+        await show(userId, chatId, sheet, r);
+      })
+      .catch((err) => log(`bible: ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => growing.delete(k));
+  }
+
   async function record(userId: string, chatId: string, sheet: CardSheet): Promise<PlayRecord> {
-    const old = await load(userId, chatId);
-    if (old && old.cardKey === sheet.cardKey && old.v === 1) return old;
-    const world = buildWorld(sheet, `${sheet.cardKey}:${chatId}`);
-    const r: PlayRecord = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: [] };
-    await save(userId, chatId, r);
+    let r = await load(userId, chatId);
+    let changed = false;
+    if (!r || r.cardKey !== sheet.cardKey || r.v !== 1) {
+      const world = buildWorld(sheet, `${sheet.cardKey}:${chatId}`);
+      r = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: [] };
+      changed = true;
+    }
+    const b = (await cards.storedBible?.(userId, sheet.cardKey, sheet).catch(() => null)) ?? null;
+    if (b) changed = mergeBible(sheet, r, b) || changed;
+    else growLater(userId, chatId);
+    changed = ensureHex(r, chatId) || changed;
+    if (changed) await save(userId, chatId, r);
     return r;
   }
 
@@ -77,6 +138,10 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const p = r.world.places[r.scene.placeId];
     if (!p) return;
     const when = TIMES[r.scene.time];
+    const wild = wildCell(r);
+    if (wild) {
+      art.request(placeKey(sheet, `wild_${wild}`), { kind: "background", location: { id: `${tag(sheet.cardKey)}.wild_${wild}`, name: TERRAIN_NAME[wild], description: `${WILD_TEXT[wild]}. The land of ${sheet.cardName} (${sheet.skin.genre})`, timeOfDay: when } }, 0, userId);
+    }
     art.request(placeKey(sheet, p.id), { kind: "background", location: { id: `${tag(sheet.cardKey)}.${p.id}`, name: p.name, description: `${p.description}. ${sheet.premise.slice(0, 160)}`, timeOfDay: when } }, 0, userId);
     for (const id of p.exits) {
       const q = r.world.places[id];
@@ -146,7 +211,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     let state = createBattle({ id: `${t}.${enc.id}.${Date.now().toString(36)}`, seed, party, enemies });
     // Vigor carries between fights: a tired party starts hurt.
     for (const c of state.combatants) if (c.side === "party") c.hp = Math.max(1, Math.round(c.maxHp * Math.max(0.35, r.scene.vigor)));
-    state.meta = { title: enc.name, chatId, backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}) };
+    const wildHere = wildCell(r);
+    state.meta = { title: enc.name, chatId, backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : wildHere ? placeKey(sheet, `wild_${wildHere}`) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}) };
     state = advance(state, { enemyPolicy: chooseAction }).state;
     r = (await load(userId, chatId)) ?? r;
     r.battleId = state.id;
@@ -190,6 +256,10 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       // Story difficulty (4.2): lose, retreat, take a consequence. The model never rescues anyone.
       r.scene = { ...r.scene, vigor: 0.35, coin: Math.max(0, Math.round(r.scene.coin * 0.8)), placeId: r.world.start };
       if (r.delve) r.delve = undefined;
+      if (r.hex) {
+        const home = cellOf(r.hex.map, r.world.start);
+        if (home) r.hex.state = reveal(r.hex.map, { ...r.hex.state, q: home.q, r: home.r });
+      }
       line = `${state.meta?.title ?? "The fight"} is lost. ${party.map((c) => c.name).join(" and ")} fall back to ${r.world.places[r.world.start]?.name ?? "safety"}, bruised and lighter of ${cur}.`;
     }
     r.battleId = undefined;
@@ -214,8 +284,138 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     await show(userId, chatId, sheet, r);
   }
 
+  /* ------------------------------ the night ----------------------------- */
+
+  /**
+   * "Meanwhile…" (4.5): the montage covers the night's compile window. The
+   * frontend gets an empty montage at once, then the vignettes; the chat
+   * gets them as one aside.
+   */
+  async function meanwhile(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord): Promise<void> {
+    const day = r.scene.day;
+    send({ type: "scene.meanwhile", chatId, day, vignettes: null }, userId);
+    const places = Object.values(r.world.places).map((p) => ({ id: p.id, name: p.name }));
+    const b = (await cards.storedBible?.(userId, sheet.cardKey).catch(() => null)) ?? null;
+    const fallback = () => fallbackVignettes(sheet, b, places, day);
+    let vs: Vignette[] = fallback();
+    if (cards.compile) {
+      const prompt = meanwhilePrompt(sheet, b, places, day, r.log.slice(-4));
+      const ids = new Set(places.map((p) => p.id));
+      const job = async () => (await cards.compile!(userId, "meanwhile", prompt, 900, (raw) => parseMeanwhile(raw, sheet, ids), fallback, { tries: 1 })).value;
+      vs = await (cards.jaot ? cards.jaot.run(`meanwhile:${chatId}:${day}`, 1, job) : job()).catch(fallback);
+    }
+    const cast = new Map(sheet.cast.map((c) => [c.id, c]));
+    const items = vs.map((v) => {
+      const m = v.who ? cast.get(v.who) : undefined;
+      const imageId = m ? (m.faces?.base ?? m.avatarImageId ?? null) : null;
+      return { text: v.text, ...(v.where ? { art: placeKey(sheet, v.where) } : m && !imageId ? { art: npcArtKey(`${sheet.cardKey}:${m.id}`) } : {}), ...(imageId ? { imageId } : {}) };
+    });
+    send({ type: "scene.meanwhile", chatId, day, vignettes: items }, userId);
+    await aside(chatId, meanwhileText(vs));
+  }
+
+  /* ------------------------------ overland ----------------------------- */
+
+  /** One step on the overland: time passes, supplies run down, arriving at a place makes it the scene. */
+  function hexMove(r: PlayRecord, to: { q: number; r: number }): string | null {
+    const res = stepHex(r.hex!.map, r.hex!.state, to);
+    r.hex!.state = res.state;
+    r.scene = moveScene(r.world, r.scene, { kind: "wait" });
+    if (res.hungry) r.scene = { ...r.scene, vigor: Math.max(0.2, r.scene.vigor - 0.1) };
+    if (res.place && r.world.places[res.place]) {
+      r.scene = { ...r.scene, placeId: res.place, visited: r.scene.visited.includes(res.place) ? r.scene.visited : [...r.scene.visited, res.place] };
+      return res.place;
+    }
+    return null;
+  }
+
+  /** Walk the overland path to a place (a "Go to" from the menu). */
+  async function travel(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord, to: string): Promise<void> {
+    const goal = cellOf(r.hex!.map, to);
+    const path = goal ? hexPath(r.hex!.map, r.hex!.state, goal) : null;
+    if (!path) return note(r, "There is no way there over land.");
+    for (const step of path.slice(1)) hexMove(r, step);
+    const name = r.world.places[to]?.name ?? to;
+    note(r, `You travel to ${name} (${path.length - 1} step${path.length === 2 ? "" : "s"}, ${r.hex!.state.supplies} supplies left).`);
+    await save(userId, chatId, r);
+    await aside(chatId, `${sheet.player.name || "You"} travel${sheet.player.name ? "s" : ""} across the land to ${name}.`);
+  }
+
+  /** Move the scene to a place the chat went to, on the overland too. */
+  function arrive(r: PlayRecord, placeId: string): void {
+    r.scene = { ...r.scene, placeId, visited: r.scene.visited.includes(placeId) ? r.scene.visited : [...r.scene.visited, placeId] };
+    if (r.hex) {
+      const c = cellOf(r.hex.map, placeId);
+      if (c) r.hex.state = reveal(r.hex.map, { ...r.hex.state, q: c.q, r: c.r });
+    }
+  }
+
   return {
     onBattleEnd,
+
+    /** Where the scene is, for the reply detector's "where" question (null when there is no open scene to move). */
+    async where(userId: string, chatId: string) {
+      const r = await load(userId, chatId);
+      if (!r || r.delve || r.battleId) return null;
+      const here = r.world.places[r.scene.placeId];
+      if (!here) return null;
+      return { here: { id: here.id, name: here.name }, places: Object.values(r.world.places).map((p) => ({ id: p.id, name: p.name })) };
+    },
+
+    /** The chat moved the scene (4.5): to a known place, or somewhere new that is added, quoted from the chat. */
+    async moved(userId: string, chatId: string, pick: string, p: number, lines: { name: string; content: string }[]) {
+      if (p < 0.6) return;
+      const sheet = await cards.sheetFor(userId, chatId);
+      let r = await load(userId, chatId);
+      if (!sheet || !r || r.delve || r.battleId) return;
+      const here = r.world.places[r.scene.placeId]!;
+      let target = pick;
+      if (pick === "new") {
+        const known = Object.values(r.world.places).map((x) => x.name);
+        const ask = async () =>
+          cards.compile
+            ? (await cards.compile(userId, "place-from-chat", placeFromChatPrompt(sheet, here.name, known, lines), 400, (raw) => parsePlaceFromChat(raw, lines, known), () => fallbackPlaceFromChat(lines, known), { tries: 1 })).value
+            : fallbackPlaceFromChat(lines, known);
+        const np = await (cards.jaot ? cards.jaot.run(`place:${chatId}:${lines.length ? lines[lines.length - 1]!.content.length : 0}`, 0, ask) : ask());
+        if (!np) return log("where: the chat went somewhere new, but no place could be read from it");
+        r = (await load(userId, chatId)) ?? r;
+        let id = `c_${slug(np.name, "place")}`;
+        for (let i = 2; r.world.places[id]; i++) id = `c_${slug(np.name, "place")}_${i}`;
+        r.world = addPlace(r.world, sheet, { id, name: np.name, description: np.description, evidence: { source: "chat", quote: np.quote, verified: true }, added: true }, here.id);
+        if (sheet.shape === "frontier") r.world = { ...r.world, shape: "frontier" };
+        if (r.hex) r.hex.map = addHexPlace(r.hex.map, r.world, id, here.id);
+        else ensureHex(r, chatId);
+        target = id;
+        log(`where: added "${np.name}" from the chat`);
+      }
+      if (!r.world.places[target] || target === r.scene.placeId) return;
+      arrive(r, target);
+      note(r, `The story moves to ${r.world.places[target]!.name}.`);
+      await save(userId, chatId, r);
+      await show(userId, chatId, sheet, r);
+    },
+
+    async hexStep(userId: string, chatId: string, q: number, rr: number) {
+      const ctx = await context(userId, chatId);
+      if (!ctx?.r.hex || ctx.r.delve || ctx.r.battleId) return;
+      const { sheet, r } = ctx;
+      try {
+        const arrived = hexMove(r, { q, r: rr });
+        if (arrived) {
+          const name = r.world.places[arrived]!.name;
+          note(r, `You reach ${name}.`);
+          await save(userId, chatId, r);
+          await aside(chatId, `${sheet.player.name || "You"} reach${sheet.player.name ? "es" : ""} ${name}.`);
+        } else {
+          const c = r.hex!.map.cells[hexKey(q, rr)];
+          note(r, `${c ? TERRAIN_NAME[c.t] : "Onward"}. ${r.hex!.state.supplies ? `${r.hex!.state.supplies} supplies left.` : "You are out of supplies, and it tells."}`);
+          await save(userId, chatId, r);
+        }
+      } catch (err) {
+        note(r, err instanceof Error ? err.message : String(err));
+      }
+      await show(userId, chatId, sheet, r);
+    },
 
     async open(userId: string, chatId: string) {
       const ctx = await context(userId, chatId);
@@ -237,12 +437,17 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       if (!ctx) return;
       const { sheet, r } = ctx;
       const p = r.world.places[r.scene.placeId]!;
-      const spot = hotspotsOf(r.world, p.id, sheet).find((h) => h.id === hotspot);
+      const spot = menuFor(sheet, r).find((h) => h.id === hotspot);
+      const wild = wildCell(r);
       if (!spot) return send({ type: "notice", level: "warn", text: "That is not something you can do here." }, userId);
       switch (spot.kind) {
         case "talk":
           return cards.talk(userId, chatId, spot.target!);
         case "exit": {
+          if (r.hex) {
+            await travel(userId, chatId, sheet, r, spot.target!);
+            break;
+          }
           r.scene = moveScene(r.world, r.scene, { kind: "go", to: spot.target! });
           const to = r.world.places[spot.target!]!;
           note(r, `You go to ${to.name}.`);
@@ -250,25 +455,58 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
           await aside(chatId, `${sheet.player.name || "You"} head${sheet.player.name ? "s" : ""} to ${to.name}.`);
           break;
         }
-        case "rest":
-          r.scene = moveScene(r.world, r.scene, { kind: "rest" });
-          note(r, `You rest. Day ${r.scene.day} begins.`);
+        case "rest": {
+          if (wild) {
+            // A camp in the wild costs supplies; without them the night is cold and does less.
+            const fed = r.hex!.state.supplies >= 2;
+            r.hex!.state = { ...r.hex!.state, supplies: Math.max(0, r.hex!.state.supplies - 2) };
+            r.scene = sleepScene(r.scene, fed ? 0.85 : 0.55);
+            note(r, `You make camp. Day ${r.scene.day} begins${fed ? "" : ", cold and hungry"}.`);
+          } else {
+            r.scene = moveScene(r.world, r.scene, { kind: "rest" });
+            if (r.hex) r.hex.state = { ...r.hex.state, supplies: SUPPLY_MAX };
+            note(r, `You rest. Day ${r.scene.day} begins.`);
+          }
           await save(userId, chatId, r);
-          await aside(chatId, `Night passes at ${p.name}. Day ${r.scene.day} begins, and everyone is rested.`);
-          break;
+          await show(userId, chatId, sheet, r);
+          // The night is the big compile window: the montage covers it.
+          await meanwhile(userId, chatId, sheet, r);
+          return;
+        }
         case "wait":
           r.scene = moveScene(r.world, r.scene, { kind: "wait" });
           note(r, `Time passes: ${TIMES[r.scene.time]}.`);
           await save(userId, chatId, r);
           break;
         case "search": {
+          if (wild) {
+            const key = `wild:${r.hex!.state.q},${r.hex!.state.r}`;
+            if (r.scene.searched.includes(key)) {
+              note(r, "You have already picked this ground clean today.");
+              break;
+            }
+            const roll = (([...`${chatId}:${key}:${r.scene.day}`].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0) % 20) + 1;
+            const got = roll + (sheet.player.social.guile ?? 2) >= 10 ? (roll >= 17 ? 3 : 2) : 0;
+            r.hex!.state = { ...r.hex!.state, supplies: Math.min(SUPPLY_MAX, r.hex!.state.supplies + got) };
+            r.scene = { ...moveScene(r.world, r.scene, { kind: "wait" }), searched: [...r.scene.searched, key] };
+            note(r, got ? `You forage (${roll}) and find ${got} days of supplies.` : `You forage (${roll}) and find nothing to eat.`);
+            await save(userId, chatId, r);
+            break;
+          }
           try {
             const res = searchScene(r.world, r.scene, sheet, `${chatId}:${p.id}`);
             r.scene = res.scene;
             const fact = res.factId ? sheet.facts.find((f) => f.id === res.factId) : undefined;
-            const line = fact ? `Looking around ${p.name} (${res.roll} vs ${res.dc}), you learn: ${fact.text}` : `You look around ${p.name} (${res.roll} vs ${res.dc}) and find nothing new.`;
+            let line = fact ? `Looking around ${p.name} (${res.roll} vs ${res.dc}), you learn: ${fact.text}` : `You look around ${p.name} (${res.roll} vs ${res.dc}) and find nothing new.`;
+            // With the card's secrets found, searching turns up the central thread, one revelation at a time.
+            const rev = !fact && r.thread && res.roll >= 8 ? r.thread.revelations.find((x) => !r.revealed?.includes(x.id)) : undefined;
+            if (rev) {
+              r.revealed = [...(r.revealed ?? []), rev.id];
+              line = `Looking around ${p.name} (${res.roll}), you uncover part of it: ${rev.text}`;
+            }
             note(r, line);
             await save(userId, chatId, r);
+            if (rev) await aside(chatId, line);
             if (fact) {
               // A found fact counts as met in play: Parley Leverage can now use it (4.0).
               await cards.markKnown?.(userId, chatId, fact.id);

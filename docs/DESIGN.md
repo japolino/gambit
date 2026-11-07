@@ -743,6 +743,20 @@ gambit/
 - **Checked live:** the scene, Look around, Talk into a Parley and back, and two card battles (one lost, one won) on a scene-shaped card. The delve, the lobby, the journey strip and the 1-bit and flat fallbacks are checked in the local preview (`bun run preview`, `/scene`) and in tests (`tests/play.test.ts`, `tests/world.test.ts`).
 - **Still open:** the four-card check below (only one real card has been played); a real depth model instead of the depth guess; the shop itself (it only suggests a line for now).
 
+**M5 status (2026-11-07): built; checked in tests, the local preview, and once in Lumiverse.**
+- **Answer ledger** (`src/backend/ledger.ts`): every Architect answer the world is built from is stored by a hash of the question (`ledger/<kind>/<hash>.json`). Each answer passes a validator; a failed one is asked once more, then code falls back. The card read, the armory, the World Bible, "match the card", "Meanwhile…" and places from the chat all go through it, so re-reading an unchanged card costs no model call.
+- **JAOT queue** (`src/backend/jaot.ts`): model jobs run by priority (P0 needed now, P1 next likely, P2 speculative, P3 downtime), two at a time. A job asked for twice is joined, and a more urgent ask raises its priority.
+- **World Bible** (`src/meaning/bible.ts`): compiled at P1 right after the card read, so it lands while the player reviews the sheet. It adds places only up to what the shape needs (town 4, frontier 5, journey 4, a delve needs somewhere to explore), a central thread with 4 to 6 revelations only when the card has no goal, and the factions the card implies. Quoted places count as the card's; the rest show as "new". A chat's world grows when the Bible lands, without waiting, and searching turns up the thread's revelations once the card's own secrets are found.
+- **Places from play:** the reply detector asks one more typed question in the same call, "where is the scene now?" A known place picked with p ≥ 0.6 moves the scene there. "Somewhere new" asks for the place's name, a line, and the quote that put the scene there; the quote must be in the chat. The place is then added to the graph next to where you were.
+- **Honeycomb overland** (`src/engine/world/hex.ts`): frontier cards walk a seeded hex map with the start in the middle. The map guarantees every place is reachable, carving through water if needed. Each step costs time and a day's supplies, and cells reveal as you go (two rings from a hill). In the wild you can forage, make camp (it costs supplies) or fight. Menu "Go to" walks the path. Places added later are known on the map at once.
+- **Rest plays "Meanwhile…"**: 3 to 5 vignettes of what the cast, the places and the factions did overnight, shown over the scene with the places' art and posted to the chat as one aside. They are compiled while the curtain is up, and templated when the model can't answer.
+- **Themes** (all six now draw):
+  - **Diorama** builds indoor places as a little 3D room: the painting on the back wall, plaster and planks tinted from it, a counter with the keeper behind it where the place sells things, and warm light. Clicking a person in the room talks to them.
+  - **Table** seats the person you face across a candlelit table, with what you know as a hand of fact cards. Playing a card opens a Parley with them, the fact already cited in your line. The Parley itself also shows the hand in this theme.
+- **Fallbacks** (`src/meaning/fallbacks.ts`): genre name tables for places, a templated thread around the card's own people, templated "Meanwhile…" lines, and a regex for a place named in the last line.
+- **Checked live** on one card: the frontier overland, the Bible landing as "the world grows", a step into generated woods, a camp, and the montage with generated art. Vertex was rate-limited during the check, so the Bible and the montage ran on their code fallbacks there. The model paths are covered by tests (`tests/compiler.test.ts`, `tests/ledger.test.ts`).
+- **Still open:** checking a model-written Bible, places from the chat, and the montage live once the provider has quota again.
+
 ---
 
 ## 12. Open decisions

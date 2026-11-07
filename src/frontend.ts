@@ -41,6 +41,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let scene: SceneHandle | null = null;
   let sceneView: SceneView | null = null;
   let wantScene = false;
+  /** A fact card played in the Table theme: its citation waits for the Parley it starts. */
+  let pendingCite: string | null = null;
   let parleyMode: ParleyViewMode = "immersive";
   let parleyNarrator: ParleyNarrator = "gambit";
   /** Ready art by key (Combatant.art), kept for stages mounted later. */
@@ -144,6 +146,12 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         theme: (theme) => send({ type: "scene.theme", chatId, theme }),
         fight: () => send({ type: "play.fight", chatId }),
         close: () => ov.hide(),
+        hex: (q, r) => send({ type: "hex.step", chatId, q, r }),
+        cite: (personId, text) => {
+          pendingCite = `I know this: ${text.replace(/\.?$/, ".")}`;
+          wantParley = true;
+          send({ type: "scene.act", chatId, hotspot: `talk:${personId}` });
+        },
       });
       pushArt();
     } else scene.setView(view);
@@ -242,7 +250,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       return;
     }
     parley?.destroy();
-    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator }, {
+    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, table: sceneView?.theme === "table" && sceneView.chatId === state.chatId }, {
       say: (text) => send({ type: "parley.say", parleyId: state.id, text }),
       close: (how) => send({ type: "parley.close", parleyId: state.id, how }),
       setMode: (mode) => send({ type: "parley.view", mode }),
@@ -253,6 +261,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         else ov.hide();
       },
     });
+    if (pendingCite) {
+      parley.prefill(pendingCite);
+      pendingCite = null;
+    }
     pushArt();
   }
 
@@ -326,6 +338,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           wantScene = false;
           void showScene(msg.view);
         }
+        break;
+      }
+      case "scene.meanwhile": {
+        if (scene && scene.chatId === msg.chatId) scene.meanwhile(msg.day, msg.vignettes);
         break;
       }
       case "scene.suggest": {

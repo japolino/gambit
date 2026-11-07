@@ -9,9 +9,18 @@
  * A screen pass over both carries the theme's post-process (6.3): ordered
  * dither for 1-bit, paper grain and vignette for Storybook, scanlines for
  * Command. With no WebGL the caller keeps its flat DOM fallback.
+ *  - diorama (M5): an indoor place as a box room, its painting on the back
+ *    wall, plaster and plank textures tinted from it, a counter when it
+ *    sells things, warm light, and the people standing in it.
+ * Clicking a person in the room calls `onPick` with their id.
  */
 import {
+  AmbientLight,
   BoxGeometry,
+  CylinderGeometry,
+  MeshLambertMaterial,
+  PointLight,
+  Raycaster,
   CanvasTexture,
   Color,
   DoubleSide,
@@ -136,6 +145,61 @@ function softEdged(img: HTMLImageElement): CanvasTexture {
   g.fillRect(0, c.height * 0.78, c.width, c.height * 0.22);
   g.globalCompositeOperation = "source-over";
   const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+/** The painting's average colour, to tint the room's plaster and wood. */
+function averageColor(img: HTMLImageElement): [number, number, number] {
+  const c = document.createElement("canvas");
+  c.width = c.height = 16;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(img, 0, 0, 16, 16);
+  const d = g.getImageData(0, 0, 16, 16).data;
+  let r = 0, gg = 0, b = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    r += d[i]!;
+    gg += d[i + 1]!;
+    b += d[i + 2]!;
+  }
+  const n = d.length / 4;
+  return [r / n, gg / n, b / n];
+}
+
+/** Plaster walls and plank floors for a diorama room, tinted toward the painting. */
+function roomTexture(kind: "plaster" | "planks" | "beams", tint: [number, number, number], seed = 3): CanvasTexture {
+  const s = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = s;
+  const g = c.getContext("2d")!;
+  let r = seed;
+  const rnd = () => ((r = (r * 16807) % 2147483647) / 2147483647);
+  const mix = (a: number[], t: number) => a.map((v, i) => Math.round(v * (1 - t) + tint[i]! * t));
+  const base = mix(kind === "plaster" ? [176, 160, 134] : kind === "planks" ? [104, 72, 44] : [52, 38, 26], kind === "plaster" ? 0.35 : 0.15);
+  g.fillStyle = `rgb(${base.join(",")})`;
+  g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 700; i++) {
+    const k = (rnd() - 0.5) * (kind === "plaster" ? 22 : 30);
+    g.fillStyle = `rgba(${base.map((v) => Math.max(0, Math.min(255, v + k))).join(",")},.55)`;
+    g.fillRect(rnd() * s, rnd() * s, kind === "planks" ? 8 + rnd() * 20 : 2 + rnd() * 3, kind === "planks" ? 1 + rnd() : 2 + rnd() * 3);
+  }
+  if (kind !== "plaster") {
+    g.strokeStyle = "rgba(20,12,6,.8)";
+    g.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) {
+      g.beginPath();
+      g.moveTo(0, i * 32);
+      g.lineTo(s, i * 32);
+      g.stroke();
+      const x = (i * 53) % s;
+      g.beginPath();
+      g.moveTo(x, i * 32);
+      g.lineTo(x, i * 32 + 32);
+      g.stroke();
+    }
+  }
+  const t = new CanvasTexture(c);
+  t.wrapS = t.wrapT = RepeatWrapping;
   t.colorSpace = SRGBColorSpace;
   return t;
 }
@@ -270,7 +334,12 @@ export class SceneLayer3D {
   private camera = new PerspectiveCamera(42, 1, 0.05, 100);
   private target: WebGLRenderTarget;
   private post: { scene: Scene; camera: OrthographicCamera; mat: ShaderMaterial };
-  private mode: "backdrop" | "corridor" | "none" = "none";
+  private mode: "backdrop" | "corridor" | "diorama" | "none" = "none";
+  private dioramaKey = "";
+  private standZ = -1.4;
+  private ray = new Raycaster();
+  /** A person in the room was clicked. */
+  onPick: ((id: string) => void) | null = null;
   private room = new Group();
   private people = new Group();
   private backdrop: Mesh | null = null;
@@ -315,6 +384,7 @@ export class SceneLayer3D {
     ps.add(quad);
     this.post = { scene: ps, camera: new OrthographicCamera(-1, 1, 1, -1, 0, 1), mat };
     host.addEventListener("pointermove", this.onPointer);
+    this.canvas.addEventListener("click", this.onClick);
     this.resize();
     const loop = () => {
       if (this.disposed) return;
@@ -327,6 +397,15 @@ export class SceneLayer3D {
   private onPointer = (e: PointerEvent) => {
     const r = this.host.getBoundingClientRect();
     this.pointer.set(((e.clientX - r.left) / Math.max(1, r.width) - 0.5) * 2, ((e.clientY - r.top) / Math.max(1, r.height) - 0.5) * 2);
+  };
+
+  private onClick = (e: MouseEvent) => {
+    if (!this.onPick || (this.mode !== "backdrop" && this.mode !== "diorama")) return;
+    const r = this.canvas.getBoundingClientRect();
+    this.ray.setFromCamera(new Vector2(((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1, -(((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1)), this.camera);
+    const hit = this.ray.intersectObjects(this.people.children, false)[0];
+    const id = hit?.object.userData.id as string | undefined;
+    if (id) this.onPick(id);
   };
 
   setPost(fx: PostFx): void {
@@ -405,6 +484,92 @@ export class SceneLayer3D {
     this.resize();
   }
 
+  /**
+   * An indoor place as a little box room (6.2 "diorama rooms"): the painting
+   * fills the back wall, so the room is still recognisably that place.
+   */
+  async showDiorama(url: string | null, opts: { counter: boolean }): Promise<void> {
+    const key = `${url ?? ""}|${opts.counter}`;
+    if (this.mode !== "diorama") {
+      this.clearRoom();
+      this.corridor = null;
+      this.mode = "diorama";
+      this.dioramaKey = "";
+    }
+    if (this.dioramaKey === key) return;
+    this.dioramaKey = key;
+    const [map, img] = url ? await Promise.all([this.texture(url), loadImage(url).catch(() => null)]) : [null, null];
+    if (this.disposed || this.mode !== "diorama" || this.dioramaKey !== key) return;
+    for (const child of [...this.room.children]) {
+      this.room.remove(child);
+      (child as Mesh).geometry?.dispose?.();
+    }
+    const tint = img ? averageColor(img) : ([120, 96, 70] as [number, number, number]);
+    this.scene.background = new Color(0x0b0806);
+    this.scene.fog = new Fog(0x0b0806, 6, 12);
+    this.camera.fov = 50;
+    this.camera.updateProjectionMatrix();
+    const W = 6.4, H = 3.4, D = 5;
+    const lam = (t: Texture, rx = 1, ry = 1) => {
+      const tt = t.clone();
+      tt.needsUpdate = true;
+      tt.repeat.set(rx, ry);
+      return new MeshLambertMaterial({ map: tt, side: DoubleSide });
+    };
+    const plaster = roomTexture("plaster", tint, 5);
+    const planks = roomTexture("planks", tint, 9);
+    const beams = roomTexture("beams", tint, 13);
+    // Back wall: the painting, cropped to the wall's shape.
+    const back = new Mesh(new PlaneGeometry(W, H), map ? new MeshBasicMaterial({ map: map.clone() }) : lam(plaster, 3, 2));
+    if (map && img) {
+      const m = (back.material as MeshBasicMaterial).map!;
+      m.needsUpdate = true;
+      const ia = img.width / Math.max(1, img.height);
+      const wa = W / H;
+      if (ia > wa) {
+        m.repeat.set(wa / ia, 1);
+        m.offset.set((1 - wa / ia) / 2, 0);
+      } else {
+        m.repeat.set(1, ia / wa);
+        m.offset.set(0, (1 - ia / wa) / 2);
+      }
+    }
+    back.position.set(0, H / 2, -D / 2);
+    const left = new Mesh(new PlaneGeometry(D, H), lam(plaster, 3, 2));
+    left.rotation.y = Math.PI / 2;
+    left.position.set(-W / 2, H / 2, 0);
+    const right = left.clone();
+    right.rotation.y = -Math.PI / 2;
+    right.position.x = W / 2;
+    const floor = new Mesh(new PlaneGeometry(W, D), lam(planks, 4, 3));
+    floor.rotation.x = -Math.PI / 2;
+    const ceil = new Mesh(new PlaneGeometry(W, D), lam(beams, 4, 3));
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.y = H;
+    this.room.add(back, left, right, floor, ceil);
+    this.standZ = -1.2;
+    if (opts.counter) {
+      // A counter across the room; whoever keeps the place stands behind it.
+      const wood = lam(roomTexture("planks", tint, 21), 3, 1);
+      const counter = new Mesh(new BoxGeometry(4.4, 0.86, 0.7), wood);
+      counter.position.set(0, 0.43, -0.55);
+      const top = new Mesh(new BoxGeometry(4.6, 0.08, 0.86), lam(roomTexture("beams", tint, 31), 3, 1));
+      top.position.set(0, 0.9, -0.55);
+      this.room.add(counter, top);
+      for (const [x, h] of [[-1.6, 0.26], [-1.35, 0.18], [1.4, 0.3], [1.65, 0.22]] as const) {
+        const prop = new Mesh(new CylinderGeometry(0.06, 0.07, h, 10), new MeshLambertMaterial({ color: new Color(`rgb(${tint.map((v) => Math.round(v * 0.6 + 40)).join(",")})`) }));
+        prop.position.set(x, 0.94 + h / 2, -0.5);
+        this.room.add(prop);
+      }
+      this.standZ = -1.6;
+    }
+    // Warm light: a lamp over the counter and a low fill.
+    const lamp = new PointLight(0xffc27a, 22, 12, 1.4);
+    lamp.position.set(0, H - 0.4, 0.4);
+    const fill = new AmbientLight(0x8a7866, 2.3);
+    this.room.add(lamp, fill);
+  }
+
   /** People standing in the room, spread across the middle ground. */
   async showPeople(list: Billboard[]): Promise<void> {
     const want = list.map((b) => `${b.id}|${b.url}`).join(";");
@@ -423,7 +588,7 @@ export class SceneLayer3D {
       const ud = (tex as Texture & { userData: { w: number; h: number } }).userData;
       const mesh = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
       // Sized and spread each frame from what the camera sees (frame()).
-      mesh.userData = { sway: i * 1.7, i, n: shown.length, ar: ud.w / Math.max(1, ud.h), z: 1.5 + (i % 2) * 0.3 };
+      mesh.userData = { id: list[loaded.indexOf(tex)]?.id, sway: i * 1.7, i, n: shown.length, ar: ud.w / Math.max(1, ud.h), z: 1.5 + (i % 2) * 0.3 };
       this.people.add(mesh);
     });
   }
@@ -552,6 +717,20 @@ export class SceneLayer3D {
         p.position.set(x + this.camera.position.x * 0.15, this.camera.position.y - visH / 2 + h / 2 + visH * 0.14 + Math.sin(t * 1.3 + u.sway) * 0.02, u.z);
         p.lookAt(this.camera.position.x, p.position.y, this.camera.position.z);
       }
+    } else if (this.mode === "diorama") {
+      // A fixed camera at the room's open side, leaning toward the pointer.
+      this.camera.position.set(this.look.x * 0.45 + Math.sin(t * 0.2) * 0.08, 1.7 - this.look.y * 0.15, 4.3 - this.dolly * 1.2);
+      this.camera.lookAt(this.look.x * 0.25, 1.25, -1.6);
+      for (const p of this.people.children) {
+        const u = p.userData as { sway: number; i: number; n: number; ar: number };
+        const h = u.n > 3 ? 1.8 : 2.05;
+        const w = h * u.ar;
+        const span = Math.min(4.2, u.n * w * 0.9);
+        const x = u.n === 1 ? 0.5 : -span / 2 + (span * u.i) / (u.n - 1);
+        p.scale.set(w, h, 1);
+        p.position.set(x, h / 2 + Math.sin(t * 1.3 + u.sway) * 0.01, this.standZ - (u.i % 2) * 0.15);
+        p.lookAt(this.camera.position.x, p.position.y, this.camera.position.z);
+      }
     } else if (this.mode === "corridor" && this.corridor) {
       const c = this.corridor;
       c.pos.x += (c.goal.x - c.pos.x) * 0.18;
@@ -575,6 +754,7 @@ export class SceneLayer3D {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.host.removeEventListener("pointermove", this.onPointer);
+    this.canvas.removeEventListener("click", this.onClick);
     this.clearRoom();
     for (const t of this.textures.values()) t.dispose();
     this.target.dispose();

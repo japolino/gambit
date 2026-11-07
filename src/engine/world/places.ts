@@ -133,6 +133,66 @@ export function buildWorld(sheet: Pick<CardSheet, "shape" | "places" | "cast" | 
   return { v: 1, shape, start, places, route };
 }
 
+/**
+ * Grow a built world by one place (4.5: the Bible's gap-fillers, places the
+ * chat went to). It joins the shape: a town or frontier hangs it off the hub,
+ * a journey adds it as the next stop, a delve shape goes deeper. `near`
+ * links it to a place it sits next to as well. Returns the same world when
+ * the place is already there.
+ */
+export function addPlace(
+  world: World,
+  sheet: Pick<CardSheet, "modules">,
+  place: { id: string; name: string; description: string; evidence: Evidence; added?: boolean },
+  near?: string,
+): World {
+  if (world.places[place.id]) return world;
+  const text = `${place.name} ${place.description}`;
+  const p: WorldPlace = {
+    id: place.id,
+    name: place.name,
+    description: place.description,
+    exits: [],
+    people: [],
+    rest: REST.test(text),
+    shop: sheet.modules.economy && SHOP.test(text),
+    danger: sheet.modules.encounters && DANGER.test(text),
+    delve: sheet.modules.delves && DELVE.test(text),
+    added: place.added ?? !place.evidence.verified,
+    evidence: place.evidence,
+  };
+  const places: Record<string, WorldPlace> = Object.fromEntries(Object.entries(world.places).map(([k, v]) => [k, { ...v, exits: [...v.exits] }]));
+  places[p.id] = p;
+  const link = (a: string, b: string) => {
+    if (a === b || !places[a] || !places[b]) return;
+    if (!places[a]!.exits.includes(b)) places[a]!.exits.push(b);
+    if (!places[b]!.exits.includes(a)) places[b]!.exits.push(a);
+  };
+  let shape = world.shape;
+  let route = world.route;
+  // A one-place scene that gains a second place becomes a small town.
+  if (shape === "scene") shape = "town";
+  switch (shape) {
+    case "town":
+    case "frontier":
+      link(world.start, p.id);
+      break;
+    case "journey": {
+      const last = route[route.length - 1] ?? world.start;
+      link(last, p.id);
+      route = [...(route.length ? route : [world.start]), p.id];
+      break;
+    }
+    case "delve": {
+      const ids = Object.keys(world.places);
+      link(ids[ids.length - 1] ?? world.start, p.id);
+      break;
+    }
+  }
+  if (near) link(near, p.id);
+  return { ...world, shape, places, route };
+}
+
 /** The menu of a place (6.1): talk, look around, go, rest, shop, fight, delve, wait. */
 export function hotspotsOf(world: World, placeId: string, sheet: Pick<CardSheet, "cast" | "modules" | "skin">, present?: readonly string[]): Hotspot[] {
   const p = world.places[placeId];
@@ -193,6 +253,11 @@ const tick = (s: SceneState, n = 1): SceneState => {
   }
   return { ...s, time, day, searched };
 };
+
+/** Sleep to the next morning anywhere (a camp in the wild); `vigor` is what the night restores to. */
+export function sleepScene(s: SceneState, vigor = 1): SceneState {
+  return { ...tick(s, TIMES.length - s.time), vigor: Math.max(s.vigor, vigor) };
+}
 
 export type SceneMove =
   | { kind: "go"; to: string }

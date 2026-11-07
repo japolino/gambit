@@ -124,6 +124,7 @@ export type ToBackend =
   | { type: "scene.theme"; chatId: string; theme: ThemeId }
   | { type: "delve.step"; chatId: string; move: DelveMove }
   | { type: "delve.leave"; chatId: string }
+  | { type: "hex.step"; chatId: string; q: number; r: number }
   | { type: "play.fight"; chatId: string; lead?: string; boss?: boolean }
   | { type: "art.request"; key: string; priority: ArtPriority }
   | { type: "art.status"; keys: string[] }
@@ -183,6 +184,8 @@ export type ToFrontend =
   | { type: "scene.state"; view: SceneView }
   /** Drop a suggested action into the chat input (6.1: the menu and the roleplay never fight). */
   | { type: "scene.suggest"; chatId: string; text: string }
+  /** "Meanwhile…" (4.5): sent with null vignettes when the night starts, then again with them. */
+  | { type: "scene.meanwhile"; chatId: string; day: number; vignettes: { text: string; art?: string; imageId?: string | null }[] | null }
   | { type: "art.update"; items: ArtStatus[] }
   | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus; source?: "preset" | "user" | "inlay" | "card"; description?: string }[] }
   /** A look file to save (export). */
