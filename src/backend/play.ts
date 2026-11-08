@@ -22,6 +22,10 @@ import { createSenses } from "./senses.js";
 import { PLACE_TRAITS as PLACE_FLAGS, type CompanionLike } from "../meaning/senses.js";
 import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
 import { fallbackPlaceFromChat, parsePlaceFromChat, placeFromChatPrompt, type Bible } from "../meaning/bible.js";
+import { modelsFor } from "./models.js";
+import { resolveBeat, rollLine } from "../engine/story/beat.js";
+import { fallbackReply as storyFallback, judgePrompt, narratorPrompt as storyNarrator, parseRead, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
+import { cleanReply } from "../engine/parley/narrate.js";
 import { fallbackVignettes, meanwhilePrompt, meanwhileText, parseMeanwhile, type Vignette } from "../meaning/meanwhile.js";
 import { slug } from "../meaning/card-reader.js";
 import type { Ledger } from "./ledger.js";
@@ -1343,6 +1347,68 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
     },
 
     fight,
+
+    /**
+     * A line the player wrote in the scene: a model reads what it attempts, code rolls if it
+     * matters, a narrator writes what happens, and the beat is kept here and in the chat.
+     */
+    async say(userId: string, chatId: string, raw: string) {
+      const line = raw.trim().slice(0, 2000);
+      if (!line) return;
+      const ctx0 = await context(userId, chatId);
+      if (!ctx0) return;
+      const { sheet, r } = ctx0;
+      const s = withPromoted(sheet, r);
+      const place = r.world.places[r.scene.placeId];
+      const people = s.cast.filter((c) => place?.people.includes(c.id)).map((c) => ({ id: c.id, name: c.name, role: c.role, voice: c.voice }));
+      const story: StoryContext = {
+        premise: sheet.premise,
+        tone: sheet.tone,
+        player: { name: sheet.player.name, concept: sheet.player.concept },
+        place: { name: place?.name ?? "Here", description: place?.description ?? "" },
+        time: TIMES[r.scene.time] ?? "",
+        people,
+        recent: (r.story ?? []).map((b) => ({ text: b.said, reply: b.reply })),
+        memory: memoryNote(sheet, r),
+      };
+      await show(userId, chatId, sheet, r, "The story turns…");
+      const models = modelsFor(spindle);
+      const asked = judgePrompt(story, line);
+      const said = await models
+        .quiet(userId, "helper", { messages: [{ role: "system", content: asked.system }, { role: "user", content: asked.user }], parameters: { temperature: 0.1 }, signal: AbortSignal.timeout(15_000) })
+        .catch((err: unknown) => (log(`story judge: ${String(err).slice(0, 160)}`), ""));
+      const read = parseRead(said, people.map((p) => p.id)) ?? storyRules(line, people);
+      const index = r.beats ?? 0;
+      const res = resolveBeat(`${chatId}:${r.cardKey}`, index, read, sheet.player.social);
+      const roll = res.roll ? rollLine(read.attempt, res.roll) : null;
+      send({ type: "scene.story", chatId, said: line, roll, text: "" }, userId);
+      const brief = storyNarrator(story, line, res.fallout);
+      let last = 0;
+      const written = await models
+        .stream(userId, "narrator", { messages: [{ role: "system", content: brief.system }, { role: "user", content: brief.user }], parameters: { temperature: 0.9, max_tokens: 400 }, signal: AbortSignal.timeout(90_000) }, (t: string) => {
+          if (Date.now() - last < 250) return;
+          last = Date.now();
+          send({ type: "scene.story", chatId, said: line, roll, text: cleanReply(t, 160) }, userId);
+        })
+        .catch((err: unknown) => (log(`story narrator: ${String(err).slice(0, 160)}`), ""));
+      const reply = cleanReply(written, 160) || storyFallback(story, res.fallout);
+      // The world may have grown while the models wrote: the beat lands on the latest record.
+      const fresh = (await load(userId, chatId)) ?? r;
+      fresh.beats = index + 1;
+      fresh.story = [...(fresh.story ?? []), { said: line, roll, reply }].slice(-40);
+      if (res.vigorLoss) fresh.scene = { ...fresh.scene, vigor: Math.max(0.2, fresh.scene.vigor - res.vigorLoss) };
+      if (res.caughtBy) {
+        const name = people.find((p) => p.id === res.caughtBy)?.name ?? res.caughtBy;
+        record_(sheet, fresh, [{ day: fresh.scene.day, kind: "caught", target: res.caughtBy, name, method: read.attempt, place: fresh.scene.placeId }]);
+      }
+      if (read.target) interest(fresh, `cast:${read.target}`, NOTICE.talk);
+      await save(userId, chatId, fresh);
+      await show(userId, chatId, sheet, fresh);
+      // The chat stays the record: both sides are posted without starting a generation.
+      for (const m of [{ role: "user", content: line }, { role: "assistant", content: roll ? `*(${roll})*\n\n${reply}` : reply }]) {
+        await spindle.chat.appendMessage(chatId, { ...m, metadata: { gambit: { story: true } } } as never, { triggerGeneration: false }).catch((err: unknown) => log(`story post: ${String(err).slice(0, 160)}`));
+      }
+    },
 
     async act(userId: string, chatId: string, hotspot: string) {
       const ctx = await context(userId, chatId);

@@ -197,6 +197,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           if (hotspot.startsWith("talk:")) want = "parley";
           send({ type: "scene.act", chatId, hotspot });
         },
+        say: (text) => send({ type: "scene.say", chatId, text }),
         step: (move) => send({ type: "delve.step", chatId, move }),
         leave: () => send({ type: "delve.leave", chatId }),
         theme: (theme) => send({ type: "scene.theme", chatId, theme }),
@@ -441,6 +442,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         } else if (want === "scene") {
           want = null;
           void showScene(msg.view);
+        }
+        break;
+      }
+      case "scene.story": {
+        // The reply as it is written: shown as the newest beat until the saved one replaces it.
+        if (sceneView && scene && scene.chatId === msg.chatId) {
+          const beat = { said: msg.said, roll: msg.roll, reply: msg.text };
+          scene.setView({ ...sceneView, story: [...sceneView.story, beat] });
         }
         break;
       }

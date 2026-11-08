@@ -167,6 +167,8 @@ export interface ThemeCtx {
   menu(v: SceneView): MenuItem[];
   status(v: SceneView): StatusView;
   box(v: SceneView): BoxView;
+  /** Write a line into the story (a theme that offers it shows `v.story` too). */
+  say(text: string): void;
   hand(v: SceneView): HandCard[];
   /** The honeycomb overland into an <svg> (cells: g.here / g.step / g.goto, polygon.fog, circle.pin / circle.you, text). */
   drawHex(svg: SVGSVGElement, v: SceneView): void;

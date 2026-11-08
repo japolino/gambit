@@ -154,6 +154,11 @@ if (CROWD > 3) {
   for (const name of names.slice(0, CROWD - 3)) (sheet.cast as { id: string }[]).push({ ...sheet.cast[1]!, id: name.toLowerCase(), name, role: "a regular here", main: false });
 }
 const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
+  say(text) {
+    const risky = /sneak|steal|lie/i.test(text);
+    r = { ...r, story: [...(r.story ?? []), { said: text, roll: risky ? "Going unseen: 7 vs 12, failed" : null, reply: risky ? "He doesn't turn around. \"Going somewhere, darling?\"" : "The gulls answer, and the tide comes on." }] };
+    handle.setView(buildSceneView(sheet, "preview", r));
+  },
   act(id) {
     const [kind, target] = id.split(":") as [string, string];
     if (kind === "go") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "go", to: target }), log: [...r.log, `You go to ${r.world.places[target]!.name}.`].slice(-6) };

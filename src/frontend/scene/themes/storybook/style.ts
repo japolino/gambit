@@ -115,6 +115,30 @@ export function css(): string {
 .sb-dlg .page { position: absolute; inset: calc(14px + 2.2cqh) clamp(56px, 6cqh, 70px) clamp(18px, 2.6cqh, 28px) clamp(40px, 5cqh, 58px); overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain;
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 100%); mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 100%); }
 .sb-dlg .page::-webkit-scrollbar { display: none; }
+.sb-dlg .page { bottom: calc(clamp(18px, 2.6cqh, 28px) + 54px); }
+.sb-say { position: absolute; z-index: 3; left: clamp(40px, 5cqh, 58px); right: clamp(56px, 6cqh, 70px); bottom: clamp(14px, 2.2cqh, 24px); display: flex; gap: 8px; align-items: stretch; }
+.sb-say[hidden] { display: none; }
+.sb-say textarea { flex: 1; min-width: 0; height: 46px; resize: none; padding: 11px 12px; border: 1px solid rgba(74,38,12,.55); border-radius: 3px; background: rgba(255,248,226,.72); color: var(--ink); font-family: inherit; font-style: italic; font-weight: 500; font-size: 17px; line-height: 1.3; }
+.sb-say textarea:focus { outline: 2px solid #8a1f1a; outline-offset: 1px; }
+.sb-say button { min-width: 72px; height: 46px; border: 1px solid #2a1205; border-radius: 3px; background: #7a1a16; color: #f6e6c0; font-family: inherit; font-weight: 600; font-size: 16px; cursor: pointer; }
+.sb-say button:disabled, .sb-say textarea:disabled { opacity: .55; cursor: default; }
+/* Once the player is writing, the page is what they came for: it grows, and the rest gives way. */
+@container stage (min-width: 761px) and (min-height: 481px) { .sb.writing .sb-st > * { --dh: clamp(260px, 38cqh, 460px); } }
+@container stage (max-width: 760px) {
+  .sb-dlg .page { bottom: 56px !important; }
+  .sb-say { left: 8px; right: 8px; bottom: 6px; }
+  .sb-say textarea { font-size: 16px; }
+}
+@container stage (max-width: 760px) and (min-height: 481px) { .sb.writing .sb-st > * { --dh: 50cqh; --ch: calc(1.5 * (var(--ribh) + 4px) + 8px); } }
+@container stage (max-height: 480px) {
+  .sb-dlg .page { bottom: 56px !important; }
+  .sb-say { left: 10px; right: 10px; bottom: 6px; }
+  .sb-say textarea { font-size: 16px; }
+}
+.sb-dlg .beat { margin-top: .7em; }
+.sb-dlg .beat .said { margin: 0 0 .25em; padding-left: .7em; border-left: 2px solid #8a1f1a; font-style: italic; }
+.sb-dlg .beat .roll { margin: 0 0 .25em; font-size: .82em; font-weight: 700; color: #7a1a16; }
+.sb-dlg .beat .told { margin: 0 0 .4em; }
 .sb-dlg .txt { min-height: 100%; font-size: var(--fs); line-height: 1.46; font-weight: 500; color: var(--ink); padding-top: 4px; }
 .sb-dlg .txt.two { display: grid; grid-template-columns: minmax(0, 58fr) minmax(240px, 42fr); gap: clamp(14px, 2cqh, 26px); }
 .sb-dlg .main { max-width: 46em; }

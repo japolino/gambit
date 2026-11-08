@@ -178,6 +178,8 @@ export type ToBackend =
   // art
   | { type: "scene.open"; chatId: string }
   | { type: "scene.act"; chatId: string; hotspot: string }
+  /** A line the player wrote in the scene (engine/story/beat.ts). */
+  | { type: "scene.say"; chatId: string; text: string }
   | { type: "scene.theme"; chatId: string; theme: ThemeId }
   | { type: "delve.step"; chatId: string; move: DelveMove }
   | { type: "delve.leave"; chatId: string }
@@ -252,6 +254,8 @@ export type ToFrontend =
   | { type: "models.state"; state: ModelsState }
   // art
   | { type: "scene.state"; view: SceneView }
+  /** A beat's reply as it is written, until the next scene.state carries it. */
+  | { type: "scene.story"; chatId: string; text: string; said: string; roll: string | null }
   | { type: "forge.state"; chatId: string; view: ForgeView }
   /** Drop a suggested action into the chat input (6.1: the menu and the roleplay never fight). */
   | { type: "scene.suggest"; chatId: string; text: string }

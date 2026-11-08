@@ -47,6 +47,10 @@ export interface PlayRecord {
   scene: SceneState;
   theme: ThemeId;
   log: string[];
+  /** Lines written in the scene, and what came of them. */
+  story?: { said: string; roll: string | null; reply: string }[];
+  /** How many beats this chat has had: each rolls its own die, however many are kept. */
+  beats?: number;
   delve?: { placeId: string; map: DelveMap; state: DelveState };
   /** The battle running for this chat, if any. */
   battleId?: string;
@@ -185,6 +189,7 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     coin: r.scene.coin,
     vigor: r.scene.vigor,
     log: r.log,
+    story: r.story ?? [],
     ...(r.delve ? { delve: delveView(sheet, r)! } : {}),
     ...(r.board ? { board: boardView(sheet, r) } : {}),
     ...(r.hex ? { hex: hexView(r) } : {}),

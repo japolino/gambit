@@ -32,6 +32,7 @@ export type DeedKind =
   | "threatened"
   | "charmed"
   | "bribed"
+  | "caught" // seen doing something they wrote, on a failed roll
   | "found" // a secret or revelation
   | "visited";
 
@@ -234,6 +235,7 @@ const TONE: Partial<Record<DeedKind, { tone: -1 | 0 | 1; delta: number; text: (d
   lied_to: { tone: -1, delta: -2, text: (d, p) => `${p} lied to them on day ${d.day}` },
   threatened: { tone: -1, delta: -1.5, text: (d, p) => `${p} threatened them on day ${d.day}` },
   charmed: { tone: 1, delta: 0.75, text: (d, p) => `${p} was kind to them on day ${d.day}` },
+  caught: { tone: -1, delta: -1, text: (d, p) => `caught ${p} at it on day ${d.day}: ${d.method ?? "something they tried"}` },
   bribed: { tone: 0, delta: 0.25, text: (d, p) => `${p} paid them off on day ${d.day}` },
 };
 

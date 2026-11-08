@@ -67,6 +67,25 @@ function ended(s: BattleState, outcome: "victory" | "defeat"): BattleState {
 }
 
 describe("play on a card", () => {
+  test("a risky line in the scene rolls, keeps the player's words, and lands in the story and the chat", async () => {
+    const { play, last, posted } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I sneaked past Mara");
+    const beat = last().story[0]!;
+    expect(beat.said).toBe("I sneaked past Mara");
+    expect(beat.roll).toMatch(/^Going unseen: \d+ vs 12, /);
+    expect(beat.reply.length).toBeGreaterThan(0);
+    expect(last().busy).toBeUndefined();
+    expect(posted.slice(-2)[0]).toBe("I sneaked past Mara");
+  });
+
+  test("an ordinary line rolls nothing", async () => {
+    const { play, last } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I watch the gulls for a while");
+    expect(last().story[0]!.roll).toBeNull();
+  });
+
   test("a town opens as a lobby with tiles for the other places and a menu", async () => {
     const { play, last } = setup();
     await play.open("u", "chat1");

@@ -31,6 +31,7 @@ import { THEME_FACTORIES } from "./themes/index.js";
 
 export interface SceneActions {
   act(hotspot: string): void;
+  say(text: string): void;
   step(move: DelveMove): void;
   leave(): void;
   theme(theme: ThemeId): void;
@@ -526,6 +527,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       ...(v.board ? { supplies: { now: v.board.supplies, max: v.board.cap } } : v.hex ? { supplies: { now: v.hex.supplies, max: v.hex.max } } : {}),
       ...(v.thread ? { thread: { found: v.thread.found, total: v.thread.total, goal: v.thread.goal } } : {}),
     }),
+    say: (text) => a.say(text),
     box(v) {
       if (v.delve) {
         const d = v.delve;

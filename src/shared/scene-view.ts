@@ -97,6 +97,12 @@ export interface DelveView {
   name: string;
 }
 
+export interface StoryBeat {
+  said: string;
+  roll: string | null;
+  reply: string;
+}
+
 export interface SceneView {
   chatId: string;
   cardName: string;
@@ -143,6 +149,8 @@ export interface SceneView {
   vigor: number;
   /** Latest happenings, newest last. */
   log: string[];
+  /** The story so far in this scene: what the player wrote, any roll, and what happened. Newest last. */
+  story: StoryBeat[];
   delve?: DelveView;
   board?: BoardView;
   /** Something is being prepared (a read, an encounter). */

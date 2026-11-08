@@ -152,6 +152,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
       case "scene.act":
         await acting.run(`${userId}:${msg.chatId}`, () => play!.act(userId, msg.chatId, msg.hotspot));
         break;
+      case "scene.say":
+        await acting.run(`${userId}:${msg.chatId}`, () => play!.say(userId, msg.chatId, msg.text));
+        break;
       case "scene.theme":
         await play!.setTheme(userId, msg.chatId, msg.theme);
         break;
