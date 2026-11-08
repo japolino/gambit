@@ -30,6 +30,8 @@ export interface Voice {
   /** Why the last line could not play, if it failed (e.g. the media permission). */
   lastError(): string | null;
   onChange(fn: () => void): () => void;
+  /** A line starts or stops being spoken. */
+  onSpeaking(fn: (on: boolean) => void): () => void;
 }
 
 const KEY = "gambit.voice";
@@ -71,6 +73,8 @@ export function createVoice(tts: TtsLike | undefined, store: Pick<Storage, "getI
   let gen = 0;
   const listeners = new Set<() => void>();
   const changed = () => listeners.forEach((f) => f());
+  const speakers = new Set<(on: boolean) => void>();
+  const speaking = (on: boolean) => speakers.forEach((f) => f(on));
 
   async function play(lines: string[]): Promise<void> {
     const mine = ++gen;
@@ -79,6 +83,7 @@ export function createVoice(tts: TtsLike | undefined, store: Pick<Storage, "getI
       const text = speakable(line);
       if (!text) continue;
       try {
+        speaking(true);
         await tts.speak({ text }, prefs.connectionId ? { connectionId: prefs.connectionId } : undefined);
         if (error) {
           error = null;
@@ -91,6 +96,8 @@ export function createVoice(tts: TtsLike | undefined, store: Pick<Storage, "getI
           changed();
         }
         return;
+      } finally {
+        speaking(false);
       }
     }
   }
@@ -123,6 +130,10 @@ export function createVoice(tts: TtsLike | undefined, store: Pick<Storage, "getI
       }
     },
     lastError: () => error,
+    onSpeaking(fn) {
+      speakers.add(fn);
+      return () => speakers.delete(fn);
+    },
     onChange(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

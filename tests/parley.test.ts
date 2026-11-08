@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { PARLEYS } from "../src/engine/content/parleys.js";
 import { applyExchange, closeParley, createParley, exchangeFaces, parseOffer, replayParley, tierFromQuality } from "../src/engine/parley/exchange.js";
-import { fallbackReply, immersiveRead, outcomeBlock, rollLine, smartQuotes, tellFor, whyText } from "../src/engine/parley/narrate.js";
+import { fallbackReply, immersiveRead, narratorPrompt, outcomeBlock, rollLine, smartQuotes, tellFor, whyText } from "../src/engine/parley/narrate.js";
 import { echoesFact, similarity } from "../src/engine/parley/similarity.js";
 import { detectorState } from "../src/meaning/card-reader.js";
 import type { ParleyState, RefereeRead } from "../src/engine/parley/types.js";
-import { readFromAnswers, refereeQuestions, typedAnswers } from "../src/meaning/referee.js";
+import { readFromAnswers, refereeQuestions, refereeState, typedAnswers } from "../src/meaning/referee.js";
 import { rulesRead } from "../src/meaning/rules.js";
 
 const marta = PARLEYS.marta_nets!;
@@ -145,6 +145,74 @@ describe("Tracks and endings", () => {
     expect(r.state.floor).toBe(0);
   });
 
+  test("a persuade-style track can be won on talk alone, with room for one miss", () => {
+    const open = { ...vey, contest: { ...vey.contest, floor: 0, dc: -100 } };
+    // No natural 1 on the three lines this takes (a plain line counts the first face).
+    const clean = (s: string) => [0, 1, 2].every((i) => ![1, 20].includes(exchangeFaces(s, i)[0]));
+    let seed = "";
+    for (let i = 0; i < 5000 && !seed; i++) if (clean(`w${i}`)) seed = `w${i}`;
+    expect(open.npc.stance.patience).toBe(4);
+    let s = createParley(open, seed);
+    const lines = ["The tide is turning and the boat will not wait for us.", "Your captain signed the order himself this very morning.", "Nobody at the gate will ever hear of this from me."];
+    for (const line of lines) s = applyExchange(open, s, line, read()).state;
+    expect(s.exchanges.map((e) => e.roll.result)).toEqual(["success", "success", "success"]);
+    expect(s.end?.kind).toBe("won");
+    expect(s.patience).toBe(1);
+    // A price still closes by halves, and the player takes the deal.
+    const m = applyExchange({ ...marta, contest: { ...marta.contest, dc: -100 } }, createParley(marta, seed), "Hundred and ten, today.", read());
+    expect(m.state.end).toBeNull();
+  });
+
+  test("a wall stops talk until Leverage takes it down", () => {
+    const seed = seedWhere(([x]) => x === 20);
+    const r = applyExchange(vey, createParley(vey, seed), "Please, I am asking you kindly.", read());
+    expect(r.exchange.roll.result).toBe("crit_success");
+    expect(r.state.value).toBe(vey.contest.floor);
+    expect(r.state.end).toBeNull();
+  });
+
+  test("telling the truth is not a bluff: no check, and it rolls Presence", () => {
+    const ex = applyExchange(vey, createParley(vey, "honest"), "It was in my coat when I woke up. That's the whole truth.", read({ tactic: "candor", tacticP: { candor: 0.9 } })).exchange;
+    expect(ex.bluff).toBeNull();
+    expect(ex.roll.stat).toBe("presence");
+    expect(rulesRead(vey, "That's the whole truth, I swear it on my life.").tactic).toBe("candor");
+    // Praise isn't a checkable claim, however the helper scored it. A claim inside an argument still is.
+    const praise = applyExchange(vey, createParley(vey, "praise"), "You're the best sergeant in this city.", read({ tactic: "flattery", otherClaim: 0.97 })).exchange;
+    expect(praise.bluff).toBeNull();
+    // The claim question alone proves nothing; with a read that leans toward a bluff, it does.
+    const said = "The harbor closed at noon, so the rule is void.";
+    expect(applyExchange(vey, createParley(vey, "claim"), said, read({ otherClaim: 0.97 })).exchange.bluff).toBeNull();
+    expect(applyExchange(vey, createParley(vey, "claim"), said, read({ otherClaim: 0.97, tacticP: { logic: 0.6, bluff: 0.3 } })).exchange.bluff).not.toBeNull();
+    const made = applyExchange(vey, createParley(vey, "made"), "Your captain is my cousin, so stand aside.", read({ tactic: "bluff", tacticP: { bluff: 0.9 } })).exchange;
+    expect(made.bluff).not.toBeNull();
+    expect(made.roll.stat).toBe("guile");
+  });
+
+  test("the Referee and the narrator both read the story before the talk", () => {
+    const told = { ...vey, story: "Narrator: You wake in a strange coat. A letter sits in the pocket." };
+    const state = createParley(told, "story");
+    expect(refereeState(told, state, "It was in my pocket.").story_so_far).toBe(told.story);
+    expect(refereeState(vey, state, "It was in my pocket.")).not.toHaveProperty("story_so_far");
+    expect(Object.keys((refereeQuestions(told).tactic as { criteria: Record<string, string> }).criteria)).toContain("candor");
+    const r = applyExchange(told, state, "It was in my pocket.", read());
+    const { system } = narratorPrompt({ ...told, speaker: { ...told.speaker, name: "you" } }, r.state, r.exchange);
+    expect(system).toContain(told.story);
+    expect(system).toContain("Present tense");
+    expect(system).toContain("in the third person");
+    expect(system).toContain('Call the player "you"');
+    expect(system).not.toContain("past tense");
+    expect(outcomeBlock(told, r.state, r.exchange)).toContain("has NOT given in");
+    // The verdict is also the last thing the narrator reads, and a refusal says no plainly.
+    const last = narratorPrompt(told, r.state, r.exchange).messages.at(-1)!.content;
+    expect(last).toStartWith("It was in my pocket.");
+    expect(last).toContain("has NOT given in");
+    const refused = { ...r.exchange, ended: { kind: "refused" as const } };
+    expect(narratorPrompt(told, r.state, refused).messages.at(-1)!.content).toContain("the answer is no");
+    const quiet = { ...told, npc: { ...told.npc, voice: "" } };
+    expect(narratorPrompt(quiet, r.state, r.exchange).system).not.toContain("Voice:");
+    expect(outcomeBlock(quiet, r.state, r.exchange)).not.toContain("Voice:");
+  });
+
   test("replay rebuilds the same state", () => {
     const inputs = [
       { text: "Hundred crowns, cash.", read: good({ tactic: "interest" }) },
@@ -212,7 +280,7 @@ describe("Gambit narrator", () => {
     expect(p.system.indexOf("OUTCOME")).toBeGreaterThan(p.system.indexOf("Setting:"));
     expect(p.messages.map((m) => m.role)).toEqual(["assistant", "user", "assistant", "user"]);
     expect(p.messages[2]!.content).toContain("Hundred and thirty");
-    expect(p.messages.at(-1)!.content).toBe("The auditor comes tomorrow.");
+    expect(p.messages.at(-1)!.content).toStartWith("The auditor comes tomorrow.");
     expect(cleanReply("## Response\n### Chapter 1\n\nShe sighs.\n\n---\n\n\"Fine.\"")).toBe('She sighs.\n\n"Fine."');
     expect(cleanReply(Array(400).fill("word.").join(" ")).split(/\s+/).length).toBeLessThanOrEqual(260);
   });
@@ -238,7 +306,7 @@ describe("what a playthrough turned up", () => {
   });
 
   test("a claim that matches nothing known is still a bluff", () => {
-    const r = applyExchange(marta, knowing(fact.id), "The harbourmaster owes me his whole fortune.", read({ otherClaim: 0.9 }));
+    const r = applyExchange(marta, knowing(fact.id), "The harbourmaster owes me his whole fortune.", read({ otherClaim: 0.9, tacticP: { logic: 0.6, bluff: 0.3 } }));
     expect(r.exchange.bluff).not.toBeNull();
     expect(r.exchange.leverageFacts).toEqual([]);
   });

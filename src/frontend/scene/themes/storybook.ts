@@ -92,7 +92,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         </div>
         <div class="frame back"></div><div class="vellum"></div><div class="frame front"></div>
         <div class="plate"><span class="cap">${plateCap(false)}</span><span class="band">${PLATE_BAND}<span class="nm"></span></span><span class="cap">${plateCap(true)}</span><span class="seal" hidden></span></div>
-        <div class="page" aria-live="polite"><div class="txt"></div></div>
+        <div class="page" aria-live="polite"><div class="sb-goal" hidden></div><div class="txt"></div></div>
         <form class="sb-say"><textarea rows="1" aria-label="What do you do?" placeholder="What do you do?" enterkeyhint="send"></textarea><button type="submit">Write</button></form>
         <div class="nib">${NIB}</div>
       </section>
@@ -110,6 +110,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const corners = $<HTMLDivElement>(".sb-corners");
   const ui = $<HTMLDivElement>(".sb-ui");
   const head = $<HTMLElement>(".sb-head");
+  const goalEl = $<HTMLElement>(".sb-goal");
   const marks = $<HTMLDivElement>(".sb-marks");
   const choices = $<HTMLElement>(".sb-choices");
   const dlg = $<HTMLElement>(".sb-dlg");
@@ -353,6 +354,15 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       </div>`;
   }
 
+  /** What you're after and how long you have: always in view, because that's what makes a line matter. */
+  function renderGoal(v: SceneView): void {
+    const th = ctx.status(v).thread;
+    goalEl.hidden = !th || !!v.delve || !!v.board;
+    if (!th) return;
+    const left = th.ended === "solved" ? "Solved" : th.ended === "lost" ? "Out of time" : th.daysLeft === undefined ? "" : th.daysLeft === 1 ? "Last day" : `${th.daysLeft} days left`;
+    goalEl.innerHTML = `<span class="g">${esc(th.goal)}</span><span class="c">${left ? `<b>${left}</b> · ` : ""}${th.found.length}/${th.total}</span>`;
+  }
+
   function renderMarks(v: SceneView): void {
     const s = ctx.status(v);
     const vig = Math.round(s.vigor * 100);
@@ -406,7 +416,12 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const earlier = b.log.slice(0, Math.max(0, last)).map((l, i) => `<li class="${i >= firstNew ? "fresh" : ""}">${esc(l)}</li>`).join("");
     const busy = b.busy ? `<div class="busy" role="status">${QUILL}<span>${esc(b.busy)}</span><span class="dots"><i></i><i></i><i></i></span></div>` : "";
     const beats = v.story
-      .map((x) => `<div class="beat"><p class="said">${esc(x.said)}</p>${x.roll ? `<p class="roll">${esc(x.roll)}</p>` : ""}${x.reply.split(/\n+/).filter(Boolean).map((p) => `<p class="told">${esc(p)}</p>`).join("")}</div>`)
+      .map((x) => {
+        const roll = x.roll ? `<p class="roll">${esc(x.roll)}</p>` : "";
+        const told = x.reply.split(/\n+/).filter(Boolean).map((p) => `<p class="told">${esc(p)}</p>`).join("");
+        // A line you wrote rolls first; a talk or a fight that's over ends on how it came out.
+        return `<div class="beat">${x.said ? `<p class="said">${esc(x.said)}</p>${roll}` : ""}${x.found ? `<p class="found">${esc(x.found)}</p>` : ""}${told}${x.said ? "" : roll}</div>`;
+      })
       .join("");
     txt.classList.toggle("two", !!earlier);
     txt.innerHTML = `<div class="main">${descHtml}${now}${beats}${busy}</div>${earlier ? `<aside class="margin" aria-label="Earlier">${DIVIDER}${DIVIDER_KNOT}<div class="mh">Earlier</div><ol class="log">${earlier}</ol></aside>` : ""}`;
@@ -653,6 +668,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     menu = ctx.menu(v);
     renderHead(v);
     renderMarks(v);
+    renderGoal(v);
     renderPlate(v);
     renderText(v);
     const onStage = renderCast(v);

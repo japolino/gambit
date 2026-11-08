@@ -27,6 +27,7 @@ import { EXPRESSION_FOR_MOOD } from "../shared/parley-view.js";
 import { expressionArtKey, figureArtKey, momentArtKey, npcArtKey, placeArtKey } from "../shared/art-keys.js";
 import type { ParleyMessageMeta, ParleyNarrator, ParleyViewMode, ToFrontend } from "../shared/protocol.js";
 import { modelsFor } from "./models.js";
+import { writeWithRetry } from "./writing.js";
 import { judge } from "./referee-host.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
@@ -85,13 +86,11 @@ const metaOf = (meta: unknown): ParleyMessageMeta | null => {
 /** A Parley with someone on a card ended (4.6: the deed ledger hears about it). */
 export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: ParleyState) => void;
 
-/** A provider saying "not right now": worth another try in a moment. */
-const isRateLimit = (err: unknown) => /\b429\b|\b503\b|rate.?limit|resource.?exhausted|overloaded|too many requests/i.test(err instanceof Error ? err.message : String(err));
-
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { retryMs = [1500, 4000] }: { retryMs?: number[] } = {}) {
   const figures = createFigurePrints(spindle, art);
   let pictures: ReturnType<typeof createInlayPictures> | null = null;
   let endHook: ParleyEndHook | null = null;
+  const told = new Set<string>();
   const live = new Map<string, ParleyState>();
   const scenes = new Map<string, ParleyScenario>();
   const k = (userId: string, id: string) => `${userId}\u0000${id}`;
@@ -280,16 +279,27 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
   /** After an exchange: journal entries for a win, and the frontend event. */
   async function settle(userId: string, scenario: ParleyScenario, state: ParleyState, exchange: Exchange, narrated: boolean): Promise<void> {
     if (state.end?.kind === "won") await learn(userId, scenario, scenario.reveals ?? []);
-    if (state.end && state.end.kind !== "final_offer" && scenario.card && state.chatId) {
-      try {
-        endHook?.(userId, scenario, state);
-      } catch {
-        /* the ledger never breaks a Parley */
-      }
-    }
     send({ type: "parley.exchange", parleyId: state.id, state, exchange, narrated }, userId);
     if (!narrated) send({ type: "parley.reply", parleyId: state.id, index: exchange.index, text: fallbackReply(scenario, state, exchange), final: true }, userId);
     requestMoments(scenario, state, userId);
+  }
+
+  /**
+   * The story hears how a Parley ended once its last reply is in: earlier, the page, the night and the
+   * people in the scene would all go by the reply before. Once only, or a swiped reply makes the same deeds again.
+   */
+  async function tellEnd(userId: string, parleyId: string): Promise<void> {
+    const key = k(userId, parleyId);
+    if (told.has(key)) return;
+    const state = await load(userId, parleyId);
+    const scenario = state && (await scenarioOf(userId, state.scenarioId));
+    if (!state?.end || !scenario?.card || !state.chatId) return;
+    told.add(key);
+    try {
+      endHook?.(userId, scenario, state);
+    } catch {
+      /* the ledger never breaks a Parley */
+    }
   }
 
   /** Store a reply (and the message that carries the exchange) on the saved exchange. */
@@ -308,42 +318,20 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
    */
   async function gambitNarrate(userId: string, scenario: ParleyScenario, state: ParleyState, ex: Exchange): Promise<{ text: string; written: boolean }> {
     const { system, messages } = narratorPrompt(scenario, state, ex);
-    let text = "";
     let lastSent = 0;
-    const models = modelsFor(spindle);
-    const ask = (role: "narrator" | "helper") =>
-      models.stream(
-        userId,
-        role,
-        { messages: [{ role: "system", content: system }, ...messages], parameters: { temperature: 0.9, max_tokens: 700 }, signal: AbortSignal.timeout(90_000) },
-        (t) => {
-          text = t;
-          if (Date.now() - lastSent > 180) {
-            lastSent = Date.now();
-            send({ type: "parley.reply", parleyId: state.id, index: ex.index, text: cleanReply(text), final: false }, userId);
-          }
-        },
-      );
-    const written = () => cleanReply(text);
-    for (let tries = 0; !written(); tries++) {
-      try {
-        text = await ask("narrator");
-        break;
-      } catch (err) {
-        log(`narrator failed (${err instanceof Error ? err.message.slice(0, 160) : String(err)})`);
-        const wait = isRateLimit(err) ? retryMs[tries] : undefined;
-        if (wait === undefined) break;
-        await new Promise((r) => setTimeout(r, wait));
-      }
-    }
-    if (!written()) {
-      try {
-        text = await ask("helper");
-      } catch (err) {
-        log(`helper couldn't narrate either (${err instanceof Error ? err.message.slice(0, 160) : String(err)})`);
-      }
-    }
-    const clean = written();
+    const written = await writeWithRetry(
+      modelsFor(spindle),
+      userId,
+      () => ({ messages: [{ role: "system", content: system }, ...messages], parameters: { temperature: 0.9, max_tokens: 700 }, signal: AbortSignal.timeout(40_000) }),
+      (t) => {
+        if (Date.now() - lastSent > 180) {
+          lastSent = Date.now();
+          send({ type: "parley.reply", parleyId: state.id, index: ex.index, text: cleanReply(t), final: false }, userId);
+        }
+      },
+      { retryMs, log, usable: (t) => !!cleanReply(t) },
+    );
+    const clean = cleanReply(written);
     if (!clean) log("no narrator answered; using a short line, kept out of the chat");
     return clean ? { text: clean, written: true } : { text: fallbackReply(scenario, state, ex), written: false };
   }
@@ -407,6 +395,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       await spindle.userStorage.setJson(CURRENT, { id: state.id, chatId } satisfies Current, { userId });
       await pushState(userId, state);
       requestNpcArt(scenario, userId);
+      return state.id;
     },
 
     async resume(userId: string) {
@@ -441,6 +430,8 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
           // The chat's own model voices the NPC; the interceptor hands it the outcome.
           const narrated = await postToChat(userId, r.state, r.exchange);
           await settle(userId, scenario, (await load(userId, parleyId)) ?? r.state, r.exchange, narrated);
+          // Narrated: its end comes with the reply (onGenerationEnded). Otherwise no reply is coming.
+          if (!narrated) await tellEnd(userId, parleyId);
           return;
         }
         // Gambit's narrator: post the line, play the dice, write the reply, post it as the NPC.
@@ -453,6 +444,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
         send({ type: "parley.reply", parleyId, index: r.exchange.index, text: reply, final: true }, userId);
         // The chat keeps what a narrator wrote. A stand-in line is for the Parley on screen, not the story.
         if (chatId && written) await appendQuiet(chatId, "assistant", reply, { ...meta, npc: true }, scenario.npc.name);
+        await tellEnd(userId, parleyId);
       } finally {
         busy.delete(bk);
       }
@@ -606,6 +598,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       if (content) {
         send({ type: "parley.reply", parleyId: w.parleyId, index: w.index, text: content, final: true }, w.userId);
         await remember(w.userId, w.parleyId, w.index, { reply: cleanReply(content, 400) }).catch(() => {});
+        await tellEnd(w.userId, w.parleyId);
         return;
       }
       const state = await load(w.userId, w.parleyId);
@@ -615,6 +608,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       const text = ex.reply || fallbackReply(scenario, state, ex);
       send({ type: "parley.reply", parleyId: w.parleyId, index: w.index, text, final: true }, w.userId);
       if (!ex.reply) await remember(w.userId, w.parleyId, w.index, { reply: text }).catch(() => {});
+      await tellEnd(w.userId, w.parleyId);
     },
 
     onGenerationStarted(chatId: string) {

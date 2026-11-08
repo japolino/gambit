@@ -197,7 +197,7 @@ const hash = (s: string): number => {
  * An encounter from the card's foes: one lead and up to two others, or a
  * boss with one escort. `lead` forces a foe (a chip that named it).
  */
-export function encounterFrom(foes: readonly SheetFoe[], opts: { seed: string; boss?: boolean; lead?: string; level?: number; name?: string }): CardEncounter | null {
+export function encounterFrom(foes: readonly SheetFoe[], opts: { seed: string; boss?: boolean; lead?: string; level?: number; name?: string; party?: number; kin?: boolean }): CardEncounter | null {
   if (!foes.length) return null;
   const h = hash(opts.seed);
   const bosses = foes.filter((f) => f.role === "boss");
@@ -205,16 +205,18 @@ export function encounterFrom(foes: readonly SheetFoe[], opts: { seed: string; b
   const forced = opts.lead ? foes.find((f) => f.id === opts.lead || f.castId === opts.lead) : undefined;
   const lead = forced ?? (opts.boss && bosses.length ? pick(bosses, h, 0) : rank.length ? pick(rank, h, 1) : foes[0]!);
   const boss = lead.role === "boss";
-  const pool = rank.filter((f) => f.id !== lead.id && !f.castId);
+  // `kin`: the player went for this foe by name, so what's with it is more of the same, not a stranger off the card's list. Someone from the card comes alone.
+  const pool = opts.kin ? [] : rank.filter((f) => f.id !== lead.id && !f.castId);
   const escorts: SheetFoe[] = [];
-  const count = boss ? 1 : lead.tier >= 3 ? 1 : 2;
+  // Someone alone with no one at their side doesn't face a squad.
+  const count = opts.party === 1 ? (!boss && lead.tier <= 1 ? 1 : 0) : boss ? 1 : lead.tier >= 3 ? 1 : 2;
   for (let i = 0; i < count; i++) {
     const f = pool.length ? pick(pool, h, i + 2) : lead.castId ? null : lead;
     if (f) escorts.push(f.tier > 1 && !boss ? { ...f, tier: (f.tier - 1) as Tier } : f);
   }
   const level = opts.level ?? LEVEL;
   const list = [lead, ...escorts].map((foe) => ({ foe, def: monsterFromFoe(foe, level) }));
-  return { id: `enc_${slug(lead.id)}_${h.toString(36).slice(0, 5)}`, name: opts.name ?? (boss ? lead.name : `${lead.name} and company`), foes: list, boss };
+  return { id: `enc_${slug(lead.id)}_${h.toString(36).slice(0, 5)}`, name: opts.name ?? (boss || (opts.kin && !escorts.length) ? lead.name : `${lead.name} and company`), foes: list, boss };
 }
 
 /* ------------------------------- party -------------------------------- */
@@ -261,7 +263,8 @@ export function partyFromSheet(sheet: Pick<CardSheet, "player" | "cast">, opts: 
   const slots: PartySlot[] = [];
   const me = baseClassFor(sheet.player.concept, used);
   used.add(me.id);
-  slots.push({ id: "p_player", name: sheet.player.name || "You", classDef: me });
+  // A name reads in the fight log ("Hero takes 17"), which "You" can't.
+  slots.push({ id: "p_player", name: sheet.player.name || "Hero", classDef: me });
   const companions = sheet.cast.filter((c) => c.main && c.id !== opts.exclude).slice(0, opts.companions ?? 2);
   for (const c of companions) {
     const cls = baseClassFor(`${c.role} ${c.look} ${c.voice}`, used);

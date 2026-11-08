@@ -12,6 +12,7 @@ import type { DelveMove } from "../engine/world/delve.js";
 import type { SceneView, ThemeId } from "./scene-view.js";
 import type { ForgeOp, ForgeView } from "./forge-view.js";
 import type { FxManifest } from "./fx.js";
+import type { MusicMoment, Track } from "../meaning/music.js";
 /** A look's palette tokens for the code-drawn layer (5.2a). */
 export type LookUi = Partial<Record<"ink" | "panel" | "gold" | "ally" | "enemy" | "accent", string>>;
 
@@ -165,6 +166,8 @@ export type ToBackend =
   | { type: "parley.narrator"; mode: ParleyNarrator }
   | { type: "journal.reset" }
   // card
+  /** What's on screen changed, and music is on: which track goes with it? */
+  | { type: "music.want"; chatId: string; moment: MusicMoment; about?: string }
   | { type: "card.status"; chatId: string }
   | { type: "card.enable"; chatId: string; on: boolean }
   | { type: "card.read"; chatId: string }
@@ -259,8 +262,10 @@ export type ToFrontend =
   | { type: "forge.state"; chatId: string; view: ForgeView }
   /** Drop a suggested action into the chat input (6.1: the menu and the roleplay never fight). */
   | { type: "scene.suggest"; chatId: string; text: string }
-  /** "Meanwhile…" (4.5): sent with null vignettes when the night starts, then again with them. */
-  | { type: "scene.meanwhile"; chatId: string; day: number; vignettes: { text: string; art?: string; imageId?: string | null; cg?: string }[] | null }
+  /** "Meanwhile…" (4.5): sent with null vignettes and the day behind you when the night starts, then again with the scenes and what changed by morning. */
+  | { type: "scene.meanwhile"; chatId: string; day: number; vignettes: { text: string; why?: string; change?: string; art?: string; imageId?: string | null; cg?: string }[] | null; today?: string[]; morning?: string[] }
+  /** The track for a moment; null with the reason when there's no music to be had. */
+  | { type: "music.track"; chatId: string; moment: MusicMoment; about?: string; track: Track | null; error?: string }
   | { type: "art.update"; items: ArtStatus[] }
   | { type: "style.probes"; looks: { lookId: string; label: string; status: ArtStatus; source?: "preset" | "user" | "inlay" | "card"; description?: string }[] }
   /** A look file to save (export). */

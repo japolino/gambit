@@ -95,5 +95,6 @@ The design, the rules and the roadmap are in [docs/DESIGN.md](docs/DESIGN.md).
 ## Credits
 
 - Effect animations by [ぴぽや (Pipoya)](https://pipoya.net/sozai/) and sound effects by [効果音ラボ (Sound Effect Lab)](https://soundeffect-lab.info/), used under their terms; see [assets/CREDITS.md](assets/CREDITS.md).
+- Music by Kevin MacLeod ([incompetech.com](https://incompetech.com)), licensed under [Creative Commons: By Attribution 4.0](http://creativecommons.org/licenses/by/4.0/). Tracks aren't in this repo: when a player turns music on, a model picks them from the published catalogue and they stream from that site. The Gambit drawer lists the full credit for each track played.
 - Fonts: Cinzel, Cormorant Garamond, IM Fell English, Press Start 2P and VT323, under the SIL Open Font License ([licenses/](licenses)).
 - Built on [PixiJS](https://pixijs.com) and [three.js](https://threejs.org).

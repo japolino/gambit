@@ -17,7 +17,7 @@ const sheet = {
   modules: { parley: true, encounters: true, places: true, delves: true, kits: true, economy: true },
   skin: { genre: "low fantasy", currency: "crowns", fight: "brawl", stats: { presence: "Presence", menace: "Menace", guile: "Guile" } },
   player: { name: "Wren", concept: "a courier", social: { presence: 2, menace: 1, guile: 3 } },
-  cast: [{ id: "mara", name: "Mara", role: "the harbormaster, usually at the docks", look: "", main: true, pronoun: "she", evidence: ev }],
+  cast: [{ id: "mara", name: "Mara", role: "the harbormaster, usually at the docks", look: "", main: true, pronoun: "she", temperament: { warmth: 0.5, pride: 0.5, greed: 0.5, fear: 0.5 }, evidence: ev }],
   places: [
     { id: "docks", name: "The Docks", description: "Wet planks and gulls", evidence: ev },
     { id: "tavern", name: "The Drowned Lantern", description: "A tavern with rooms to rent", evidence: ev },
@@ -35,6 +35,7 @@ function setup() {
   const sent: ToFrontend[] = [];
   const started: BattleState[] = [];
   const known: string[] = [];
+  const talks: { castId: string; kind?: string; line?: string }[] = [];
   const spindle = {
     log: { info() {}, warn() {}, error() {} },
     userStorage: {
@@ -47,14 +48,14 @@ function setup() {
   const cards = {
     sheetFor: async () => sheet as never,
     armory: async () => sheet as never,
-    talk: async () => {},
+    talk: async (_u: string, _c: string, castId: string, kind?: string, _chip?: string, line?: string) => void talks.push({ castId, kind, line }),
     markKnown: async (_u: string, _c: string, id: string) => void known.push(id),
   };
   const battles = { startState: async (_u: string, s: BattleState) => void started.push(s) };
   const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, battles);
   const views = () => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : []));
   const last = (): SceneView => views()[views().length - 1]!;
-  return { play, files, posted, sent, started, known, last };
+  return { play, files, posted, sent, started, known, talks, last };
 }
 
 /** End a started battle the way the engine would, with the given outcome. */
@@ -76,7 +77,7 @@ describe("play on a card", () => {
     expect(beat.roll).toMatch(/^Going unseen: \d+ vs 12, /);
     expect(beat.reply.length).toBeGreaterThan(0);
     expect(last().busy).toBeUndefined();
-    expect(posted.slice(-2)[0]).toBe("I sneaked past Mara");
+    expect(posted.at(-1)).toBe("I sneaked past Mara");
   });
 
   test("an ordinary line rolls nothing", async () => {
@@ -84,6 +85,86 @@ describe("play on a card", () => {
     await play.open("u", "chat1");
     await play.say("u", "chat1", "I watch the gulls for a while");
     expect(last().story[0]!.roll).toBeNull();
+  });
+
+  test("when no narrator can write, the player reads plain words and the chat keeps only their line", async () => {
+    const { play, last, posted } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I sneaked past Mara");
+    expect(last().story[0]!.reply).not.toMatch(/show|consequence|they wrote/i);
+    expect(posted).toEqual(["I sneaked past Mara"]);
+  });
+
+  test("pressing someone opens a Parley, with the line as the first word", async () => {
+    const { play, last, talks } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I threaten Mara until she talks");
+    expect(talks).toEqual([{ castId: "mara", kind: "intimidate", line: "I threaten Mara until she talks" }]);
+    expect(last().busy).toBeUndefined();
+    expect(last().story).toEqual([]);
+  });
+
+  test("naming someone who isn't here brings them into the scene", async () => {
+    const { play, talks, files } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const saved = files.get(key) as { world: { places: Record<string, { people: string[] }> }; scene: { placeId: string } };
+    for (const p of Object.values(saved.world.places)) p.people = [];
+    await play.say("u", "chat1", "I find Mara and threaten her");
+    expect(talks[0]?.castId).toBe("mara");
+    const after = files.get(key) as typeof saved;
+    expect(after.world.places[after.scene.placeId]!.people).toContain("mara");
+  });
+
+  test("violence opens a fight with them", async () => {
+    const { play, started, posted } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I stab Mara");
+    expect(started.length).toBe(1);
+    expect(posted).toContain("I stab Mara");
+  });
+
+  test("going somewhere moves the scene and writes the arrival", async () => {
+    const { play, last, files } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I head to the Drowned Lantern");
+    const r = files.get([...files.keys()].find((k) => k.includes("chat1"))!) as { scene: { placeId: string; time: number } };
+    expect(r.scene.placeId).toBe("tavern");
+    expect(r.scene.time).toBe(1);
+    expect(last().story[0]!.said).toBe("I head to the Drowned Lantern");
+  });
+
+  test("writing runs the clock, and enough of it moves the day on", async () => {
+    const { play, files } = setup();
+    await play.open("u", "chat1");
+    for (const l of ["I watch the gulls", "I hum a little", "I fix my boot"]) await play.say("u", "chat1", l);
+    const r = files.get([...files.keys()].find((k) => k.includes("chat1"))!) as { scene: { time: number }; spent: number };
+    expect([r.scene.time, r.spent]).toEqual([1, 0]);
+  });
+
+  test("a thread runs against a deadline, and running out of days ends it", async () => {
+    const { play, last, files } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const put = (over: Record<string, unknown>) => files.set(key, { ...(files.get(key) as object), ...over });
+    put({ thread: { goal: "Find the warden", revelations: [{ id: "a", text: "The warden fled" }, { id: "b", text: "North" }], by: "fallback" } });
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I watch the gulls");
+    expect(last().thread).toMatchObject({ goal: "Find the warden", daysLeft: 3 });
+    put({ deadline: 0 });
+    await play.say("u", "chat1", "I watch the gulls again");
+    expect(last().thread).toMatchObject({ daysLeft: 0, ended: "lost" });
+  });
+
+  test("searching that works turns up the next piece of the thread, once per place per day", async () => {
+    const { play, last, files } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    files.set(key, { ...(files.get(key) as object), thread: { goal: "Find the warden", revelations: [{ id: "a", text: "The warden fled" }, { id: "b", text: "North" }, { id: "c", text: "By boat" }], by: "fallback" } });
+    for (let i = 0; i < 12 && !last().story.some((b) => b.found); i++) await play.say("u", "chat1", "I search the place");
+    const beat = last().story.find((b) => b.found)!;
+    expect(beat.found).toBe("The warden fled");
+    expect(last().thread!.found).toEqual(["The warden fled"]);
   });
 
   test("a town opens as a lobby with tiles for the other places and a menu", async () => {
@@ -127,6 +208,61 @@ describe("play on a card", () => {
     const coin = last().coin;
     await play.onBattleEnd(ended(s, "victory"), "u");
     expect(last().coin).toBe(coin);
+  });
+
+  test("a fight's result is on the page when you come back, and the night doesn't quote it as something you said", async () => {
+    const { play, started, last } = setup();
+    await play.open("u", "chat1");
+    await play.act("u", "chat1", "go:tavern");
+    await play.fight("u", "chat1");
+    await play.onBattleEnd(ended(started[0]!, "defeat"), "u");
+    const beat = last().story.at(-1)!;
+    expect(beat.said).toBe("");
+    expect(beat.roll).toContain("is lost");
+    expect(last().place.id).toBe("docks");
+  });
+
+  test("a Parley's end is on the page when you come back, and the scene is refreshed", async () => {
+    const { play, last, sent } = setup();
+    await play.open("u", "chat1");
+    const before = sent.length;
+    await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" } } as never, { chatId: "chat1", end: { kind: "refused" }, exchanges: [{ text: "Give me the ledger.", reply: "Mara shuts the door in your face.", read: { tactic: "threat" } }] } as never);
+    expect(sent.slice(before).some((m) => m.type === "scene.state")).toBe(true);
+    expect(last().story.at(-1)).toMatchObject({ said: "", roll: "Talking with Mara: refused", reply: "Mara shuts the door in your face." });
+  });
+
+  test("a risky way out moves the scene too, and the narration can't leave the game behind", async () => {
+    const { play, last } = setup();
+    await play.open("u", "chat1");
+    expect(last().place.id).toBe("docks");
+    const places: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      await play.say("u", "chat1", "I slip past Mara and head for The Drowned Lantern");
+      places.push(last().place.id);
+      if (last().place.id === "tavern") break;
+    }
+    expect(places.at(-1)).toBe("tavern");
+    expect(last().story.at(-1)!.roll).toMatch(/^Going unseen/);
+  });
+
+  test("a line that names a foe fights that foe and its own kind, and a line that goes somewhere fights there", async () => {
+    const { play, started, last } = setup();
+    const foe = sheet.foes.find((f) => f.role !== "boss")!;
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", `I walk to The Drowned Lantern and attack the ${foe.name}`);
+    expect(last().place.id).toBe("tavern");
+    // Copies are told apart by a letter ("Bandit A", "Bandit B").
+    const enemies = started[0]!.combatants.filter((c) => c.side === "enemy").map((c) => c.name.replace(/ [A-Z]$/, ""));
+    expect(new Set(enemies)).toEqual(new Set([foe.name]));
+  });
+
+  test("someone from the card fights as themselves, not as a creature drawn from their name", async () => {
+    const { play, started } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I attack Mara");
+    const enemies = started[0]!.combatants.filter((c) => c.side === "enemy");
+    expect(enemies.map((c) => c.name)).toEqual(["Mara"]);
+    expect(enemies[0]!.art).toStartWith("figure:");
   });
 
   test("a defeat sends the party back to the start, tired and poorer", async () => {

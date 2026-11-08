@@ -180,6 +180,7 @@ ${P} .composer textarea:focus { outline: none; box-shadow: inset 0 2px 5px rgba(
 ${P} .composer textarea::placeholder { color: #8f6e4e; }
 ${P} .composer textarea:disabled::placeholder { color: transparent; }
 ${P} .status { position: absolute; z-index: 5; left: calc(var(--dx) + 124px); bottom: calc(var(--db) + 22px); height: 54px; display: flex; align-items: center; pointer-events: none; font: italic 400 clamp(16px, 1.9cqh, 19px)/1.2 ${FELL}; color: #7a3b16; min-height: 0; }
+${P} .status.muted { visibility: hidden; }
 ${P} .say { position: relative; z-index: 0; height: 48px; min-width: 132px; padding: 0 26px 0 54px; border: 0; border-radius: 0; background: none; color: #fdf0d5;
   font: 600 clamp(16px, 2cqh, 20px)/1 ${GARA}; text-shadow: 0 2px 2px rgba(0,0,0,.85); text-transform: none; letter-spacing: .02em; box-shadow: none; filter: drop-shadow(0 6px 8px rgba(0,0,0,.45)); }
 ${P} .say::after { content: ""; position: absolute; inset: 0 0 0 22px; z-index: -1; clip-path: ${RIB_CLIP}; background: ${RIB_EDGE} 0 0 / 100% 100%, url(${cloth.say}) 0 0 / 64px 64px; }

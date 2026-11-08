@@ -35,6 +35,8 @@ export type StageLayout = {
   menu: Rect;
   /** Centre of the skill-name banner. */
   banner: { x: number; y: number };
+  /** The foes live inside a picture frame (a terminal's screen, a console's window) and stay in it. Everywhere else they fill the stage. */
+  framed?: boolean;
 };
 
 export function computeLayout(w: number, h: number, partyCount: number): StageLayout {
@@ -85,14 +87,22 @@ function depthOf(i: number, n: number): number {
   return Math.min(1, Math.abs(i - mid) / Math.max(1, mid)) * 0.8;
 }
 
+/** How far past the space above the floor a foe stands, by how many there are: a lone foe fills the screen and can run off the top of it. */
+const REACH = [1.55, 1.38, 1.22, 1.08] as const;
+/** How much of a standing foe goes below the floor line: their feet are behind the page, like the party's. */
+const TUCK = 0.14;
+/** How much of a figure may run off the top of the screen: a hat or a horn, never the face. */
+const OVER_TOP = 0.07;
+
 /** Slots for enemies (in combatant order), sized by rig kind. */
 export function enemySlots(layout: StageLayout, rigs: RigKind[]): EnemySlot[] {
   const area = layout.enemyArea;
   const n = rigs.length;
+  const free = !layout.framed;
   const hugeIndex = rigs.indexOf("huge");
   const weights = rigs.map((r) => (r === "huge" ? 2.2 : 1));
   const total = weights.reduce((a, b) => a + b, 0);
-  const usable = area.w * (layout.portrait ? 0.98 : 0.86);
+  const usable = area.w * (free ? 1 : layout.portrait ? 0.98 : 0.86);
   const left = area.x + (area.w - usable) / 2;
   let cursor = left;
   return rigs.map((rig, i) => {
@@ -101,15 +111,23 @@ export function enemySlots(layout: StageLayout, rigs: RigKind[]): EnemySlot[] {
     cursor += slotW;
     const depth = hugeIndex >= 0 ? (i === hugeIndex ? 0 : 0.5) : depthOf(i, n);
     const room = layout.floorY - area.y;
-    const base = Math.min(room * 0.92, slotW * (layout.portrait ? 2.6 : 2.2));
+    const reach = REACH[Math.min(n, REACH.length) - 1] ?? 1;
+    const base = free ? Math.min(room * reach, slotW * 3.4) : Math.min(room * 0.92, slotW * (layout.portrait ? 2.6 : 2.2));
     const k = 1 - depth * 0.18;
     const floorY = layout.floorY - depth * room * 0.06;
     if (rig === "huge") {
       // The anchor sits below the floor; the figure towers over the field.
-      return { x, y: layout.floorY + room * 0.3, height: room * 1.15, floorY, depth };
+      if (!free) return { x, y: layout.floorY + room * 0.3, height: room * 1.15, floorY, depth };
+      const y = layout.floorY + room * 0.38;
+      return { x, y, height: Math.min(room * 1.6, y / (1 - OVER_TOP)), floorY, depth };
     }
-    const height = base * k * (rig === "serpentine" ? 0.92 : 1);
-    const hover = rig === "floating" ? height * 0.1 : 0;
-    return { x, y: floorY - hover, height, floorY, depth };
+    const floats = rig === "floating";
+    // Measured from the top of the screen, so a tall stage and a short one crop the same. On a phone the order of turns runs across the top: faces stay under it.
+    const ceiling = layout.portrait ? area.y : 0;
+    const fits = free ? (floorY - ceiling) / (1 - OVER_TOP + (floats ? 0.1 : -TUCK)) : Infinity;
+    const height = Math.min(base * k * (rig === "serpentine" ? 0.92 : 1), fits);
+    const hover = floats ? height * 0.1 : 0;
+    const tuck = free && !floats ? height * TUCK : 0;
+    return { x, y: floorY - hover + tuck, height, floorY, depth };
   });
 }

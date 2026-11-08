@@ -71,6 +71,14 @@ Gambit does not ship a world. It reads one from the card the player selected.
 
 **The Card Reader.** When the player turns Gambit on for a chat, the Architect reads those sources and writes a **Card Sheet**: JSON, validated, and frozen in the answer ledger.
 
+**A card isn't always a person.** Many cards are a game, a narrator or a setting. The reader names those under `not_people`, and code keeps them out of the cast, so a card's rules never reach the narrator as someone's role and a game never joins the party. A person the reader forgot still goes back in; a card it left out stays out only when the reader said so, its text says it runs a game, or its name reads as a title. With nobody else read, the card stays as a neutral stand-in, without its rules. Cards can also ask for status lines at the end of every reply: the narrator is told prose only, and `cleanReply` cuts any that slip through.
+
+**A player with no persona has no name.** Gambit never makes one up or guesses a gender. The narrator writes them as "you", a fight calls them "Hero" because a log can't read "You takes 17", and prompts say "the player". Someone fighting alone, with no companions or recruits, faces fewer foes than a party would.
+
+**The story and the game stay together.** A line can do more than one thing: a risky escape moves the scene as well as rolling, and a fail still gets them out, noticed, while only a disaster stops them. A fight the line takes somewhere happens there, against the foe it names and that foe's own kind. Someone from the card fights as their own figure. After a line, the scene also follows the narration to a place the world already has. Parleys and fights leave their result on the page, with a narrated aftermath for a fight, so coming back never drops to the old text.
+
+**Re-reads keep ids.** A fresh read can name people differently, so `mergeEdits` keeps each person's old id, matched by name, and chats in progress still know them. Sheets read before these rules are repaired as they load (`repairSheet`).
+
 **Big lorebooks** (`src/meaning/lore-pick.ts`). The read has room for about 30,000 characters, card first. Gambit fetches every enabled entry (up to 1,000 per book, 10 books, global books included) and ranks them: entries the host has active in this chat right now, then always-on entries, then entries whose keys the chat names, then entries close to the chat in meaning, then entries the card or the persona name, then the book's own order. "Close in meaning" uses the user's primary embedding model in Lumiverse (the `embeddings` permission, `src/meaning/lore-vectors.ts`): each entry is embedded once and kept at 8 bits per dimension in `lore-vec/<model>/<book>.bin`, and each read embeds the recent chat as the query. A read spends at most 10 seconds embedding entries and ranks with what it has; the rest are embedded in the background and saved as they land, so the next read has them. A connection that fails a request with several texts (NVIDIA's Nemotron embed model did, live) is sent one entry per request from then on, and five failures in a row stop the fill until the next read. The outcome of the last run is in `lore-vec/last.json`. Without the permission or a model it ranks by keywords alone. Global books only rank up when the chat uses them. About two thirds of the room goes to the top entries in full, then short excerpts, and the rest are listed by name under "also in the lorebook", so the reader knows who and what exists even when it can't read them. When the chat keeps mentioning someone or somewhere the sheet doesn't have and Notice promotes them (4.6), the promotion is written from their lorebook entry, as canon, instead of being invented.
 
 - **Cast.** The card's character(s) and up to 11 more named people, the ones most likely to matter first; 2 or 3 of them get a full stance at once (wants, fears, likes, hates, tells), and the rest when play reaches them. The model picks a social tier for each, and code turns the tier into stats. The card's main character is always in the cast. Themes draw a crowd as its first few people and keep everyone reachable: the Table folds a crowded room into one "The room" card, the Diorama keeps four behind the counter and the rest in a guest book, and 1-bit draws five figures plus whoever the cursor is on.
@@ -151,7 +159,7 @@ The Architect writes it when the NPC is created; it is stored as data:
    - Claim is false or unknown to the player: a **Bluff**, with a separate Guile vs Insight roll. If caught, the NPC remembers it permanently.
    - Claim is unverifiable flavor: ignored.
 3. **The Referee reads the argument** with typed questions in one batch:
-   - `tactic` (choice): interest, logic, empathy, flattery, threat, bribe, bluff, humor, insult, nonsense.
+   - `tactic` (choice): interest, logic, empathy, candor, flattery, threat, bribe, bluff, humor, insult, nonsense. Candor is telling the plain truth or simply asking. A bluff is a claim made up to pressure someone, so the Referee reads the story just before the talk: what it shows to be true is no bluff, and only a line rolled as a bluff counts as a lie in memory.
    - `fit` (score): how directly it touches this NPC's wants and fears.
    - `credibility` (score): coherent, specific, in character?
    - `temperament_match` (score): does this tactic land with *this* person? A threat works on a coward and backfires on a proud veteran.
@@ -177,12 +185,12 @@ The Architect writes it when the NPC is created; it is stored as data:
 | Fail | No movement | −1 |
 | Critical fail | Price +10%, rapport −1 | −2 |
 
-   At 0 patience the NPC makes a final offer.
+   At 0 patience the NPC makes a final offer. Other contests have to be won outright, so their track closes in even steps instead, sized by the NPC's patience to leave room for one miss, and at 0 patience the NPC refuses.
 7. **The Narrator plays the NPC's reply** with the outcome already decided and injected. The prose has to match the dice.
 
 #### 4.1.3 Information is power
 
-**Leverage can move the floor, not just the roll.** No roll can get a price below what the merchant can afford. Knowing she fences stolen nets changes what she can afford to refuse. Exploration, eavesdropping, and earlier conversations write facts into your journal. Those facts are your real ammunition. This is what turns talking into a game rather than a vibe check.
+**Leverage can move the floor, not just the roll.** No roll can get a price below what the merchant can afford. Knowing she fences stolen nets changes what she can afford to refuse. Exploration, eavesdropping, and earlier conversations write facts into your journal. Those facts are your real ammunition. This is what turns talking into a game rather than a vibe check. In a contest framed from a card, a small or real ask can be talked out of someone; a big one has a floor that only Leverage takes down, and that floor is never higher than what the facts on that person can remove, so no talk is unwinnable from the start. A talk only brings the facts that matter to it: about this person, about nobody in particular, or about someone they have to do with.
 
 #### 4.1.4 Showing the read to the player
 
@@ -334,7 +342,7 @@ The Architect compiles that into the class schema: resource *Flavor* (gains stac
 | P2 | Speculative | Two hops away, likely quest targets |
 | P3 | Downtime | Night-phase consequences, Notice promotions, codex art |
 
-**Rest is the big compile window.** Resting at an inn or camp plays a **"Meanwhile…"** montage: 3 to 5 short narrated vignettes of what the world did while you slept. That covers the work while the Architect compiles consequences and the Illustrator catches up.
+**The night answers the day.** When the day ends, by resting or because the clock ran out, a **"Meanwhile…"** montage plays. The curtain opens at once on the day behind you, in plain lines, while one pass reads what you wrote, what you rolled and what you did, decides what changes, and writes 3 to 5 short scenes that show it. A scene can name what you did that led to it and make one thing true: someone remembers, a place is marked, someone goes somewhere, or a rumour starts. Code checks each change against fixed limits. The last card says what is different by morning, and the next day's narrator and the next night both build on it.
 
 **Everything is frozen into a ledger** (Worldgen's pattern). Every model answer is stored by question hash, so reloading or replaying rebuilds the same world with zero model calls. Every model output passes a **schema and contract validator**. On failure it retries once, then falls back to code: name tables, templated quests, base monsters. Junk JSON can never break the world.
 
@@ -538,7 +546,7 @@ The Architect tags each monster with its rig type when designing it.
 - **Scene view** replaces a map: the place's painting (flat or in 3D, 6.2), the people in it, and a **menu** of what you can do there, with a slim HUD (party HP, time of day, coin). See 6.1.
 - **Mobile first-class.** The battle layout is designed for portrait orientation: enemy art on top, a timeline strip, then the party cards and action dial. Desktop gets a wider layout with the chat docked.
 - **Drawer tab** for the Journal (facts, quests, bestiary, codex) and settings.
-- **Audio:** hit, UI, and cut-in sounds are synthesized in WebAudio (sfxr-style recipes stored as data), with a few tiny clips inlined. Extensions cannot serve bundled files yet (8.1). Voices come from the host's TTS (6.4); ambient loops come later.
+- **Audio:** hit, UI, and cut-in sounds are synthesized in WebAudio (sfxr-style recipes stored as data), with a few tiny clips inlined. Extensions cannot serve bundled files yet (8.1). Voices come from the host's TTS (6.4). Music is off until the player turns it on: a model reads the moment (a place by day or night, a talk, a fight, the night's montage), picks a feel and a sound, code narrows Kevin MacLeod's published catalogue with them, and the model picks a track from what's left (`src/meaning/music.ts`). A moment keeps its track, so a place has a theme. Tracks stream from incompetech.com; none are bundled. The catalogue is read through the host's CORS proxy (the `cors_proxy` permission) and kept for a month. The drawer lists the full credit for each track, as the licence asks.
 
 ### 6.1 Scenes and movement: menus, not a map
 
@@ -828,7 +836,7 @@ gambit/
 - **World Bible** (`src/meaning/bible.ts`): compiled at P1 right after the card read, so it lands while the player reviews the sheet. It adds places only up to what the shape needs (town 4, frontier 5, journey 4, a delve needs somewhere to explore), a central thread with 4 to 6 revelations only when the card has no goal, and the factions the card implies. Quoted places count as the card's; the rest show as "new". A chat's world grows when the Bible lands, without waiting, and searching turns up the thread's revelations once the card's own secrets are found.
 - **Places from play:** the reply detector asks one more typed question in the same call, "where is the scene now?" A known place picked with p ≥ 0.6 moves the scene there. "Somewhere new" asks for the place's name, a line, and the quote that put the scene there; the quote must be in the chat. The place is then added to the graph next to where you were.
 - **Honeycomb overland** (`src/engine/world/hex.ts`): frontier cards walk a seeded hex map with the start in the middle. The map guarantees every place is reachable, carving through water if needed. Each step costs time and a day's supplies, and cells reveal as you go (two rings from a hill). In the wild you can forage, make camp (it costs supplies) or fight. Menu "Go to" walks the path. Places added later are known on the map at once.
-- **Rest plays "Meanwhile…"**: 3 to 5 vignettes of what the cast, the places and the factions did overnight, shown over the scene with the places' art and posted to the chat as one aside. They are compiled while the curtain is up, and templated when the model can't answer.
+- **The end of a day plays "Meanwhile…"** (`src/meaning/meanwhile.ts`): 3 to 5 scenes that answer the day and carry its consequences, shown over the scene with their CGs and posted to the chat as one aside with what changed. They are compiled while the curtain is up: the narrator first, then the helper, then templates that echo what you did.
 - **Themes** (all six now draw):
   - **Diorama** builds indoor places as a little 3D room: the painting on the back wall, plaster and planks tinted from it, a counter with the keeper behind it where the place sells things, and warm light. Clicking a person in the room talks to them.
   - **Table** seats the person you face across a candlelit table, with what you know as a hand of fact cards. Playing a card opens a Parley with them, the fact already cited in your line. The Parley itself also shows the hand in this theme.

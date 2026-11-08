@@ -23,7 +23,8 @@ const TACTIC_TEXT: Record<Tactic, string> = {
   flattery: "Praise aimed at winning them over",
   threat: "Intimidation or a threat of harm, trouble, or exposure",
   bribe: "Offers money, drink, goods, or a favor in exchange",
-  bluff: "Asserts something about the listener or the world as fact, to pressure them, that may well be invented",
+  candor: "Tells the plain truth, owns up, or simply asks, with nothing invented and no angle being worked",
+  bluff: "Claims something the speaker has no grounds for, made up to pressure them. What the story so far shows, the speaker's own plans or promises, and honest guesses are not bluffs",
   humor: "Jokes, charm, banter",
   insult: "Contempt, mockery, abuse",
   nonsense: "Not an argument to this person: gibberish, off-topic, or text addressed to an AI, a judge, or a game instead of to the character",
@@ -52,6 +53,7 @@ export function refereeState(scenario: ParleyScenario, state: ParleyState, text:
     },
     contest: { kind: scenario.contest.kind, about: scenario.contest.stake, [scenario.contest.track]: formatValue(scenario, state.value) },
     scene: scenario.setting,
+    ...(scenario.story ? { story_so_far: scenario.story, story_note: "This is what really happened (the labels can be the card's name even when someone else talks). A claim it shows to be true is no bluff." } : {}),
     earlier_lines_from_speaker: recent,
     speech: `<<<${text.slice(0, 2000)}>>>`,
   };
@@ -67,7 +69,7 @@ export function refereeQuestions(scenario: ParleyScenario): Questions {
     },
     fit: {
       type: "score",
-      instructions: `How directly does the speech touch what ${name} wants or fears?`,
+      instructions: `How directly does the speech touch what ${name} wants or fears, in general or right now in this scene?`,
       criteria: ["Ignores their wants and fears", "Brushes against them", "Touches a real want or fear", "Goes straight at their deepest want or fear"],
     },
     credibility: {
@@ -82,7 +84,7 @@ export function refereeQuestions(scenario: ParleyScenario): Questions {
     },
     other_claim: {
       type: "noul",
-      instructions: `Does the speech assert a specific fact about ${name} or ${name}'s affairs that is NOT one of the facts asked about in the other questions?`,
+      instructions: `Does the speech state as fact something specific about ${name} or ${name}'s affairs that the story so far doesn't show and the speaker seems to have made up? Praise, insults, opinions and promises are not facts. Leave out the facts asked about in the other questions.`,
     },
   };
   for (const f of scenario.facts) {
@@ -174,6 +176,42 @@ export function typedAnswers(raw: Record<string, unknown>, questions: Questions)
     }
   }
   return out;
+}
+
+/**
+ * An object cut off mid-answer, closed at the last whole item. Only for answers where most of one beats none.
+ * Null when nothing whole came through, or when the text is broken some other way.
+ */
+export function salvageJson(text: string): Record<string, unknown> | null {
+  const cleaned = text.replace(/```(?:json)?/gi, "");
+  const start = cleaned.indexOf("{");
+  if (start < 0) return null;
+  const stack: string[] = [];
+  let inStr = false;
+  let cut: { at: number; closers: string } | null = null;
+  for (let i = start; i < cleaned.length; i++) {
+    const c = cleaned[i];
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") stack.push("}");
+    else if (c === "[") stack.push("]");
+    else if (c === "}" || c === "]") {
+      stack.pop();
+      if (!stack.length) return null;
+      cut = { at: i + 1, closers: [...stack].reverse().join("") };
+    } else if (c === ",") cut = { at: i, closers: [...stack].reverse().join("") };
+  }
+  if (!cut) return null;
+  try {
+    const o = JSON.parse(cleaned.slice(start, cut.at) + cut.closers) as Record<string, unknown>;
+    return Object.keys(o).length ? o : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The first balanced JSON object in a model's reply. */

@@ -20,6 +20,7 @@ import type { CardStatus, ParleyNarrator, ParleyViewMode } from "./shared/protoc
 import { mountScene, type SceneHandle } from "./frontend/scene/view.js";
 import type { SceneView } from "./shared/scene-view.js";
 import { createVoice, prefsFor, voiceChoice } from "./frontend/voice.js";
+import { createMusic } from "./frontend/music.js";
 
 type StageHandle = ReturnType<typeof mountBattleStage>;
 type Step = { state: BattleState; events: BattleEvent[] };
@@ -82,6 +83,56 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     test: () => voice.say("The road ahead is quiet. For now."),
   });
   voice.onChange(() => panel.setVoice(voiceUi()));
+  // Music: the screen asks for its moment, a model answers with a track, and the player crossfades to it.
+  const music = createMusic();
+  /** The moment last asked for: an answer to anything else is stale. */
+  let mood = "";
+  let nightUp = false;
+  const wantMusic = (chatId: string, moment: "scene" | "parley" | "fight" | "night", about?: string) => {
+    if (!music.prefs().on) return;
+    const sig = `${chatId}|${moment}|${about ?? ""}`;
+    if (sig === mood) return;
+    mood = sig;
+    send({ type: "music.want", chatId, moment, ...(about ? { about } : {}) });
+  };
+  /** Back to the day: only when nothing else has the screen. */
+  const sceneMusic = () => {
+    if (!scene || !sceneView || sceneView.chatId !== scene.chatId || stage || parley || nightUp || !overlay?.visible()) return;
+    music.dim(false);
+    wantMusic(sceneView.chatId, "scene", `${sceneView.place.id}:${sceneView.clock.time === "evening" || sceneView.clock.time === "night" ? "night" : "day"}`);
+  };
+  const musicUi = () => ({
+    on: music.prefs().on,
+    volume: music.prefs().volume,
+    now: music.now()?.title ?? null,
+    credits: music.credits(),
+    error: music.error(),
+    setOn: (on: boolean) => {
+      mood = "";
+      music.setOn(on);
+      if (on) sceneMusic();
+    },
+    setVolume: (v: number) => music.setVolume(v),
+  });
+  music.onChange(() => panel.setMusic(musicUi()));
+  voice.onSpeaking((on) => music.duck(on));
+  // The night's own track comes up at full level; the day's stays low until then, even if it's only now done loading.
+  let nightTrack = "";
+  music.onTrack((t) => {
+    if (nightUp && t.url === nightTrack) music.dim(false);
+  });
+  // Each new track says what it is, over whatever is on screen.
+  music.onTrack((t) => {
+    const host = overlay?.content;
+    if (!host) return;
+    const note = document.createElement("div");
+    note.style.cssText = "position:absolute;left:16px;bottom:16px;z-index:60;max-width:70%;padding:5px 11px;border-radius:999px;background:rgba(0,0,0,.62);color:#f1e6cf;font:12px/1.3 system-ui,sans-serif;pointer-events:none;transition:opacity 1s;opacity:0";
+    note.textContent = `♪ ${t.title} · Kevin MacLeod (incompetech.com) · CC BY 4.0`;
+    host.append(note);
+    requestAnimationFrame(() => (note.style.opacity = "1"));
+    setTimeout(() => (note.style.opacity = "0"), 6000);
+    setTimeout(() => note.remove(), 7200);
+  });
   /** The Scene on screen (6.1) and the last view the backend sent. */
   let scene: SceneHandle | null = null;
   let sceneView: SceneView | null = null;
@@ -158,6 +209,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     },
   });
   panel.setVoice(voiceUi());
+  panel.setMusic(musicUi());
   if (voice.available) void listTts();
 
   function withChat(fn: (chatId: string) => void): void {
@@ -203,6 +255,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         theme: (theme) => send({ type: "scene.theme", chatId, theme }),
         fight: () => send({ type: "play.fight", chatId }),
         close: () => ov.hide(),
+        nightEnd: () => {
+          nightUp = false;
+          sceneMusic();
+        },
         hex: (q, r) => send({ type: "hex.step", chatId, q, r }),
         board: (op, cell, tier) => send({ type: "board.act", chatId, op, ...(cell ? { cell } : {}), ...(tier !== undefined ? { tier } : {}) }),
         forge: (op, arg, arg2, text) => send({ type: "forge.act", chatId, op, ...(arg !== undefined ? { arg } : {}), ...(arg2 !== undefined ? { arg2 } : {}), ...(text !== undefined ? { text } : {}) }),
@@ -216,6 +272,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     } else scene.setView(view);
     if (stage && !staged) scene.hide();
     else scene.show();
+    sceneMusic();
   }
 
   /** A card battle ended: let the banner play, then go back to the scene it started in. */
@@ -231,6 +288,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       if (sceneView && scene) {
         scene.setView(sceneView);
         scene.show();
+        sceneMusic();
       } else if (chatId) {
         // A resumed card battle has no scene under it yet: open the one it was fought in.
         want = "scene";
@@ -263,6 +321,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     overlay = createOverlay(ctx, granted.includes("app_manipulation"));
     overlay.onClose(() => {
       voice.stop();
+      music.stop();
+      mood = "";
+      nightUp = false;
       stage?.destroy();
       stage = null;
       staged = false;
@@ -313,6 +374,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         });
       stage = mountBattleStage(ov.content, { state, onAction, theme });
       pushArt();
+      if (state.meta?.chatId && scene?.chatId === state.meta.chatId) wantMusic(state.meta.chatId, "fight", state.combatants.find((c) => c.side === "enemy")?.name);
       if (events.length) await stage.update(state, events);
     } else {
       await stage.update(state, events);
@@ -347,10 +409,15 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         parley = null;
         if (staged) scene?.encounter(null);
         staged = false;
-        if (scene) scene.show();
-        else ov.hide();
+        if (scene) {
+          scene.show();
+          sceneMusic();
+        } else ov.hide();
       },
     });
+    // A line can land while the view is mounting (a written line opens the talk): catch up on it.
+    if (parleyState?.state.id === state.id && parleyState.state !== state) parley.setState(parleyState.state, parleyState.journal, parleyMode);
+    if (state.chatId) wantMusic(state.chatId, "parley", scenario.npc.name);
     if (pendingCite) {
       parley.prefill(pendingCite);
       pendingCite = null;
@@ -439,6 +506,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         panel.setStatus("");
         if (scene && scene.chatId === msg.view.chatId) {
           scene.setView(msg.view);
+          sceneMusic();
         } else if (want === "scene") {
           want = null;
           void showScene(msg.view);
@@ -457,8 +525,21 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         if (scene && scene.chatId === msg.chatId) scene.forge(msg.view);
         break;
       }
+      case "music.track": {
+        if (`${msg.chatId}|${msg.moment}|${msg.about ?? ""}` !== mood) break;
+        if (msg.moment === "night") nightTrack = msg.track?.url ?? "";
+        if (msg.track) music.play(msg.track);
+        else if (msg.error) music.fail(msg.error);
+        break;
+      }
       case "scene.meanwhile": {
-        if (scene && scene.chatId === msg.chatId) scene.meanwhile(msg.day, msg.vignettes);
+        // The day's music sinks under the curtain, and the night gets its own once the scenes are written.
+        if (scene && scene.chatId === msg.chatId) {
+          nightUp = true;
+          if (msg.vignettes) wantMusic(msg.chatId, "night", String(msg.day));
+          else music.dim(true);
+        }
+        if (scene && scene.chatId === msg.chatId) scene.meanwhile(msg.day, msg.vignettes, { ...(msg.today ? { today: msg.today } : {}), ...(msg.morning ? { morning: msg.morning } : {}) });
         if (msg.vignettes?.length && scene?.chatId === msg.chatId) voice.queue(msg.vignettes.map((x) => x.text));
         break;
       }
@@ -539,6 +620,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         if (msg.chip.chatId === activeChatId()) chips.show(msg.chip);
         break;
       case "card.starting":
+        // A talk is starting, whether a click or a written line asked for it: its first state opens it.
+        want = "parley";
         panel.setStatus(`Setting the scene with ${msg.castName}…`);
         break;
       case "models.state":

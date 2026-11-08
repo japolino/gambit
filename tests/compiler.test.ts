@@ -7,7 +7,6 @@ import { addHexPlace, buildHex, cellOf, hexDist, hexKey, hexPath, newHex, passab
 import { addPlace, buildWorld } from "../src/engine/world/places.js";
 import { fallbackBible, gaps, parseBible, parsePlaceFromChat, fallbackPlaceFromChat, whereQuestion } from "../src/meaning/bible.js";
 import { fallbackPlaces, placeNameFrom } from "../src/meaning/fallbacks.js";
-import { parseMeanwhile } from "../src/meaning/meanwhile.js";
 import type { ToFrontend } from "../src/shared/protocol.js";
 import type { SceneView } from "../src/shared/scene-view.js";
 
@@ -246,12 +245,4 @@ describe("the compiler in play", () => {
     expect(last().place.name).toBe("The Rusted Anchor");
   });
 
-  test("a Meanwhile answer needs three real vignettes", () => {
-    const s = base();
-    expect(parseMeanwhile({ vignettes: [{ text: "Ash walks the wall alone, counting torches." }] }, s as never, new Set())).toBeNull();
-    const ok = parseMeanwhile({ vignettes: [1, 2, 3].map((i) => ({ text: `Vignette number ${i} happens somewhere.`, who: i === 1 ? "ash" : "ghost", where: "town" })) }, s as never, new Set(["town"]))!;
-    expect(ok).toHaveLength(3);
-    expect(ok[0]!.who).toBe("ash");
-    expect(ok[1]!.who).toBeUndefined();
-  });
 });

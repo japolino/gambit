@@ -235,6 +235,7 @@ export function commandLayout(w: number, h: number, partyCount: number): StageLa
     const head = Math.round(Math.min(a.pic.h * 0.18, 2 * c));
     return {
       w, h, portrait: h > w, ui: uiOf(geo),
+      framed: true,
       enemyArea: { x: a.pic.x + c * 0.25, y: a.pic.y + head, w: a.pic.w - c * 0.5, h: a.pic.h - head },
       floorY: Math.round(a.pic.y + a.pic.h - c * 0.25),
       timeline: a.order,
@@ -255,6 +256,7 @@ export function commandLayout(w: number, h: number, partyCount: number): StageLa
   const head = Math.round(Math.min(pic.h * 0.18, 2 * c));
   return {
     w, h, portrait: geo.tall, ui,
+    framed: true,
     enemyArea: { x: pic.x + c * 0.5, y: pic.y + head, w: pic.w - c, h: pic.h - head },
     floorY: Math.round(pic.y + pic.h - c * 0.4),
     timeline: inner(geo, p.wins.order),

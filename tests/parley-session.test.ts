@@ -11,10 +11,11 @@ const scenario: ParleyScenario = { ...PARLEYS.marta_nets!, id: "card_scene", car
 const read: RefereeRead = { tactic: "logic", tacticP: { logic: 0.8 }, fit: 1.5, credibility: 1.5, temperament: 2, asserts: {}, otherClaim: 0, by: "rules" } as unknown as RefereeRead;
 
 /** A session with one judged exchange saved, the way the backend finds it after a line was posted. */
-function session(withReply?: string) {
+function session(withReply?: string, end?: ParleyState["end"]) {
   const start = createParley(scenario, "fixed", CHAT);
   const judged = applyExchange(scenario, start, "Hundred, cash, now.", read).state;
   if (withReply) judged.exchanges[0] = { ...judged.exchanges[0]!, reply: withReply };
+  if (end) judged.end = end;
   const file = `parley/${encodeURIComponent(judged.id)}.json`;
   const files = new Map<string, unknown>([
     [file, judged],
@@ -80,6 +81,35 @@ describe("the end of a narration", () => {
     await s.parleys.onGenerationEnded(CHAT, "Back in the chat, later on.", USER);
     expect(s.replies().length).toBe(before);
     expect(s.saved().exchanges[0]!.reply).toContain("Fine");
+  });
+});
+
+describe("how a Parley ended reaches the story", () => {
+  test("only once the last reply is in, and only once", async () => {
+    const s = session(undefined, { kind: "refused" });
+    await s.brief();
+    expect(s.ended).toEqual([]);
+    await s.parleys.onGenerationEnded(CHAT, "\"No,\" she says, and shuts the door.", USER);
+    expect(s.ended.map((e) => e.exchanges[0]!.reply)).toEqual(['"No," she says, and shuts the door.']);
+    // A swipe writes the reply again; it doesn't happen again.
+    await s.brief();
+    await s.parleys.onGenerationEnded(CHAT, "\"Never,\" she says.", USER);
+    expect(s.ended.length).toBe(1);
+  });
+
+  test("a stopped narration still tells it, with the written line", async () => {
+    const s = session(undefined, { kind: "refused" });
+    await s.brief();
+    await s.parleys.onGenerationEnded(CHAT, "", USER);
+    expect(s.ended.length).toBe(1);
+    expect(s.ended[0]!.exchanges[0]!.reply?.length).toBeGreaterThan(0);
+  });
+
+  test("a talk still going tells nothing", async () => {
+    const s = session();
+    await s.brief();
+    await s.parleys.onGenerationEnded(CHAT, "She thinks it over.", USER);
+    expect(s.ended).toEqual([]);
   });
 });
 

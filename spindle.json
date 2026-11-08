@@ -20,7 +20,8 @@
     "personas",
     "world_books",
     "embeddings",
-    "media"
+    "media",
+    "cors_proxy"
   ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",

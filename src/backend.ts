@@ -144,6 +144,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         // In the host runtime but not yet in the published types (0.6.79).
         await (spindle as unknown as { ui?: { closeDrawer?(o: { userId: string }): Promise<void> } }).ui?.closeDrawer?.({ userId }).catch(() => {});
         break;
+      case "music.want":
+        await play!.music(userId, msg.chatId, msg.moment, msg.about);
+        break;
       case "scene.open":
         await play!.open(userId, msg.chatId);
         // The chat may have gone on without the scene: it catches up in the background.

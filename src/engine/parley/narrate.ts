@@ -104,6 +104,16 @@ export function effectLine(scenario: ParleyScenario, ex: Exchange): string {
   return `${n}'s ${c.track} holds at ${Math.round(a)}.`;
 }
 
+/** Where this exchange leaves the talk, in so many words: the one thing the narrator's prose can't change. */
+function verdict(scenario: ParleyScenario, state: ParleyState, ex: Exchange): string {
+  const { npc, contest: c } = scenario;
+  const not = npc.pronoun === "they" ? "they do not" : `${npc.pronoun} does not`;
+  if (ex.ended?.kind === "final_offer") return `${npc.name} is out of patience and makes a FINAL offer at ${formatValue(scenario, state.value)}: take it or leave it.`;
+  if (ex.ended?.kind === "won") return `${npc.name} gives in: the player gets ${c.stake}.`;
+  if (ex.ended?.kind === "refused") return `${npc.name} is out of patience and refuses for good: the answer is no, and the talk is over. Whatever softened along the way, ${not} agree, help, or tell the player what to do next.`;
+  return `${npc.name} has NOT given in: ${not} agree, promise, or go along with anything, and the player does not get ${c.stake} yet. Softening is fine if the dice allow it; a yes is not.`;
+}
+
 /**
  * The block the interceptor injects before the narrator writes. Everything
  * in it is already decided; the narrator only voices it.
@@ -127,11 +137,9 @@ export function outcomeBlock(scenario: ParleyScenario, state: ParleyState, ex: E
   else if (ex.bluff) lines.push(`${npc.name} believes the player's claim.`);
   if (ex.nonsense) lines.push(`The player's words make no sense to ${npc.name}; ${npc.pronoun} is confused, not offended.`);
   lines.push(`${npc.name}'s mood: ${ex.mood}. Show it through this tell: ${tellFor(scenario, ex.mood)}`);
-  if (ex.ended?.kind === "final_offer") lines.push(`${npc.name} is out of patience and makes a FINAL offer at ${formatValue(scenario, state.value)}: take it or leave it.`);
-  else if (ex.ended?.kind === "won") lines.push(`${npc.name} gives in: the player gets ${c.stake}.`);
-  else if (ex.ended?.kind === "refused") lines.push(`${npc.name} is out of patience and refuses for good. The matter is closed.`);
-  else lines.push(`The negotiation continues; ${npc.name} has ${state.patience} of ${npc.stance.patience} patience left. End on a line that invites the player's next move.`);
-  lines.push(`Voice: ${npc.voice}`);
+  lines.push(verdict(scenario, state, ex));
+  if (!ex.ended) lines.push(`The negotiation continues; ${npc.name} has ${state.patience} of ${npc.stance.patience} patience left. End on a line that invites the player's next move.`);
+  if (npc.voice) lines.push(`Voice: ${npc.voice}`);
   lines.push(...REPLY_RULES(npc.name));
   return lines.join("\n");
 }
@@ -151,7 +159,7 @@ export function sceneBlock(scenario: ParleyScenario, state: ParleyState): string
     `What ${npc.pronoun} wants: ${s.wants.join("; ")}. What ${npc.pronoun} fears: ${s.fears.join("; ")}.`,
     `Respects: ${s.respects.join(", ")}. Despises: ${s.despises.join(", ")}.`,
     `Current ${scenario.contest.track}: ${formatValue(scenario, state.value)}. Patience ${state.patience}/${s.patience}.`,
-    `Voice: ${npc.voice}`,
+    ...(npc.voice ? [`Voice: ${npc.voice}`] : []),
     ...REPLY_RULES(npc.name),
   ].join("\n");
 }
@@ -164,9 +172,11 @@ export function sceneBlock(scenario: ParleyScenario, state: ParleyState): string
  */
 export function narratorPrompt(scenario: ParleyScenario, state: ParleyState, ex: Exchange): { system: string; messages: { role: "user" | "assistant"; content: string }[] } {
   const npc = scenario.npc;
+  const player = scenario.speaker.name === "you" ? `Call the player "you", with no name or gender for them` : `The player is ${scenario.speaker.name}, in the third person`;
   const system = [
-    `You are the narrator of a scene in a fantasy roleplay game. You voice exactly one character: ${npc.name}, ${npc.role}. Third person, past tense, vivid but brief.`,
+    `You are the narrator of a scene in a roleplay game. You voice exactly one character: ${npc.name}, ${npc.role}. Write ${npc.name} in the third person ("${npc.name} frowns"), never "I" outside spoken words. Present tense, vivid but brief. ${player}.`,
     `Setting: ${scenario.setting}`,
+    ...(scenario.story ? [`The story so far, as written. This is the same ${npc.name}: the same voice and manner as here, and what happened stands.`, scenario.story] : []),
     sceneBlock(scenario, { ...state, value: ex.before.value, patience: ex.before.patience }),
     "The player's lines arrive as user turns. The game has already decided how each one landed; you only voice the result.",
     "",
@@ -177,7 +187,9 @@ export function narratorPrompt(scenario: ParleyScenario, state: ParleyState, ex:
     messages.push({ role: "user", content: prior.text });
     messages.push({ role: "assistant", content: prior.reply ?? effectLine(scenario, prior) });
   }
-  messages.push({ role: "user", content: ex.text });
+  // Said again where the model looks last: prose that turns a no into a yes undoes the whole contest.
+  const after = { ...state, value: ex.after.value, patience: ex.after.patience };
+  messages.push({ role: "user", content: `${ex.text}\n\n[The game has decided: ${verdict(scenario, after, ex)}]` });
   return { system, messages };
 }
 
@@ -187,11 +199,17 @@ export function smartQuotes(text: string): string {
 }
 
 /** Tidy a narrator reply: drop headings and scene breaks, cap the length. */
+/** A status line a card's rules asked a model to add: "[HP: 100/100 | Mana: 50/50 | Gold: 0]". The game keeps those numbers itself, and these are invented. */
+function isStatusLine(l: string): boolean {
+  if (!/\b(hp|mp|mana|stamina|gold|coins?|level|lv|exp|xp|items?|inventory|status)\s*[:=]/i.test(l) || /["“”]/.test(l)) return false;
+  return /^\s*[[(【*]/.test(l) || l.includes("|") || (l.length < 120 && /\d+\s*\/\s*\d+/.test(l));
+}
+
 export function cleanReply(text: string, maxWords = 260): string {
   const lines = text
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .split("\n")
-    .filter((l) => !/^\s{0,3}#{1,6}\s/.test(l) && !/^\s*([-*_]\s*){3,}$/.test(l));
+    .filter((l) => !/^\s{0,3}#{1,6}\s/.test(l) && !/^\s*([-*_]\s*){3,}$/.test(l) && !isStatusLine(l));
   let out = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   const words = out.split(/\s+/);
   if (words.length > maxWords) {

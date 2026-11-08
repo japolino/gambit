@@ -47,10 +47,24 @@ const CSS = `
 .gb .lookbar { display: flex; gap: 6px; flex-wrap: wrap; }
 .gb .describe { display: flex; gap: 6px; }
 .gb .describe textarea { flex: 1; min-width: 0; resize: vertical; }
+.gb .check { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.gb input[type="range"] { flex: 1; min-width: 80px; accent-color: var(--lumiverse-primary, #c8a26a); }
+.gb .credits { display: grid; gap: 6px; font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
 .gb .model-row { display: grid; gap: 6px; }
 .gb .model-row .lbl { font-weight: 600; }
 .gb .model-row .lbl small { font-weight: 400; opacity: .65; margin-left: 6px; font-size: 13px; }
 ${CARD_CSS}`;
+
+/** Music in the scene: on or off, how loud, what's playing, and the credits for what has played. */
+export interface MusicUi {
+  on: boolean;
+  volume: number;
+  now: string | null;
+  credits: string[];
+  error: string | null;
+  setOn(on: boolean): void;
+  setVolume(volume: number): void;
+}
 
 /** The voice picker (docs/DESIGN.md 6.4): no voice, the default voice, or one of the user's TTS connections. */
 export interface VoiceUi {
@@ -77,6 +91,7 @@ export interface Panel {
   /** The active chat's card status (null while asking), and whether a chat is open at all. */
   setCard(status: CardStatus | null, hasChat: boolean): void;
   setVoice(v: VoiceUi): void;
+  setMusic(m: MusicUi): void;
   destroy(): void;
 }
 
@@ -114,6 +129,7 @@ export function createPanel(
     <button class="primary" data-parley-resume hidden>Resume the Parley</button>
     <section><h3>This chat</h3><div class="card-sec" data-card></div></section>
     <section><h3>Voice</h3><div data-voice></div></section>
+    <section><h3>Music</h3><div data-music></div></section>
     <div class="status" data-status></div>
     <details data-looks-sec><summary>Art style</summary><div class="row">
       <div class="hint" data-look-hint>Default style</div>
@@ -137,6 +153,7 @@ export function createPanel(
   tab.root.appendChild(root);
   const cardEl = root.querySelector<HTMLElement>("[data-card]")!;
   const voiceEl = root.querySelector<HTMLElement>("[data-voice]")!;
+  const musicEl = root.querySelector<HTMLElement>("[data-music]")!;
   root.querySelector("[data-demo]")?.addEventListener("click", () => actions.demo());
   renderCard(cardEl, null, false, actions.card);
   const status = root.querySelector<HTMLElement>("[data-status]")!;
@@ -155,6 +172,18 @@ export function createPanel(
   narratorBtns.forEach((b) => b.addEventListener("click", () => actions.setNarrator(b.dataset.n as ParleyNarrator)));
   const paintNarrator = (m: ParleyNarrator) => narratorBtns.forEach((b) => b.classList.toggle("on", b.dataset.n === m));
   paintNarrator("gambit");
+
+  /* ------------------------------- Music ------------------------------- */
+  const renderMusic = (m: MusicUi) => {
+    const open = musicEl.querySelector<HTMLDetailsElement>("details")?.open ? " open" : "";
+    musicEl.innerHTML = `<label class="check"><input type="checkbox" data-music-on ${m.on ? "checked" : ""}> Play music in the scene</label>${
+      m.on ? `<div class="ctl"><input type="range" min="0" max="100" value="${Math.round(m.volume * 100)}" aria-label="Music volume" data-music-volume></div>` : ""
+    }<div class="hint">${m.on && m.now ? `Now playing: ${esc(m.now)}` : "A model scores each moment from Kevin MacLeod's catalogue. Tracks stream from incompetech.com, so this browser connects to that site while it's on."}</div>${m.error ? `<div class="note">${esc(m.error)}</div>` : ""}${
+      m.credits.length ? `<details${open}><summary>Music credits</summary><div class="credits">${m.credits.map((c) => `<div>${esc(c)}</div>`).join("")}</div></details>` : ""
+    }`;
+    musicEl.querySelector<HTMLInputElement>("[data-music-on]")!.addEventListener("change", (e) => m.setOn((e.target as HTMLInputElement).checked));
+    musicEl.querySelector<HTMLInputElement>("[data-music-volume]")?.addEventListener("input", (e) => m.setVolume(Number((e.target as HTMLInputElement).value) / 100));
+  };
 
   /* ------------------------------- Voice ------------------------------- */
   const renderVoice = (v: VoiceUi) => {
@@ -283,6 +312,7 @@ export function createPanel(
     setModels: (st) => renderModels(st),
     setCard: (st, hasChat) => renderCard(cardEl, st, hasChat, actions.card),
     setVoice: (v) => renderVoice(v),
+    setMusic: (m) => renderMusic(m),
     setParley: (open, mode, journalSize) => {
       parleyResume.hidden = !open;
       if (open) parleyResume.textContent = `Resume: ${open}`;

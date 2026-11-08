@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { DecisionAnswer } from "lumiverse-spindle-types";
 import { contestFrom, scenarioFromSheet } from "../src/engine/card/sizing.js";
-import type { CardSources } from "../src/engine/card/types.js";
+import type { CardSources, SheetFact } from "../src/engine/card/types.js";
 import { applyExchange, createParley } from "../src/engine/parley/exchange.js";
 import type { RefereeRead } from "../src/engine/parley/types.js";
-import { chipFromAnswers, fallbackFrame, fallbackSheet, lastBeat,mergeEdits, mergeReads, parseFrame, parseSheet, quoteFound, readerPrompt, readerPrompts, resolveMacros } from "../src/meaning/card-reader.js";
+import { chipFromAnswers, fallbackFrame, fallbackSheet, framePrompt, lastBeat, mergeEdits, mergeReads, parseFrame, parseSheet, quoteFound, readerPrompt, readerPrompts, resolveMacros, storySoFar } from "../src/meaning/card-reader.js";
 
 const SRC: CardSources = {
   cards: [
@@ -162,6 +162,53 @@ describe("contests from a card", () => {
     expect(c.dc).toBe(15);
     const persuade = contestFrom({ ...frame, kind: "persuade" }, sheet.cast[0]!, "");
     expect(persuade).toMatchObject({ track: "resistance", start: 100, floor: 35, winAt: 0 });
+  });
+
+  test("no talk starts out unwinnable: a wall is never higher than the facts on that person can take down", () => {
+    const ilse = sheet.cast[0]!.id;
+    const frame = (size: 1 | 2 | 3 | 4) => parseFrame({ kind: "persuade", stake: "passage upriver", stake_size: size }, sheet, ilse);
+    // A small or real ask has no wall.
+    for (const size of [1, 2] as const) expect(scenarioFromSheet(sheet, frame(size), "c", "x", [])!.contest.floor).toBe(0);
+    // A big one has, while there's something on them that opens it.
+    expect(scenarioFromSheet(sheet, frame(3), "c", "x", [])!.contest.floor).toBe(35);
+    const none = { ...sheet, facts: sheet.facts.filter((f) => !f.about.includes(ilse)) };
+    expect(scenarioFromSheet(none, frame(4), "c", "x", [])!.contest.floor).toBe(0);
+    const one = { ...sheet, facts: [{ ...sheet.facts.find((f) => f.id === "fines")! }] };
+    const sc = scenarioFromSheet(one, frame(4), "c", "x", ["fines"])!;
+    expect(sc.contest.floor).toBe(20);
+    const after = applyExchange(sc, createParley(sc, "open", "c"), "The guild fined you twice this month.", { tactic: "logic", tacticP: {}, fit: 2, credibility: 2, temperament: 2, asserts: { fines: 0.9 }, otherClaim: 0, by: "rules" });
+    expect(after.state.floor).toBe(0);
+    // A price keeps its floor whatever is known.
+    expect(scenarioFromSheet(none, parseFrame({ kind: "haggle", stake: "x", stake_size: 2, price: 100 }, sheet, ilse), "c", "x", [])!.contest.floor).toBeGreaterThan(0);
+  });
+
+  test("a talk brings the facts that matter to it, not every secret on the card", () => {
+    const other = sheet.cast[1]!;
+    const world: SheetFact = { ...sheet.facts[0]!, id: "law", text: "Night travel is banned upriver.", claim: "night travel is banned", about: [], known: true, weight: 1 };
+    const withWorld = { ...sheet, facts: [...sheet.facts, world] };
+    const frame = parseFrame({ kind: "persuade", stake: "a word with the crew", stake_size: 2 }, sheet, other.id);
+    const sc = scenarioFromSheet(withWorld, frame, "c", "x", ["fines"])!;
+    expect(sc.facts.map((f) => f.id)).toEqual(["law"]);
+    expect(sc.known).toEqual(["law"]);
+    // Someone they have to do with counts.
+    const tied = { ...withWorld, cast: withWorld.cast.map((c) => (c.id === other.id ? { ...c, fears: ["what Ilse will do"] } : c)) };
+    expect(scenarioFromSheet(tied, frame, "c", "x", ["fines"])!.known).toContain("fines");
+  });
+
+  test("framing hears the line that started the talk, and reads a voice for someone with none", () => {
+    const ilse = sheet.cast[0]!.id;
+    const { user } = framePrompt(sheet, ilse, [{ name: "Narrator", content: "You pocket the map." }], "persuade", "Take me upriver and the map is yours.");
+    expect(user).toContain("Take me upriver and the map is yours.");
+    expect(user).toContain("not what the other side wants from them");
+    expect(user).toContain("has not agreed to anything");
+    expect(user).not.toContain('"voice"');
+    const quiet = { ...sheet, cast: sheet.cast.map((c) => (c.id === ilse ? { ...c, voice: "" } : c)) };
+    expect(framePrompt(quiet, ilse, [], "persuade").user).toContain('"voice"');
+    const f = parseFrame({ kind: "persuade", stake: "a place on the boat", stake_size: 2, voice: "bright and nervous" }, quiet, ilse);
+    expect(scenarioFromSheet(quiet, f, "c", "x", [])!.npc.voice).toBe("bright and nervous");
+    // The card's own voice wins.
+    expect(scenarioFromSheet(sheet, f, "c", "x", [])!.npc.voice).toBe("dry");
+    expect(storySoFar([{ name: "A", content: "one" }, { name: "B", content: "two" }], 1)).toBe("B: two");
   });
 
   test("a scenario from the sheet plays through the Parley engine", () => {

@@ -129,7 +129,8 @@ export function deedsFromParley(castId: string, name: string, end: string, tacti
   const at = place ? { place } : {};
   const kind: DeedKind | null = end === "won" ? "won_over" : end === "deal" ? "deal" : end === "walked" ? "walked" : end === "refused" ? "refused" : null;
   if (kind) out.push({ day, kind, target: castId, name, ...at });
-  if (bluffed || tactics.includes("bluff")) out.push({ day, kind: "lied_to", target: castId, name, ...at });
+  // Only a claim the game rolled as a bluff is a lie: how a line was read doesn't make it one (a true fact pressed hard is still true).
+  if (bluffed) out.push({ day, kind: "lied_to", target: castId, name, ...at });
   if (tactics.filter((t) => t === "threat").length) out.push({ day, kind: "threatened", target: castId, name, ...at });
   if (tactics.some((t) => t === "flattery" || t === "empathy" || t === "humor")) out.push({ day, kind: "charmed", target: castId, name, ...at });
   if (tactics.includes("bribe")) out.push({ day, kind: "bribed", target: castId, name, ...at });
@@ -242,11 +243,12 @@ const TONE: Partial<Record<DeedKind, { tone: -1 | 0 | 1; delta: number; text: (d
 /** Fold new deeds into what people remember. Only deeds done to someone on the card count. */
 export function remember(mem: Record<string, NpcMemory>, deeds: readonly Deed[], castIds: ReadonlySet<string>, player: string): Record<string, NpcMemory> {
   const out: Record<string, NpcMemory> = Object.fromEntries(Object.entries(mem).map(([k, v]) => [k, { notes: [...v.notes], affinity: v.affinity }]));
+  const who = /^(user|you|player)?$/i.test(player.trim()) ? "the player" : player;
   for (const d of deeds) {
     const rule = TONE[d.kind];
     if (!rule || !castIds.has(d.target)) continue;
     const m = (out[d.target] ??= { notes: [], affinity: 0 });
-    m.notes = [...m.notes, { day: d.day, text: rule.text(d, player || "You"), tone: rule.tone }].slice(-8);
+    m.notes = [...m.notes, { day: d.day, text: rule.text(d, who), tone: rule.tone }].slice(-8);
     m.affinity = Math.max(-10, Math.min(10, m.affinity + rule.delta));
   }
   return out;

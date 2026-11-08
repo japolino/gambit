@@ -37,6 +37,8 @@ export interface SceneActions {
   theme(theme: ThemeId): void;
   fight(): void;
   close(): void;
+  /** The montage is over: the day is back on screen. */
+  nightEnd?(): void;
   /** Step to a neighbouring overland cell. */
   hex(q: number, r: number): void;
   /** Table theme: play a fact card on someone (talk to them, citing it). */
@@ -47,7 +49,7 @@ export interface SceneActions {
   board(op: BoardOp, cell?: string, tier?: number): void;
 }
 
-export type MeanwhileItem = { text: string; art?: string; imageId?: string | null; /** The vignette drawn as its own scene, once ready. */ cg?: string };
+export type MeanwhileItem = { text: string; /** What the player did that led here. */ why?: string; /** What this scene just made true. */ change?: string; art?: string; imageId?: string | null; /** The vignette drawn as its own scene, once ready. */ cg?: string };
 
 export interface SceneHandle {
   readonly chatId: string;
@@ -58,8 +60,8 @@ export interface SceneHandle {
   /** Ask the current theme to stage a fight or talk in its room (true: staged; keep the scene visible). */
   encounter(e: EncounterView | null): boolean;
   destroy(): void;
-  /** "Meanwhile…": null opens the montage; the vignettes then play in turn. */
-  meanwhile(day: number, items: MeanwhileItem[] | null): void;
+  /** "Meanwhile…": null opens the montage on the day behind you; the scenes then play in turn, and what changed closes it. */
+  meanwhile(day: number, items: MeanwhileItem[] | null, words?: { today?: string[]; morning?: string[] }): void;
   /** The class panel's state. */
   forge(v: ForgeView): void;
 }
@@ -105,26 +107,50 @@ const CSS = `
 .gs .world.void { visibility: hidden; }
 .gs .world > .delve2d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 .gs .gone { display: none !important; }
-/* Meanwhile… (themes restyle it). */
-.gs > .mw { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,16,12,.86), rgba(5,4,3,.97)); cursor: pointer; animation: mwIn .6s ease; }
-.gs .mw-in { display: grid; justify-items: center; gap: 16px; width: min(760px, 90%); }
+/* Meanwhile… (themes restyle it). What's written sits inside .mw-text, so it takes each theme's face and colour. */
+.gs > .mw { position: absolute; inset: 0; z-index: 50; container-type: size; overflow: hidden; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,16,12,.86), rgba(5,4,3,.97)); cursor: pointer; animation: mwIn .6s ease; }
+.gs .mw-in { display: grid; justify-items: center; gap: 14px; width: min(880px, 92%); max-height: 100%; }
+.gs .mw-body { width: 100%; min-height: 0; }
+.gs .mw-day, .gs .mw-morning { width: min(720px, 100%); margin: 0 auto; }
 .gs .mw-title { font: italic 40px/1 "Gambit Fell", "Palatino Linotype", Georgia, serif; color: #e9d4ad; letter-spacing: .03em; }
 .gs .mw.waiting .mw-title { animation: mwPulse 1.6s ease-in-out infinite; }
-.gs .mw-art { width: 100%; aspect-ratio: 16 / 9; background: #17130f center/cover no-repeat; border: 8px solid #efe2c4; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.gs .mw-art { position: relative; overflow: hidden; width: 100%; aspect-ratio: 16 / 9; max-height: 50cqh; background: #17130f center/cover no-repeat; border: 8px solid #efe2c4; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+/* The picture drifts while it's up, and comes up from dark when a scene's own drawing arrives. */
+.gs .mw-art::before { content: ""; position: absolute; inset: 0; background: inherit; animation: mwDrift 18s ease-out both; }
+.gs .mw-art.arrived::before { animation: mwDrift 18s ease-out both, mwArrive 1.4s ease-out both; }
 .gs .mw-art.none { display: none; }
-.gs .mw-text { font: 22px/1.5 "Gambit Fell", "Palatino Linotype", Georgia, serif; text-align: center; color: #f1e6cf; min-height: 3em; margin: 0; }
+.gs .mw-text { font: 22px/1.45 "Gambit Fell", "Palatino Linotype", Georgia, serif; text-align: center; color: #f1e6cf; min-height: 3em; margin: 0; }
+.gs .mw-why, .gs .mw-change, .gs .mw-kicker { display: block; font-size: .64em; line-height: 1.3; letter-spacing: .1em; text-transform: uppercase; opacity: .82; }
+.gs .mw-why { margin-bottom: .6em; }
+.gs .mw-change { margin-top: .75em; opacity: 1; font-weight: 700; letter-spacing: .06em; }
+.gs .mw-change::before { content: "◆ "; font-size: .8em; }
+.gs .mw-kicker { margin-bottom: .7em; }
+.gs .mw-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .45em; font-size: .94em; line-height: 1.32; }
+.gs .mw-list li { animation: mwIn .7s ease both; }
+.gs .mw-list li:nth-child(2) { animation-delay: .5s; } .gs .mw-list li:nth-child(3) { animation-delay: 1s; } .gs .mw-list li:nth-child(4) { animation-delay: 1.5s; } .gs .mw-list li:nth-child(5) { animation-delay: 2s; } .gs .mw-list li:nth-child(6) { animation-delay: 2.5s; }
 .gs .mw-card { display: grid; gap: 14px; width: 100%; animation: mwIn .5s ease; }
 .gs .album { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 6px 0 12px; }
 .gs .album figure { margin: 0; display: grid; gap: 4px; }
 .gs .album img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: zoom-in; }
 .gs .album img:focus, .gs .album img:hover { outline: 2px solid currentColor; outline-offset: 2px; }
 .gs .album figcaption { font-size: .78em; opacity: .8; line-height: 1.3; }
-.gs .mw-dots { display: flex; gap: 8px; justify-content: center; margin-top: 10px; } .gs .mw-dots i { width: 8px; height: 8px; transform: rotate(45deg); background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
+.gs .mw-dots { display: flex; gap: 8px; justify-content: center; margin-top: 2px; } .gs .mw-dots i { width: 8px; height: 8px; transform: rotate(45deg); background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
 .gs .mw-hint { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
+/* Short screens keep the picture and the words. */
+@container (max-height: 620px) { .gs .mw:not(.waiting) .mw-title { display: none; } }
+/* Wide screens set them side by side. */
+@container (min-aspect-ratio: 3 / 2) {
+  .gs .mw-in { width: min(1240px, 92%); }
+  .gs .mw-card:has(.mw-art:not(.none)) { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: center; gap: 24px; }
+  .gs .mw-card:has(.mw-art:not(.none)) .mw-text { text-align: left; max-height: 76cqh; overflow: hidden; }
+  .gs .mw-art { max-height: 70cqh; }
+}
 .gs > .fg { z-index: 40; }
 @keyframes mwIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes mwPulse { 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) { .gs > .mw, .gs .mw-card { animation: none; } }
+@keyframes mwDrift { from { transform: scale(1.02); } to { transform: scale(1.1) translate(-1%, -1%); } }
+@keyframes mwArrive { from { filter: brightness(.3); } to { filter: none; } }
+@media (prefers-reduced-motion: reduce) { .gs > .mw, .gs .mw-card, .gs .mw-list li, .gs .mw-art::before, .gs .mw-art.arrived::before { animation: none; } }
 `;
 
 export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions): SceneHandle {
@@ -525,7 +551,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       currency: v.skin.currency || "coin",
       vigor: v.vigor,
       ...(v.board ? { supplies: { now: v.board.supplies, max: v.board.cap } } : v.hex ? { supplies: { now: v.hex.supplies, max: v.hex.max } } : {}),
-      ...(v.thread ? { thread: { found: v.thread.found, total: v.thread.total, goal: v.thread.goal } } : {}),
+      ...(v.thread ? { thread: { found: v.thread.found, total: v.thread.total, goal: v.thread.goal, ...(v.thread.daysLeft !== undefined ? { daysLeft: v.thread.daysLeft } : {}), ...(v.thread.ended ? { ended: v.thread.ended } : {}) } } : {}),
     }),
     say: (text) => a.say(text),
     box(v) {
@@ -637,51 +663,90 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   renderTheme();
 
   /* ----------------------------- Meanwhile… ---------------------------- */
-  let mw: { day: number; items: MeanwhileItem[] | null; i: number; box: HTMLDivElement; timer: number } | null = null;
-  function closeMeanwhile(): void {
+  // The day stays up long enough to read even when the night is written at once.
+  const MW_DAY_MS = 4500;
+  // A scene waits this long past its reading time for its own drawing.
+  const MW_DRAWING_MS = 20_000;
+  type Montage = { day: number; items: MeanwhileItem[] | null; morning: string[]; i: number; box: HTMLDivElement; timer: number; openedAt: number; since: number };
+  let mw: Montage | null = null;
+  const readingMs = (text: string) => Math.max(6500, 1800 + text.length * 50);
+  function closeMeanwhile(over = true): void {
     if (!mw) return;
     clearTimeout(mw.timer);
     mw.box.remove();
     mw = null;
+    if (over) a.nightEnd?.();
   }
-  function openMeanwhile(day: number): void {
-    closeMeanwhile();
+  function nextMeanwhile(): void {
+    if (!mw?.items) return;
+    if (mw.i < mw.items.length) {
+      mw.i++;
+      paintMeanwhile();
+    } else closeMeanwhile();
+  }
+  function openMeanwhile(day: number, today: string[] = []): void {
+    closeMeanwhile(false);
     const box = document.createElement("div");
     box.className = "mw waiting";
     box.setAttribute("role", "dialog");
     box.setAttribute("aria-label", "Meanwhile");
-    box.innerHTML = `<div class="mw-in"><div class="mw-title">Meanwhile…</div><div class="mw-body"></div><div class="mw-hint">Night falls on day ${day - 1}</div></div>`;
-    box.addEventListener("click", () => {
-      if (!mw?.items) return;
-      if (mw.i + 1 < mw.items.length) {
-        mw.i++;
-        paintMeanwhile();
-      } else closeMeanwhile();
-    });
+    const lines = today.length ? `<ul class="mw-list">${today.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : `<p class="mw-quiet">A quiet day.</p>`;
+    box.innerHTML = `<div class="mw-in"><div class="mw-title">Meanwhile…</div><div class="mw-body"><div class="mw-card mw-day"><div class="mw-text"><span class="mw-kicker">The day behind you</span>${lines}</div></div></div><div class="mw-hint">The world moves</div></div>`;
+    box.addEventListener("click", nextMeanwhile);
     el.append(box);
-    mw = { day, items: null, i: 0, box, timer: 0 };
+    mw = { day, items: null, morning: [], i: 0, box, timer: 0, openedAt: Date.now(), since: 0 };
     // Nothing came back: never leave the player stuck behind the curtain.
-    mw.timer = window.setTimeout(() => !mw?.items && closeMeanwhile(), 45_000);
+    mw.timer = window.setTimeout(() => !mw?.items && closeMeanwhile(), 120_000);
+  }
+  const meanwhileUrl = (item: MeanwhileItem | undefined): string | null => (item ? (urlOf(item.cg) ?? (item.imageId ? `/api/v1/images/${item.imageId}` : urlOf(item.art))) : null);
+  /** A scene's picture turned up while it's on screen: it comes in without touching the words or the clock. */
+  function meanwhileArt(): void {
+    const item = mw?.items?.[mw.i];
+    const art = mw?.box.querySelector<HTMLElement>(".mw-art");
+    const url = meanwhileUrl(item);
+    if (!mw || !item || !art || !url) return;
+    art.classList.remove("none", "arrived");
+    art.style.backgroundImage = `url('${url}')`;
+    void art.offsetWidth;
+    art.classList.add("arrived");
+    // Long enough to look at what just came in.
+    if (urlOf(item.cg)) mw.since = Math.max(mw.since, Date.now() - Math.max(0, readingMs(item.text) - 5000));
+  }
+  function waitMeanwhile(m: Montage): void {
+    clearTimeout(m.timer);
+    const item = m.items?.[m.i];
+    if (!item) return; // The morning waits for a tap.
+    const tick = () => {
+      if (mw !== m || m.items?.[m.i] !== item) return;
+      const up = Date.now() - m.since;
+      const read = readingMs(item.text);
+      if (up >= read && (!item.cg || urlOf(item.cg) || up >= read + MW_DRAWING_MS)) return nextMeanwhile();
+      m.timer = window.setTimeout(tick, 500);
+    };
+    m.timer = window.setTimeout(tick, 500);
   }
   function paintMeanwhile(): void {
     if (!mw?.items) return;
     const m = mw;
-    const item = m.items![m.i];
-    if (!item) return closeMeanwhile();
     m.box.classList.remove("waiting");
-    const cg = urlOf(item.cg);
-    const url = cg ?? (item.imageId ? `/api/v1/images/${item.imageId}` : urlOf(item.art));
     const body = m.box.querySelector(".mw-body")!;
-    body.innerHTML = `<div class="mw-card${cg ? " cg" : ""}"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><p class="mw-text">${esc(item.text)}</p></div><div class="mw-dots">${m.items!.map((_, i) => `<i class="${i === m.i ? "on" : ""}"></i>`).join("")}</div>`;
-    m.box.querySelector(".mw-hint")!.textContent = m.i + 1 < m.items!.length ? "Tap to continue" : "Tap to wake";
-    clearTimeout(m.timer);
-    m.timer = window.setTimeout(() => {
-      if (mw !== m) return;
-      if (m.i + 1 < m.items!.length) {
-        m.i++;
-        paintMeanwhile();
-      } else closeMeanwhile();
-    }, 5200);
+    const dots = [...m.items!, null].map((_, i) => `<i class="${i === m.i ? "on" : ""}"></i>`).join("");
+    const item = m.items![m.i];
+    if (!item) {
+      const lines = m.morning.length ? `<ul class="mw-list">${m.morning.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : "<p>Nothing you can point to has changed. Not yet.</p>";
+      body.innerHTML = `<div class="mw-card mw-morning"><div class="mw-text"><span class="mw-kicker">By morning · Day ${m.day}</span>${lines}</div></div><div class="mw-dots">${dots}</div>`;
+      m.box.querySelector(".mw-hint")!.textContent = "Tap to wake";
+      waitMeanwhile(m);
+      return;
+    }
+    m.since = Date.now();
+    const url = meanwhileUrl(item);
+    body.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><div class="mw-text">${item.why ? `<span class="mw-why">${esc(item.why)}</span>` : ""}${esc(item.text)}${item.change ? `<span class="mw-change">${esc(item.change)}</span>` : ""}</div></div><div class="mw-dots">${dots}</div>`;
+    m.box.querySelector(".mw-hint")!.textContent = "Tap to continue";
+    // The next picture is ready before the cut.
+    const next = meanwhileUrl(m.items![m.i + 1]);
+    if (next) new Image().src = next;
+    waitMeanwhile(m);
   }
 
   return {
@@ -705,22 +770,25 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
         key === v.board?.map ||
         key === v.board?.story?.art;
       if (used && !destroyed) renderTheme();
-      if (mw && (mw.items?.[mw.i]?.art === key || mw.items?.[mw.i]?.cg === key)) paintMeanwhile();
+      if (mw && (mw.items?.[mw.i]?.art === key || mw.items?.[mw.i]?.cg === key)) meanwhileArt();
       classes.art(key);
     },
     forge(v) {
       if (!destroyed) classes.set(v);
     },
-    meanwhile(day, items) {
+    meanwhile(day, items, words) {
       if (destroyed) return;
       if (!items) {
-        openMeanwhile(day);
+        openMeanwhile(day, words?.today);
         return;
       }
-      if (!mw || mw.day !== day) openMeanwhile(day);
-      mw!.items = items;
-      mw!.i = 0;
-      paintMeanwhile();
+      if (!mw || mw.day !== day) openMeanwhile(day, words?.today);
+      const m = mw!;
+      m.items = items;
+      m.morning = words?.morning ?? [];
+      m.i = 0;
+      clearTimeout(m.timer);
+      m.timer = window.setTimeout(() => mw === m && paintMeanwhile(), Math.max(0, MW_DAY_MS - (Date.now() - m.openedAt)));
     },
     encounter(e) {
       if (destroyed || !current?.r.encounter) return false;

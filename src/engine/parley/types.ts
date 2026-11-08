@@ -7,8 +7,8 @@
 import type { FaceSet } from "../card/faces.js";
 import type { InlayLook } from "../card/inlay.js";
 
-export type Tactic = "interest" | "logic" | "empathy" | "flattery" | "threat" | "bribe" | "bluff" | "humor" | "insult" | "nonsense";
-export const TACTICS: readonly Tactic[] = ["interest", "logic", "empathy", "flattery", "threat", "bribe", "bluff", "humor", "insult", "nonsense"];
+export type Tactic = "interest" | "logic" | "empathy" | "candor" | "flattery" | "threat" | "bribe" | "bluff" | "humor" | "insult" | "nonsense";
+export const TACTICS: readonly Tactic[] = ["interest", "logic", "empathy", "candor", "flattery", "threat", "bribe", "bluff", "humor", "insult", "nonsense"];
 
 export type ContestKind = "haggle" | "persuade" | "intimidate" | "deceive" | "seduce" | "interrogate";
 export type SocialStat = "presence" | "menace" | "guile";
@@ -109,6 +109,8 @@ export interface ParleyScenario {
   speaker: Speaker;
   /** The NPC's first line, shown before any exchange. */
   opening: string;
+  /** The story just before this talk, as written: what really happened, and how the NPC has sounded. */
+  story?: string;
   /** Facts written into the journal when the player wins. */
   reveals?: string[];
   /** Built from a Card Sheet (docs/DESIGN.md 4.0) rather than hand-written. */

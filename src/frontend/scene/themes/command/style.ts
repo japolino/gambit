@@ -289,6 +289,11 @@ export function commandCss(): string {
 .gs.command > .mw .mw-title { font: var(--cmd-c, 24px) / var(--cmd-c, 24px) "Gambit 8bit", monospace; color: ${YEL}; letter-spacing: 0; }
 .gs.command > .mw .mw-art { border: var(--cmd-v, 3px) solid #fff; box-shadow: none; image-rendering: pixelated; background-color: #000; }
 .gs.command > .mw .mw-text { font: var(--cmd-c, 24px) / var(--cmd-c, 24px) "Gambit 8bit", monospace; color: #fff; }
+.gs.command > .mw .mw-art::before, .gs.command > .mw .mw-art.arrived::before { animation: none; image-rendering: pixelated; }
+.gs.command > .mw .mw-why, .gs.command > .mw .mw-change, .gs.command > .mw .mw-kicker, .gs.command > .mw .mw-list { font-size: 1em; font-weight: 400; letter-spacing: 0; text-transform: none; opacity: 1; line-height: inherit; }
+.gs.command > .mw .mw-why, .gs.command > .mw .mw-kicker { color: ${CYAN}; }
+.gs.command > .mw .mw-change { color: ${YEL}; }
+.gs.command > .mw .mw-list li { animation: none; }
 .gs.command > .mw .mw-dots i { transform: none; width: var(--cmd-c, 24px); height: var(--cmd-c, 24px); background: url("${glyph("empty", DARK)}") 0 0 / 100% 100%; image-rendering: pixelated; }
 .gs.command > .mw .mw-dots i.on { background-image: url("${glyph("full", YEL)}"); }
 .gs.command > .mw .mw-hint { font: var(--cmd-c, 24px) / var(--cmd-c, 24px) "Gambit 8bit", monospace; letter-spacing: 0; text-transform: none; color: ${CYAN}; opacity: 1; animation: cmdBlink 1.1s steps(1) infinite; }

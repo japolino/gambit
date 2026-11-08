@@ -16,6 +16,7 @@ const CUES: [Tactic, RegExp][] = [
   ["flattery", /\b(finest|beautiful|lovely|best (in|on)|so (wise|skilled)|admire|impressive|handsome|pretty)\b/i],
   ["humor", /\b(ha(ha)+|joke|kidding|laugh|funny)\b|😂|😄/i],
   ["empathy", /\b(i understand|must be hard|i'm sorry|sorry for|lost|grief|i know how|rough (season|time)|struggl)/i],
+  ["candor", /\b(the (whole |honest )?truth|honest(ly)?|i admit|i confess|i was wrong|i stole|my fault)\b/i],
   ["interest", /\b(deal|bargain|trade|profit|business|regular customer|buy (more|again|in bulk)|on the spot|cash|you gain|good for you)\b/i],
   ["logic", /\b(because|since|therefore|the law|the rules?|writ|papers|evidence|market price|fair price|worth)\b/i],
 ];

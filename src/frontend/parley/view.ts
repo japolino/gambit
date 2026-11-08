@@ -286,7 +286,15 @@ export function mountParley(
   const form = el("form", "composer");
   const input = el("textarea");
   input.rows = 2;
-  input.placeholder = `Say something to ${npc.name}…`;
+  const prompt = `Say something to ${npc.name}…`;
+  input.placeholder = prompt;
+  // Some themes draw the status inside the input box: only one of the three shows at a time.
+  const sortBox = () => {
+    input.placeholder = status.textContent ? "" : prompt;
+    status.classList.toggle("muted", !!input.value);
+  };
+  new MutationObserver(sortBox).observe(status, { childList: true, characterData: true, subtree: true });
+  input.addEventListener("input", sortBox);
   const sayBtn = el("button", "say", "Say");
   sayBtn.type = "submit";
   form.append(input, sayBtn);

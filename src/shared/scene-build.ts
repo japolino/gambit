@@ -10,6 +10,7 @@ import { hexKey, SUPPLY_MAX, TERRAIN_NAME, type HexMap, type HexState, type Terr
 import type { Thread } from "../meaning/bible.js";
 import type { Adaptation, Deed, NpcMemory, Promotion, Recruit, Tally } from "../engine/memory/memory.js";
 import { BOND_AT } from "../engine/memory/memory.js";
+import type { ThreadEnd } from "../engine/story/beat.js";
 import type { Scar } from "../meaning/night.js";
 import type { ClassBook } from "../engine/forge/forge.js";
 
@@ -27,6 +28,8 @@ export interface MemoryRecord {
   scars: Record<string, Scar>;
   items: { name: string; description: string; from: string }[];
   rumors: string[];
+  /** The last few montages, as written: tomorrow's narrator and tomorrow's night build on them. */
+  nights?: { day: number; lines: string[] }[];
 }
 
 export const newMemory = (): MemoryRecord => ({ deeds: [], nightAt: 0, tally: { elements: {}, statuses: {}, talks: 0, hits: 0 }, adapt: {}, npc: {}, interest: {}, promoted: [], recruits: [], scars: {}, items: [], rumors: [] });
@@ -40,6 +43,17 @@ import { figureArtKey, npcArtKey, placeArtKey } from "./art-keys.js";
 import type { BoardView, DelveView, Movement, SceneView, ThemeId } from "./scene-view.js";
 import { type Board, CAMP_COST, key as boardKey, reachable, SUPPLY_CAP as BOARD_SUPPLY_CAP, TIER_COST } from "../engine/world/board.js";
 
+export interface DayTalk {
+  day: number;
+  where: string;
+  who: string;
+  /** What the player said, in order. */
+  said: string[];
+  /** Their last answer. */
+  reply: string;
+  ended: string;
+}
+
 export interface PlayRecord {
   v: 1;
   cardKey: string;
@@ -48,7 +62,18 @@ export interface PlayRecord {
   theme: ThemeId;
   log: string[];
   /** Lines written in the scene, and what came of them. */
-  story?: { said: string; roll: string | null; reply: string }[];
+  story?: { said: string; roll: string | null; reply: string; found?: string | null; day?: number; where?: string }[];
+  /** How far the clock has run toward the next step of the day (engine/story/beat.ts). */
+  spent?: number;
+  /** The last day of the thread, and how it came out. */
+  deadline?: number;
+  threadEnd?: ThreadEnd;
+  /** The montage has shown how the thread ended. */
+  threadTold?: boolean;
+  /** What was said in recent Parleys and how they ended: the night and the next day's narrator hold to it. */
+  talks?: DayTalk[];
+  /** The track each moment was given: a place keeps its theme. */
+  music?: Record<string, string>;
   /** How many beats this chat has had: each rolls its own die, however many are kept. */
   beats?: number;
   delve?: { placeId: string; map: DelveMap; state: DelveState };
@@ -193,7 +218,7 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     ...(r.delve ? { delve: delveView(sheet, r)! } : {}),
     ...(r.board ? { board: boardView(sheet, r) } : {}),
     ...(r.hex ? { hex: hexView(r) } : {}),
-    ...(r.thread ? { thread: { goal: r.thread.goal, found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text), total: r.thread.revelations.length } } : {}),
+    ...(r.thread ? { thread: { goal: r.thread.goal, found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text), total: r.thread.revelations.length, ...(r.deadline !== undefined ? { daysLeft: Math.max(0, r.deadline - r.scene.day + 1) } : {}), ...(r.threadEnd ? { ended: r.threadEnd } : {}) } } : {}),
     hand: sheet.facts.filter((f) => f.known || r.scene.found.includes(f.id)).map((f) => ({ id: f.id, text: f.text })),
     // A Decision model's verdict when the place was judged (backend/senses.ts), else the word rule.
     indoor: !wild && !r.delve && (p.indoor ?? (p.shop || INDOOR.test(`${p.name} ${p.description}`))),
@@ -272,7 +297,7 @@ function hexView(r: PlayRecord): NonNullable<SceneView["hex"]> {
   };
 }
 
-const feel = (a: number) => (a >= BOND_AT ? "devoted" : a >= 2 ? "warm" : a <= -5 ? "hostile" : a <= -2 ? "wary" : "neutral");
+export const feel = (a: number) => (a >= BOND_AT ? "devoted" : a >= 2 ? "warm" : a <= -5 ? "hostile" : a <= -2 ? "wary" : "neutral");
 
 /** The Journal: what you did, what people remember, rumours, quests, items, and your companions. */
 function journalView(sheet: CardSheet, r: PlayRecord): SceneView["journal"] {

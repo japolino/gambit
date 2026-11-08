@@ -101,6 +101,8 @@ export interface StoryBeat {
   said: string;
   roll: string | null;
   reply: string;
+  /** What this line turned up, if anything. */
+  found?: string | null;
 }
 
 export interface SceneView {
@@ -123,7 +125,7 @@ export interface SceneView {
     wild: boolean;
   };
   /** The central thread from the World Bible, and what has come out of it so far. */
-  thread?: { goal: string; found: string[]; total: number };
+  thread?: { goal: string; found: string[]; total: number; daysLeft?: number; ended?: "solved" | "lost" };
   /** Facts the player knows: the hand of cards in the Table theme (6.1). */
   hand: { id: string; text: string }[];
   /** An indoor place (a shop, inn, room): the Diorama theme builds it as a box room (6.2). */

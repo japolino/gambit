@@ -69,6 +69,7 @@ let r: PlayRecord = (() => {
   const base: PlayRecord = { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: (new URLSearchParams(location.search).get("theme") ?? "storybook") as ThemeId, log: ["You arrive by the morning ferry."], album: [{ key: "cg:preview.a1", caption: "The ferry docks at dawn.", day: 1 }, { key: "cg:preview.a2", caption: "A deal struck at the fish market.", day: 1 }] };
   base.thread = { goal: "Find out why the lighthouse went dark", revelations: [1, 2, 3, 4].map((i) => ({ id: `rev${i}`, text: `Revelation ${i}` })), by: "fallback" };
   base.revealed = ["rev1"];
+  base.deadline = base.scene.day + 2;
   base.memory = {
     deeds: [
       { day: 1, kind: "killed", target: "bandit", name: "Dock Bandit", n: 3, method: "fire", place: "docks" },
@@ -164,9 +165,17 @@ const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
     if (kind === "go") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "go", to: target }), log: [...r.log, `You go to ${r.world.places[target]!.name}.`].slice(-6) };
     else if (id === "rest" || id === "camp") {
       if (id === "rest") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "rest" }) };
-      handle.meanwhile(r.scene.day, null);
+      handle.meanwhile(r.scene.day, null, { today: ["You won the harbourmaster over.", "“I slip the ledger under my coat while they talk.” It went badly.", "“Where does the night boat go?”"] });
       const vs = fallbackMeanwhile({ cast: (sheet as unknown as { cast: never }).cast, places: Object.values(r.world.places) as never, cardKey: "preview" }, r.scene.day, [{ name: "The Wardens", want: "Find the smugglers' route" }]);
-      setTimeout(() => handle.meanwhile(r.scene.day, vs.map((v) => ({ text: v.text, ...(v.where ? { art: placeKey(sheet, v.where) } : {}) }))), 1200);
+      setTimeout(
+        () =>
+          handle.meanwhile(
+            r.scene.day,
+            vs.map((v, i) => ({ text: v.text, ...(i === 0 ? { why: "After you took the ledger", change: "Someone cools toward you" } : i === 1 ? { why: "Your question about the night boat", change: "Word is going round" } : {}), ...(v.where ? { art: placeKey(sheet, v.where) } : {}) })),
+            { morning: ["The harbourmaster: thinks you are worth watching.", "They're saying: someone has been asking after the night boat.", "Find the smugglers' route: 1 of 3 found, 2 days left."] },
+          ),
+        1200,
+      );
     }
     else if (id === "wait") r = { ...r, scene: moveScene(r.world, r.scene, { kind: "wait" }), log: [...r.log, `Time passes: ${TIMES[r.scene.time]}.`].slice(-6) };
     else if (id === "explore") dealPreviewBoard();

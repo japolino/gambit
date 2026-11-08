@@ -151,6 +151,7 @@ export function stageLayout(w: number, h: number, n: number): ObStageLayout {
   const ui = compact ? 1.35 : Math.max(0.85, Math.min(1.35, u / 2.2));
   return {
     w, h, portrait: compact, ui,
+    framed: true,
     enemyArea: px(area),
     floorY,
     timeline: px(ob.keys),

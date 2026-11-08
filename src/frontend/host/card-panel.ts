@@ -83,7 +83,7 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
     );
     const stats: SocialStat[] = ["presence", "menace", "guile"];
     parts.push(
-      `<details><summary>You: ${esc(sheet.player.name)}</summary><div class="stats">${stats
+      `<details><summary>${sheet.player.name ? `You: ${esc(sheet.player.name)}` : "You"}</summary><div class="stats">${stats
         .map((st) => `<div class="stat"><span>${esc(sk.stats[st])}</span><button data-dec="${st}" aria-label="Lower ${esc(sk.stats[st])}">−</button><span class="pips">${pips(sheet.player.social[st])}</span><button data-inc="${st}" aria-label="Raise ${esc(sk.stats[st])}">+</button></div>`)
         .join("")}</div></details>`,
     );

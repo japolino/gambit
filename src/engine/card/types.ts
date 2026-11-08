@@ -199,6 +199,8 @@ export interface ContestFrame {
   unit: string | null;
   setting: string;
   opening: string;
+  /** How they talk, read off the story, for someone the card never gave a voice. */
+  voice?: string;
   by: "architect" | "fallback";
 }
 

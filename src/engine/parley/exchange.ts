@@ -32,6 +32,8 @@ export const META_TEXT =
 
 export const LEVERAGE_CAP = 4;
 const PARTIAL_BAND = 4;
+/** Lines that claim nothing to be checked: honesty is taken as said, and praise, jokes and abuse are rhetoric, not facts. */
+const NEVER_A_CLAIM: readonly Tactic[] = ["candor", "flattery", "humor", "insult"];
 const MAX_RAPPORT = 3;
 
 export function statFor(tactic: Tactic): SocialStat {
@@ -176,7 +178,8 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
       leverageFacts.push(id);
       leverage += state.usedFacts.includes(id) ? Math.min(1, fact.leverage) : fact.leverage;
     }
-    if (bluffFact === undefined && !leverageFacts.length && (read.otherClaim >= 0.6 || (tactic === "bluff" && (read.tacticP.bluff ?? 1) >= 0.5))) bluffFact = null;
+    if (bluffFact === undefined && !leverageFacts.length && // The claim question says yes to almost any statement about the listener: alone it proves nothing, so the read of the whole line has to lean toward a bluff too.
+    ((read.otherClaim >= 0.6 && (read.tacticP.bluff ?? 0) >= 0.25 && !NEVER_A_CLAIM.includes(tactic)) || (tactic === "bluff" && (read.tacticP.bluff ?? 1) >= 0.5))) bluffFact = null;
   }
 
   let bluff: BluffCheck | null = null;
@@ -221,6 +224,8 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
   const target = offer !== null ? Math.min(state.value, Math.max(offer, state.floor)) : state.floor;
   const gap = state.value - target;
   const range = c.start - c.hardFloor;
+  // A price closes by halves and the player takes a deal. A persuade-style track has to be won outright, so it closes in even steps: with room for one miss before patience runs out.
+  const step = c.winAt !== undefined ? range / Math.max(2, stance.patience - 1) : null;
   let value = state.value;
   let patience = state.patience;
   if (result === "crit_success") {
@@ -228,10 +233,10 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
     patience = Math.min(stance.patience, patience + 1);
     state.rapport = Math.min(MAX_RAPPORT, state.rapport + 1);
   } else if (result === "success") {
-    value -= gap * 0.5;
+    value -= step !== null ? Math.min(gap, step) : gap * 0.5;
     patience -= 1;
   } else if (result === "partial") {
-    value -= gap * 0.25;
+    value -= step !== null ? Math.min(gap, step / 2) : gap * 0.25;
     patience -= 1;
   } else if (result === "fail") {
     patience -= 1;

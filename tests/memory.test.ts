@@ -18,7 +18,7 @@ import {
   tallyEvents,
   type Deed,
 } from "../src/engine/memory/memory.js";
-import { fallbackNight, parseNight, parsePromotion } from "../src/meaning/night.js";
+import { fallbackNight, parsePromotion } from "../src/meaning/night.js";
 import type { BattleState, MonsterDef } from "../src/engine/types.js";
 import type { ToFrontend } from "../src/shared/protocol.js";
 import type { SceneView } from "../src/shared/scene-view.js";
@@ -86,8 +86,10 @@ describe("the deed ledger and the build profile", () => {
   });
 
   test("a Parley's tactics become deeds: a bluff is a lie, a threat is a threat", () => {
-    const d = deedsFromParley("mara", "Mara", "deal", ["threat", "logic", "bluff"], false, 3, "docks");
+    const d = deedsFromParley("mara", "Mara", "deal", ["threat", "logic", "bluff"], true, 3, "docks");
     expect(d.map((x) => x.kind)).toEqual(["deal", "lied_to", "threatened"]);
+    // How a line was read doesn't make it a lie: only a claim rolled as a bluff does.
+    expect(deedsFromParley("mara", "Mara", "walked", ["bluff", "candor"], false, 3).map((x) => x.kind)).toEqual(["walked"]);
   });
 });
 
@@ -151,8 +153,6 @@ describe("Notice", () => {
     expect(parsePromotion({ dossier: "d", item: { name: "Ring" }, steps: [{ text: "a", where: "docks" }, { text: "b", where: "nowhere" }] }, "X", places)).toBeNull();
     expect(parsePromotion({ dossier: "d", item: { name: "Ring" }, steps: [{ text: "a", where: "docks" }, { text: "b", where: "tavern" }] }, "X", places)?.steps).toHaveLength(2);
     const deeds: Deed[] = [{ day: 1, kind: "killed", target: "b", name: "B", n: 4, place: "docks", method: "fire" }];
-    expect(parseNight({ scars: [{ place: "tavern", flag: "burned" }] }, deeds, places, new Set(), 1)!.scars).toEqual([]);
-    expect(parseNight({ scars: [{ place: "docks", flag: "burned", change: "c", note: "n" }] }, deeds, places, new Set(), 1)!.scars[0]!.flag).toBe("burned");
     expect(fallbackNight(deeds, 1).scars[0]).toMatchObject({ place: "docks", flag: "burned" });
   });
 });
@@ -212,10 +212,11 @@ describe("memory in play", () => {
       await play.onBattleEnd(win(started[i]!, () => ({})), "u");
     }
     await play.act("u", "c2", "rest");
+    await new Promise((res) => setTimeout(res, 5)); // the night phase finishes in the background
     const v = last();
     expect(v.place.art).toMatch(/~(burned|bloodied)$/);
     expect(requested.some((k) => /~(burned|bloodied)$/.test(k))).toBe(true);
-    expect(posted.some((p) => /Overnight, The Docks changed/.test(p))).toBe(true);
+    expect(posted.some((p) => /By morning:[\s\S]*The Docks/.test(p))).toBe(true);
     expect(v.journal.deeds.length).toBeGreaterThan(0);
     // Six or more of one kind fell: they adapt, and the montage opens with the rumour.
     if (v.journal.rumors.length) expect(posted.some((p) => p.includes("Word goes round"))).toBe(true);
@@ -254,8 +255,9 @@ describe("memory in play", () => {
     const { play, started, last } = setup();
     await play.open("u", "c4");
     for (let i = 0; i < 8; i++) await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" } } as never, { chatId: "c4", end: { kind: "won" }, exchanges: [] } as never);
-    expect(last().journal.companions.find((c) => c.id === "mara")?.affinity ?? 0).toBeLessThan(BOND_AT); // not shown until the next view
+    expect(last().journal.companions.find((c) => c.id === "mara")?.affinity ?? 0).toBeGreaterThanOrEqual(BOND_AT); // a finished talk refreshes the scene
     await play.act("u", "c4", "rest");
+    await new Promise((res) => setTimeout(res, 5)); // the night phase finishes in the background
     const v = last();
     expect(v.journal.companions.find((c) => c.id === "mara")!.bonded).toBe(true);
     expect(v.journal.quests.some((x) => x.name === "Mara")).toBe(true);

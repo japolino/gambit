@@ -89,7 +89,9 @@ const CSS = `
 .gs.onebit .mw.waiting .mw-title { animation: obBlink 1s steps(1, end) infinite; }
 .gs.onebit .mw-art { border: var(--ob-u) solid ${CSS_PAPER}; box-shadow: none; background-color: ${CSS_INK}; image-rendering: pixelated; }
 .gs.onebit .mw-text { font: var(--ob-f)/1.7 "Gambit 8bit", monospace; color: ${CSS_PAPER}; }
-.gs.onebit .mw-card { animation: none; }
+.gs.onebit .mw-card, .gs.onebit .mw-list li, .gs.onebit .mw-art::before, .gs.onebit .mw-art.arrived::before { animation: none; }
+.gs.onebit .mw-why, .gs.onebit .mw-change, .gs.onebit .mw-kicker, .gs.onebit .mw-list { font-size: 1em; font-weight: 400; letter-spacing: 0; text-transform: none; opacity: 1; line-height: inherit; }
+.gs.onebit .mw-change::before { font-size: 1em; }
 .gs.onebit .mw-dots i { transform: none; width: calc(var(--ob-u) * 3); height: calc(var(--ob-u) * 3); background: ${CSS_INK}; border: var(--ob-u) solid ${CSS_PAPER}; }
 .gs.onebit .mw-dots i.on { background: ${CSS_PAPER}; }
 .gs.onebit .mw-hint { font: var(--ob-f)/1 "Gambit 8bit", monospace; opacity: 1; letter-spacing: 0; }

@@ -68,7 +68,8 @@ export function requestBattleArt(art: ArtApi, state: BattleState, userId: string
     if (c.side === "enemy") {
       const def = state.meta?.monsters?.[c.defId] ?? MONSTERS[c.defId];
       if (def) {
-        art.request(c.art, { kind: "monster", monster: monsterBrief(def) }, 0, userId);
+        // Someone from the card already has a picture of their own (play.ts).
+        if (c.art.startsWith("monster:")) art.request(c.art, { kind: "monster", monster: monsterBrief(def) }, 0, userId);
         const into = def.phase2?.into;
         if (into) {
           const key = `monster:${into.id}`;

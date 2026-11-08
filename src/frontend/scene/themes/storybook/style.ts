@@ -135,6 +135,12 @@ export function css(): string {
   .sb-say { left: 10px; right: 10px; bottom: 6px; }
   .sb-say textarea { font-size: 16px; }
 }
+.sb-goal { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 12px 0 5px; border-bottom: 1px solid rgba(74,38,12,.45); background: #efe2bf; font-size: calc(var(--fs) * .72); font-weight: 600; line-height: 1.25; color: #3d1f09; }
+.sb-goal[hidden] { display: none; }
+.sb-goal .g { min-width: 0; font-style: italic; }
+.sb-goal .c { flex: none; white-space: nowrap; }
+.sb-goal .c b { color: #7a1a16; }
+.sb-dlg .beat .found { margin: 0 0 .25em; padding-left: .7em; border-left: 2px solid #8a6a1a; font-weight: 600; }
 .sb-dlg .beat { margin-top: .7em; }
 .sb-dlg .beat .said { margin: 0 0 .25em; padding-left: .7em; border-left: 2px solid #8a1f1a; font-style: italic; }
 .sb-dlg .beat .roll { margin: 0 0 .25em; font-size: .82em; font-weight: 700; color: #7a1a16; }
@@ -338,12 +344,12 @@ export function css(): string {
 .gs.storybook > .fg .opt { border-color: rgba(122,76,28,.4); border-radius: 0; }
 .gs.storybook > .fg .busyline { color: #6a1418; font-style: italic; }
 .gs.storybook > .mw { background: radial-gradient(ellipse at 50% 42%, rgba(40,22,10,.7), rgba(8,4,2,.97)), url(${hide}) center / 256px; }
-.gs.storybook .mw-title { font: italic 400 clamp(36px, 7cqh, 60px)/1 "Gambit Fell", serif; color: #f3d791; text-shadow: 0 3px 12px #000; }
+.gs.storybook .mw-title { white-space: nowrap; font: italic 400 clamp(30px, min(7cqh, 11cqw), 60px)/1 "Gambit Fell", serif; color: #f3d791; text-shadow: 0 3px 12px #000; }
 .gs.storybook .mw-title::before, .gs.storybook .mw-title::after { content: "❦"; font-style: normal; font-size: .5em; vertical-align: middle; padding: 0 .6em; color: #a8742f; }
 .gs.storybook .mw-art { filter: sepia(.15); }
 .gs.storybook .mw-card { background: url(${page}) center / cover; border: 16px solid transparent; border-image: ${giltBorder()} 22 stretch; padding: 16px 26px 12px; box-shadow: 0 24px 50px rgba(0,0,0,.8), inset 0 0 40px rgba(92,48,18,.4); }
 .gs.storybook .mw-card .mw-art { border: 0; border-image: none; box-shadow: 0 0 0 2px #a8742f, 0 0 0 4px #3a1a08, 0 8px 18px rgba(0,0,0,.5); }
-.gs.storybook .mw-text { font: italic 500 clamp(20px, 3cqh, 26px)/1.5 "Gambit Garamond", serif; color: #2b170a; }
+.gs.storybook .mw-text { font: italic 500 clamp(18px, calc(1.2cqw + 1.3cqh), 28px)/1.4 "Gambit Garamond", serif; color: #2b170a; }
 .gs.storybook .mw-dots i { background: rgba(243,215,145,.3); transform: none; border-radius: 50%; } .gs.storybook .mw-dots i.on { background: #f3d791; box-shadow: 0 0 8px #f3d791; }
 .gs.storybook .mw-hint { font: 600 12px/1 "Gambit Cinzel", serif; color: #d9ad62; letter-spacing: .24em; }
 

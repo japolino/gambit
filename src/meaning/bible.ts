@@ -223,7 +223,7 @@ export function whenQuestion(time: string): Questions {
 }
 
 /** Is this name in the words of these lines? (Speaker labels don't count: they can be the card's name whoever talks.) */
-function named(name: string, lines: readonly { content: string }[]): boolean {
+export function named(name: string, lines: readonly { content: string }[]): boolean {
   const first = name.trim().split(/\s+/)[0]!.replace(/[^\p{L}\p{N}'-]/gu, "");
   const word = first.length >= 3 ? first : name.trim();
   const at = new RegExp(`(^|[^\\p{L}])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`, "iu");

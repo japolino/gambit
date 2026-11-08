@@ -80,7 +80,7 @@ export interface StatusView {
   /** Frontier overland supplies. */
   supplies?: { now: number; max: number };
   /** The central quest thread. */
-  thread?: { found: string[]; total: number; goal: string };
+  thread?: { found: string[]; total: number; goal: string; daysLeft?: number; ended?: "solved" | "lost" };
 }
 
 export interface BoxView {
