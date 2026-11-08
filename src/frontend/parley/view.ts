@@ -9,7 +9,7 @@
  * backend; this file only shows them.
  */
 import { FACTS } from "../../engine/content/parleys.js";
-import { formatValue, effectLine, immersiveRead, rollLine, whyText } from "../../engine/parley/narrate.js";
+import { formatValue, effectLine, immersiveRead, rollLine, smartQuotes, whyText } from "../../engine/parley/narrate.js";
 import type { Exchange, Mood, ParleyScenario, ParleyState } from "../../engine/parley/types.js";
 import { TIER_NAMES } from "../../engine/parley/types.js";
 import { expressionArtKey, isExpressionArtKey, momentIndexOf, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
@@ -61,7 +61,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 
 /** Narration can carry light markdown; show *actions* in italics and keep paragraphs. */
 
-function renderProse(target: HTMLElement, text: string): void {
+function renderProse(target: HTMLElement, text: string, curly: boolean): void {
   target.textContent = "";
   // Presets sometimes add markdown headings ("## Response", "### Chapter 1"); they are not the NPC talking.
   const clean = text
@@ -71,7 +71,7 @@ function renderProse(target: HTMLElement, text: string): void {
     .trim();
   for (const para of clean.split(/\n{2,}/)) {
     const p = el("p");
-    const parts = para.split(/(\*[^*\n]+\*)/g);
+    const parts = (curly ? smartQuotes(para) : para).split(/(\*[^*\n]+\*)/g);
     for (const part of parts) {
       if (/^\*[^*]+\*$/.test(part)) p.append(el("em", undefined, part.slice(1, -1)));
       else if (part) p.append(document.createTextNode(part.replace(/\n/g, " ")));
@@ -157,6 +157,8 @@ export function mountParley(
 
   ensureFonts();
   const theme: ThemeId | undefined = where.theme ?? (where.table ? "table" : undefined);
+  /** The pixel themes' bitmap faces only have straight quotes. */
+  const curlyQuotes = theme !== "onebit" && theme !== "command";
   const look = theme ? PARLEY_THEMES[theme] : undefined;
   const style = el("style");
   style.textContent = parleyCss(look?.css ?? "");
@@ -275,7 +277,7 @@ export function mountParley(
   const opening = el("div", "npc opening");
   opening.append(el("div", "speaker", npc.name));
   const openingText = el("div", "prose");
-  renderProse(openingText, scenario.opening);
+  renderProse(openingText, scenario.opening, curlyQuotes);
   opening.append(openingText);
   log.append(el("div", "setting", scenario.setting), opening);
 
@@ -510,7 +512,7 @@ export function mountParley(
     if (!b || !r || !b.ready) return;
     const prose = b.npc.querySelector<HTMLElement>(".prose")!;
     prose.classList.remove("waiting");
-    renderProse(prose, r.text);
+    renderProse(prose, r.text, curlyQuotes);
     // The head moves with the line while it streams in, and settles a beat after.
     if (index === state.exchanges.length - 1) {
       clearTimeout(hush);
@@ -546,13 +548,11 @@ export function mountParley(
         const saved = c.start - e.value;
         endBox.append(el("div", "end-sub", saved > 0 ? `${saved} ${c.unit ?? ""} under the asking price.` : "At the asking price."));
       }
-      if (e.kind === "won" && scenario.reveals?.length) {
+      const learned = e.kind === "won" ? (scenario.reveals ?? []).map(journalFact).filter((f): f is string => !!f) : [];
+      if (learned.length) {
         endBox.append(el("div", "end-sub", "New in your journal:"));
         const ul = el("ul", "reveals");
-        for (const id of scenario.reveals) {
-          const f = journalFact(id);
-          if (f) ul.append(el("li", undefined, f));
-        }
+        for (const f of learned) ul.append(el("li", undefined, f));
         endBox.append(ul);
       }
       const leave = el("button", "leave", "Leave");
@@ -560,9 +560,13 @@ export function mountParley(
       endBox.append(leave);
     } else if (finalOffer) {
       status.textContent = `${npc.name} is out of patience: final offer.`;
+    } else if (!busy && c.winAt !== undefined && state.value <= state.floor && state.value > c.winAt) {
+      // The track has stopped at its floor: only Leverage can move it now, so say so before another line costs patience.
+      const unplayed = scenario.facts.some((f) => known.has(f.id) && f.floorShift && !state.usedFacts.includes(f.id));
+      status.textContent = `${npc.name} won't move further on talk alone. ${unplayed ? "Use something you know." : "You'd need to learn more, or walk away."}`;
     }
   }
-  const journalFact = (id: string): string | null => FACTS[id]?.text ?? null;
+  const journalFact = (id: string): string | null => scenario.facts.find((f) => f.id === id)?.text ?? FACTS[id]?.text ?? null;
 
   /* ---------------- rebuild from a saved state ---------------- */
   function rebuild() {

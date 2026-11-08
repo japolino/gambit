@@ -5,6 +5,7 @@
  * none, and the factions the card implies. Code checks every answer, and a
  * missing one falls back to name tables and a templated thread.
  */
+import type { DecisionAnswer } from "lumiverse-spindle-types";
 import type { CardSheet, SheetPlace, ShapeId } from "../engine/card/types.js";
 import { fallbackPlaces, fallbackThread, placeNameFrom } from "./fallbacks.js";
 import { slug } from "./card-reader.js";
@@ -200,4 +201,68 @@ export function whereQuestion(here: { id: string; name: string }, places: { id: 
       criteria: { same: `Still at ${here.name}, or nowhere in particular`, ...Object.fromEntries(others.map((p) => [p.id, `Moved to ${p.name}`])), new: "Moved to a place not listed here" },
     },
   };
+}
+
+const TIME_CRITERIA: Record<string, string> = {
+  morning: "Morning: from dawn to about midday",
+  afternoon: "Afternoon",
+  evening: "Evening: from dusk until it is properly dark",
+  night: "Night: full dark, midnight and the small hours, even if someone calls it one in the morning",
+};
+
+/** The "what time is it now" question, asked with "where". */
+export function whenQuestion(time: string): Questions {
+  const others = Object.entries(TIME_CRITERIA).filter(([id]) => id !== time);
+  return {
+    when: {
+      type: "choice",
+      instructions: `What time of day is it in the roleplay after the latest turn, going by anything said in the turns shown? The game had it as ${time}. Pick "same" unless the text says or clearly shows otherwise.`,
+      criteria: { same: `Still ${time}, or the text doesn't say`, ...Object.fromEntries(others) },
+    },
+  };
+}
+
+/** Is this name in the words of these lines? (Speaker labels don't count: they can be the card's name whoever talks.) */
+function named(name: string, lines: readonly { content: string }[]): boolean {
+  const first = name.trim().split(/\s+/)[0]!.replace(/[^\p{L}\p{N}'-]/gu, "");
+  const word = first.length >= 3 ? first : name.trim();
+  const at = new RegExp(`(^|[^\\p{L}])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`, "iu");
+  return lines.some((l) => at.test(l.content));
+}
+
+export interface SceneNow {
+  time: string;
+  people: { id: string; name: string; here: boolean }[];
+}
+
+/**
+ * "Is this person there", for whoever the scene has here and whoever the chat just named.
+ * Nobody else is asked about: a person the chat doesn't mention stays where the scene has them.
+ */
+export function whoQuestions(people: SceneNow["people"], lines: readonly { content: string }[]): Questions {
+  const asked = people.filter((m) => m.here || named(m.name, lines)).slice(0, 10);
+  return Object.fromEntries(
+    asked.map((m) => [
+      `here_${m.id}`,
+      {
+        type: "choice" as const,
+        instructions: `After the latest turn, is ${m.name} physically there in the scene with the player?`,
+        criteria: { here: `${m.name} is there`, away: `${m.name} is not there: only talked about, gone, or somewhere else` },
+      },
+    ]),
+  );
+}
+
+/** What the answers change about the scene: only what they're sure of, and only what differs from what it shows. */
+export function sceneFromAnswers(now: SceneNow, answers: Record<string, DecisionAnswer | undefined>, sure = 0.7): { time?: string; here: string[]; away: string[] } {
+  const pick = (a: DecisionAnswer | undefined): string | null => (a && a.type === "choice" && Number(a.probabilities?.[a.choice] ?? a.confidence ?? 0) >= sure ? a.choice : null);
+  const time = pick(answers.when);
+  const out: { time?: string; here: string[]; away: string[] } = { here: [], away: [] };
+  if (time && time !== "same" && time !== now.time && TIME_CRITERIA[time]) out.time = time;
+  for (const m of now.people) {
+    const said = pick(answers[`here_${m.id}`]);
+    if (said === "here" && !m.here) out.here.push(m.id);
+    if (said === "away" && m.here) out.away.push(m.id);
+  }
+  return out;
 }

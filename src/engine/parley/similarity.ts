@@ -16,6 +16,22 @@ export function words(text: string): string[] {
     .filter(Boolean);
 }
 
+/** A rough stem, so "breaks", "breaking" and "break" count as one word. */
+const stem = (w: string): string => w.replace(/(?:ing|ed|es|s)$/, (end, at: number) => (at >= 3 ? "" : end)).replace(/e$/, "");
+
+/**
+ * Does a line state this fact in its own words? Two of the fact's distinctive words are enough, in any form, leaving
+ * out `ignore` (the name of whoever they're talking to, which says nothing about the fact).
+ */
+export function echoesFact(text: string, fact: string, ignore: string): boolean {
+  const skip = new Set(words(ignore));
+  const said = new Set(words(text).map(stem));
+  const key = new Set(words(fact).filter((w) => w.length >= 4 && !STOP.has(w) && !skip.has(w)).map(stem));
+  let shared = 0;
+  for (const w of key) if (said.has(w)) shared++;
+  return shared >= 2;
+}
+
 const jaccard = (a: Set<string>, b: Set<string>): number => {
   if (!a.size || !b.size) return 0;
   let shared = 0;

@@ -105,3 +105,69 @@ describe("closing a Parley", () => {
     expect(s.saved().end?.kind).toBe("deal");
   });
 });
+
+describe("Gambit's own narrator", () => {
+  /** A session on Gambit's narrator, with a model that answers from `script` in turn (an Error fails that call). */
+  function narrated(script: (string | Error)[]) {
+    const start = createParley(scenario, "fixed", CHAT);
+    const files = new Map<string, unknown>([
+      [`parley/${encodeURIComponent(start.id)}.json`, start],
+      [`parley/scene/${scenario.id}.json`, scenario],
+      ["parley/current.json", { id: start.id, chatId: CHAT }],
+      ["settings.json", { parleyNarrator: "gambit" }],
+    ]);
+    const sent: ToFrontend[] = [];
+    const posted: { role: string; content: string }[] = [];
+    let calls = 0;
+    const spindle = {
+      log: { info() {}, warn() {}, error() {} },
+      userStorage: {
+        getJson: async (p: string, o: { fallback: unknown }) => (files.has(p) ? structuredClone(files.get(p)) : o.fallback),
+        setJson: async (p: string, v: unknown) => void files.set(p, structuredClone(v)),
+      },
+      connections: { list: async () => ({ data: [], total: 0 }) },
+      generate: {
+        quiet: async () => {
+          throw new Error("no referee in this test");
+        },
+        async *quietStream() {
+          const next = script[calls++] ?? new Error("nothing left");
+          if (next instanceof Error) throw next;
+          yield { type: "token", token: next };
+        },
+      },
+      chat: {
+        appendMessage: async (_c: string, m: { role: string; content: string }) => (posted.push(m), { id: `m${posted.length}` }),
+        updateMessage: async () => {},
+      },
+    };
+    const art = new Proxy({}, { get: () => () => null });
+    const parleys = createParleys(spindle as never, (m) => void sent.push(m), art as never, { retryMs: [1, 1] });
+    const replies = () => sent.filter((m): m is Extract<ToFrontend, { type: "parley.reply" }> => m.type === "parley.reply" && m.final);
+    return { parleys, id: start.id, posted, replies, calls: () => calls };
+  }
+  const LINE = "Hundred, cash, now.";
+
+  test("a rate limit is tried again, and the real reply reaches the chat", async () => {
+    const s = narrated([new Error("Vertex AI stream failed (429)"), '"Fine," she said.']);
+    await s.parleys.say(USER, s.id, LINE);
+    expect(s.calls()).toBe(2);
+    expect(s.replies().at(-1)!.text).toContain("Fine");
+    expect(s.posted.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  test("when every model fails, the stand-in line stays out of the chat", async () => {
+    const limited = new Error("Vertex AI stream failed (429)");
+    const s = narrated([limited, limited, limited, limited]);
+    await s.parleys.say(USER, s.id, LINE);
+    expect(s.replies().at(-1)!.text.length).toBeGreaterThan(0);
+    expect(s.posted.map((m) => m.role)).toEqual(["user"]);
+  });
+
+  test("an error that isn't a rate limit goes straight to the helper", async () => {
+    const s = narrated([new Error("bad request"), '"Well," she said.']);
+    await s.parleys.say(USER, s.id, LINE);
+    expect(s.calls()).toBe(2);
+    expect(s.posted.at(-1)!.content).toContain("Well");
+  });
+});

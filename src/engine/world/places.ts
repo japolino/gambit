@@ -301,6 +301,29 @@ const tick = (s: SceneState, n = 1): SceneState => {
   return { ...s, time, day, searched };
 };
 
+/** The chat says what time it is: later today, or tomorrow if that time has passed. */
+export function clockTo(s: SceneState, time: number): SceneState {
+  return tick(s, (time - s.time + TIMES.length) % TIMES.length);
+}
+
+/**
+ * The chat says who is at this place. Someone here isn't anywhere else; someone gone is at another place they're
+ * known at, or the first other one, so they can still be found.
+ */
+export function seatPeople(world: World, placeId: string, here: readonly string[], away: readonly string[]): World {
+  if (!world.places[placeId] || (!here.length && !away.length)) return world;
+  const places: Record<string, WorldPlace> = {};
+  for (const [id, p] of Object.entries(world.places)) places[id] = { ...p, people: id === placeId ? p.people.filter((m) => !away.includes(m)) : p.people.filter((m) => !here.includes(m)) };
+  const at = places[placeId]!;
+  places[placeId] = { ...at, people: [...at.people, ...here.filter((m) => !at.people.includes(m))] };
+  for (const m of away) {
+    if (Object.values(places).some((p) => p.people.includes(m))) continue;
+    const other = Object.keys(places).find((id) => id !== placeId);
+    if (other) places[other] = { ...places[other]!, people: [...places[other]!.people, m] };
+  }
+  return { ...world, places };
+}
+
 /** Sleep to the next morning anywhere (a camp in the wild); `vigor` is what the night restores to. */
 export function sleepScene(s: SceneState, vigor = 1): SceneState {
   return { ...tick(s, TIMES.length - s.time), vigor: Math.max(s.vigor, vigor) };

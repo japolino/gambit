@@ -85,7 +85,10 @@ const metaOf = (meta: unknown): ParleyMessageMeta | null => {
 /** A Parley with someone on a card ended (4.6: the deed ledger hears about it). */
 export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: ParleyState) => void;
 
-export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
+/** A provider saying "not right now": worth another try in a moment. */
+const isRateLimit = (err: unknown) => /\b429\b|\b503\b|rate.?limit|resource.?exhausted|overloaded|too many requests/i.test(err instanceof Error ? err.message : String(err));
+
+export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { retryMs = [1500, 4000] }: { retryMs?: number[] } = {}) {
   const figures = createFigurePrints(spindle, art);
   let pictures: ReturnType<typeof createInlayPictures> | null = null;
   let endHook: ParleyEndHook | null = null;
@@ -299,18 +302,19 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
 
   /**
    * Gambit's own narrator: one short streamed call that voices the NPC for
-   * this exchange, whatever the chat's preset asks for. Falls back to a
-   * code-written line when the model is unavailable.
+   * this exchange, whatever the chat's preset asks for. A rate limit is
+   * tried again after a moment, then the helper's connection is asked. Only
+   * when all of that fails does a code-written line stand in (`written` false).
    */
-  async function gambitNarrate(userId: string, scenario: ParleyScenario, state: ParleyState, ex: Exchange): Promise<string> {
+  async function gambitNarrate(userId: string, scenario: ParleyScenario, state: ParleyState, ex: Exchange): Promise<{ text: string; written: boolean }> {
     const { system, messages } = narratorPrompt(scenario, state, ex);
     let text = "";
     let lastSent = 0;
-    try {
-      // The narrator role's connection (backend/models.ts); a picked one that fails falls back to the default.
-      text = await modelsFor(spindle).stream(
+    const models = modelsFor(spindle);
+    const ask = (role: "narrator" | "helper") =>
+      models.stream(
         userId,
-        "narrator",
+        role,
         { messages: [{ role: "system", content: system }, ...messages], parameters: { temperature: 0.9, max_tokens: 700 }, signal: AbortSignal.timeout(90_000) },
         (t) => {
           text = t;
@@ -320,10 +324,28 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
           }
         },
       );
-    } catch (err) {
-      log(`narrator failed (${err instanceof Error ? err.message.slice(0, 160) : String(err)}); using a short line`);
+    const written = () => cleanReply(text);
+    for (let tries = 0; !written(); tries++) {
+      try {
+        text = await ask("narrator");
+        break;
+      } catch (err) {
+        log(`narrator failed (${err instanceof Error ? err.message.slice(0, 160) : String(err)})`);
+        const wait = isRateLimit(err) ? retryMs[tries] : undefined;
+        if (wait === undefined) break;
+        await new Promise((r) => setTimeout(r, wait));
+      }
     }
-    return cleanReply(text) || fallbackReply(scenario, state, ex);
+    if (!written()) {
+      try {
+        text = await ask("helper");
+      } catch (err) {
+        log(`helper couldn't narrate either (${err instanceof Error ? err.message.slice(0, 160) : String(err)})`);
+      }
+    }
+    const clean = written();
+    if (!clean) log("no narrator answered; using a short line, kept out of the chat");
+    return clean ? { text: clean, written: true } : { text: fallbackReply(scenario, state, ex), written: false };
   }
 
   /** Post a line to the chat without starting the chat's own reply. */
@@ -426,10 +448,11 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
         const lineId = chatId ? await appendQuiet(chatId, "user", line, meta) : null;
         if (lineId) await remember(userId, parleyId, r.exchange.index, { messageId: lineId });
         await settle(userId, scenario, (await load(userId, parleyId)) ?? r.state, r.exchange, true);
-        const reply = await gambitNarrate(userId, scenario, r.state, r.exchange);
+        const { text: reply, written } = await gambitNarrate(userId, scenario, r.state, r.exchange);
         await remember(userId, parleyId, r.exchange.index, { reply });
         send({ type: "parley.reply", parleyId, index: r.exchange.index, text: reply, final: true }, userId);
-        if (chatId) await appendQuiet(chatId, "assistant", reply, { ...meta, npc: true }, scenario.npc.name);
+        // The chat keeps what a narrator wrote. A stand-in line is for the Parley on screen, not the story.
+        if (chatId && written) await appendQuiet(chatId, "assistant", reply, { ...meta, npc: true }, scenario.npc.name);
       } finally {
         busy.delete(bk);
       }

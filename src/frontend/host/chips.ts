@@ -57,6 +57,10 @@ export function createChips(ctx: SpindleFrontendContext, accept: (chip: ContestC
     clear(chip.chatId);
     const el = ctx.dom.inject(bubble, `<div class="gambit-chip-wrap"><button class="gambit-chip" type="button">⚖ ${esc(chip.label)}</button><button class="gambit-chip-x" type="button" title="Dismiss">✕</button></div>`, "beforeend");
     shown.set(chip.chatId, el);
+    // A chip arrives after the reply: bring it into view if the player was reading the end, or it lands behind the composer.
+    let box = bubble.parentElement;
+    while (box && box !== document.body && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+    if (box && box.scrollHeight - box.scrollTop - box.clientHeight < 240) el.scrollIntoView({ block: "end" });
     const btn = el.querySelector<HTMLButtonElement>(".gambit-chip");
     btn?.addEventListener("click", () => {
       // Framing can take a while on a slow model: say so until the Parley opens (or fails) and clears it.

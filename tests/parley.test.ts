@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { PARLEYS } from "../src/engine/content/parleys.js";
 import { applyExchange, closeParley, createParley, exchangeFaces, parseOffer, replayParley, tierFromQuality } from "../src/engine/parley/exchange.js";
-import { outcomeBlock, immersiveRead, rollLine, whyText } from "../src/engine/parley/narrate.js";
-import { similarity } from "../src/engine/parley/similarity.js";
+import { fallbackReply, immersiveRead, outcomeBlock, rollLine, smartQuotes, tellFor, whyText } from "../src/engine/parley/narrate.js";
+import { echoesFact, similarity } from "../src/engine/parley/similarity.js";
+import { detectorState } from "../src/meaning/card-reader.js";
 import type { ParleyState, RefereeRead } from "../src/engine/parley/types.js";
 import { readFromAnswers, refereeQuestions, typedAnswers } from "../src/meaning/referee.js";
 import { rulesRead } from "../src/meaning/rules.js";
@@ -220,5 +221,67 @@ describe("Gambit narrator", () => {
     const inputs = [{ text: "Hundred crowns, cash.", read: good({ tactic: "interest" }), reply: "She snorts." }];
     const s = replayParley(marta, createParley(marta, "keep"), inputs);
     expect(s.exchanges[0]!.reply).toBe("She snorts.");
+  });
+});
+
+describe("what a playthrough turned up", () => {
+  const knowing = (id: string): ParleyState => ({ ...createParley(marta, "fixed"), known: [id] });
+  const fact = marta.facts[0]!;
+  const distinctive = fact.text.split(/\W+/).filter((w) => w.length >= 4 && !marta.npc.name.includes(w));
+
+  test("a known fact in the player's own words is Leverage, even if the read missed it", () => {
+    const line = `Everyone says ${distinctive[0]} and ${distinctive[1]}, you know it.`;
+    const r = applyExchange(marta, knowing(fact.id), line, read({ otherClaim: 0.9 }));
+    expect(r.exchange.bluff).toBeNull();
+    expect(r.exchange.leverageFacts).toContain(fact.id);
+    expect(r.state.usedFacts).toContain(fact.id);
+  });
+
+  test("a claim that matches nothing known is still a bluff", () => {
+    const r = applyExchange(marta, knowing(fact.id), "The harbourmaster owes me his whole fortune.", read({ otherClaim: 0.9 }));
+    expect(r.exchange.bluff).not.toBeNull();
+    expect(r.exchange.leverageFacts).toEqual([]);
+  });
+
+  test("one shared word, or only the person's name, is not stating a fact", () => {
+    expect(echoesFact("The crystal was lovely", "Orla gave Tam a crystal to end their bargain", "Orla")).toBe(false);
+    expect(echoesFact("Orla, Orla, Orla gave", "Orla gave Tam a crystal", "Orla")).toBe(false);
+    expect(echoesFact("You lent one ledger book out", "Orla illegally lent her guild ledger", "Orla")).toBe(true);
+  });
+
+  test("a fact counts in any form of its words", () => {
+    expect(echoesFact("Your father keeps breaking his promises to you.", "Orla repeatedly breaks promises to her son Tam.", "Tam")).toBe(true);
+    expect(echoesFact("He had a promise to break", "Orla repeatedly breaks promises", "Tam")).toBe(true);
+  });
+
+  test("a failed roll isn't described as having reached them", () => {
+    const { exchange } = applyExchange(vey, createParley(vey, "fixed"), "Plain words here for the gate.", read());
+    const plain = { ...exchange, nonsense: false, bluff: null, leverageFacts: [], repetition: 0, tier: 3 } as typeof exchange;
+    const said = (result: typeof exchange.roll.result) => immersiveRead(vey, { ...plain, roll: { ...plain.roll, result } });
+    expect(said("success")).toMatch(/reached/);
+    expect(said("fail")).not.toMatch(/reached/);
+    expect(said("crit_fail")).not.toMatch(/reached/);
+  });
+
+  test("a tell that is its own sentence doesn't get the name stuck on the front", () => {
+    const own = { ...vey, npc: { ...vey.npc, name: "Vey", stance: { ...vey.npc.stance, tells: { ...vey.npc.stance.tells, moved: "Her hands go still", amused: "almost smiles" } } } };
+    expect(tellFor(own, "moved")).toBe("Her hands go still.");
+    expect(tellFor(own, "amused")).toBe("Vey almost smiles.");
+  });
+
+  test("the stand-in reply never reads out the game's numbers", () => {
+    const r = applyExchange(vey, createParley(vey, "fixed"), "Plain words here for the gate.", read());
+    expect(fallbackReply(vey, r.state, r.exchange)).not.toMatch(/\d|resistance/i);
+  });
+
+  test("quotes open and close where the speech does", () => {
+    expect(smartQuotes('"Do not," he said. *He sighed.* "Go."')).toBe("\u201cDo not,\u201d he said. *He sighed.* \u201cGo.\u201d");
+    expect(smartQuotes('*"Go,"* he said.')).toBe("*\u201cGo,\u201d* he said.");
+  });
+
+  test("the detector sees how a long reply ends", () => {
+    const sheet = { player: { name: "You" }, cast: [] } as never;
+    const long = `Opening. ${"Filler. ".repeat(600)}He hands her the key at last.`;
+    expect(JSON.stringify(detectorState(sheet, [{ name: "Orla", content: long }]))).toContain("He hands her the key at last.");
   });
 });

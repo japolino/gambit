@@ -8,7 +8,7 @@
  * exchange. Editing the words re-judges them but keeps the die faces.
  */
 import { d20Tier, seededRng, rollD20 } from "../dice.js";
-import { repetition } from "./similarity.js";
+import { echoesFact, repetition } from "./similarity.js";
 import type {
   ArgumentTier,
   BluffCheck,
@@ -168,6 +168,13 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
       } else if (bluffFact === undefined) {
         bluffFact = id;
       }
+    }
+    // Something the player really knows, said in their own words, is Leverage even if the read missed it. It's never a bluff.
+    for (const id of state.known) {
+      const fact = factById(scenario, id);
+      if (!fact || leverageFacts.includes(id) || !echoesFact(text, fact.text, scenario.npc.name)) continue;
+      leverageFacts.push(id);
+      leverage += state.usedFacts.includes(id) ? Math.min(1, fact.leverage) : fact.leverage;
     }
     if (bluffFact === undefined && !leverageFacts.length && (read.otherClaim >= 0.6 || (tactic === "bluff" && (read.tacticP.bluff ?? 1) >= 0.5))) bluffFact = null;
   }

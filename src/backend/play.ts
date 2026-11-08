@@ -17,7 +17,7 @@ import { boardLore, glimpse, loreScenePrompt, parseLoreScene } from "../meaning/
 export type BoardOp = "move" | "lore" | "camp" | "skip" | "leave";
 import type { BattleState, MonsterDef } from "../engine/types.js";
 import { clearRoom, enterDelve, generateDelve, stepDelve, type DelveMove } from "../engine/world/delve.js";
-import { addPlace, applyTraits, buildWorld, moveScene, newScene, searchScene, sleepScene, TIMES, unjudged } from "../engine/world/places.js";
+import { addPlace, applyTraits, buildWorld, clockTo, moveScene, newScene, searchScene, seatPeople, sleepScene, TIMES, unjudged } from "../engine/world/places.js";
 import { createSenses } from "./senses.js";
 import { PLACE_TRAITS as PLACE_FLAGS, type CompanionLike } from "../meaning/senses.js";
 import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
@@ -1254,7 +1254,9 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (!r || r.delve || r.battleId) return null;
       const here = r.world.places[r.scene.placeId];
       if (!here) return null;
-      return { here: { id: here.id, name: here.name }, places: Object.values(r.world.places).map((p) => ({ id: p.id, name: p.name })) };
+      const sheet = await cards.sheetFor(userId, chatId);
+      const people = sheet ? withPromoted(sheet, r).cast.map((c) => ({ id: c.id, name: c.name, here: here.people.includes(c.id) })) : [];
+      return { here: { id: here.id, name: here.name }, places: Object.values(r.world.places).map((p) => ({ id: p.id, name: p.name })), time: TIMES[r.scene.time]!, people };
     },
 
     /** The chat moved the scene (4.5): to a known place, or somewhere new that is added, quoted from the chat. */
@@ -1286,6 +1288,21 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (!r.world.places[target] || target === r.scene.placeId) return;
       arrive(r, target);
       note(r, `The story moves to ${r.world.places[target]!.name}.`);
+      await save(userId, chatId, r);
+      await show(userId, chatId, sheet, r);
+    },
+
+    /** The chat says what time it is or who is there: the scene shows the same story. */
+    async settled(userId: string, chatId: string, now: { time?: string; here: string[]; away: string[] }) {
+      const sheet = await cards.sheetFor(userId, chatId);
+      const r = await load(userId, chatId);
+      if (!sheet || !r || r.delve || r.battleId) return;
+      const time = TIMES.findIndex((t) => t === now.time);
+      if (time >= 0 && time !== r.scene.time) {
+        r.scene = clockTo(r.scene, time);
+        note(r, `It is ${TIMES[time]} now.`);
+      }
+      r.world = seatPeople(r.world, r.scene.placeId, now.here, now.away);
       await save(userId, chatId, r);
       await show(userId, chatId, sheet, r);
     },

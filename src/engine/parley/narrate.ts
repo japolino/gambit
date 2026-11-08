@@ -26,7 +26,8 @@ const possessive = (p: "she" | "he" | "they") => (p === "she" ? "her" : p === "h
 export function tellFor(scenario: ParleyScenario, mood: Mood): string {
   const own = scenario.npc.stance.tells[mood];
   const name = scenario.npc.name;
-  if (own) return `${name} ${own}.`.replace(/\.\.$/, ".");
+  // A tell can be a verb phrase ("almost smiles") or its own sentence ("Her hands go still").
+  if (own) return (/^[A-Z]/.test(own) ? `${own}.` : `${name} ${own}.`).replace(/\.\.$/, ".");
   return GENERIC_TELL[mood](name, scenario.npc.pronoun).replace("their", possessive(scenario.npc.pronoun));
 }
 
@@ -45,7 +46,7 @@ export function immersiveRead(scenario: ParleyScenario, ex: Exchange): string {
     const f = scenario.facts.find((x) => x.id === ex.leverageFacts[0]);
     parts.push(f ? `The bit about ${shortClaim(f.claim)} landed.` : "That landed.");
   } else if (ex.repetition >= 0.5) parts.push(`${pr}'s heard this already.`);
-  else if (ex.tier >= 3) parts.push("That reached them.".replace("them", scenario.npc.pronoun === "she" ? "her" : scenario.npc.pronoun === "he" ? "him" : "them"));
+  else if (ex.tier >= 3 && !ex.roll.result.endsWith("fail")) parts.push("That reached them.".replace("them", scenario.npc.pronoun === "she" ? "her" : scenario.npc.pronoun === "he" ? "him" : "them"));
   else if (ex.tier === 0) parts.push("That did not sit well.");
   return parts.join(" ");
 }
@@ -180,6 +181,11 @@ export function narratorPrompt(scenario: ParleyScenario, state: ParleyState, ex:
   return { system, messages };
 }
 
+/** Curly quotes for a paragraph: some book faces draw a straight quote as a closing one, even where the speech opens. */
+export function smartQuotes(text: string): string {
+  return text.replace(/(^|[\s([\u2014\u2013-]|(?:^|\s)\*)"/g, "$1\u201c").replace(/"/g, "\u201d");
+}
+
 /** Tidy a narrator reply: drop headings and scene breaks, cap the length. */
 export function cleanReply(text: string, maxWords = 260): string {
   const lines = text
@@ -196,9 +202,18 @@ export function cleanReply(text: string, maxWords = 260): string {
   return out;
 }
 
-/** A short reply when there is no chat to narrate into. */
+/** What someone says when the narrator can't: never the game's numbers, which the Parley's own display already shows. */
+const FALLBACK_SAID: Record<string, string> = {
+  crit_success: '"...Oh."',
+  success: '"Go on."',
+  partial: '"Perhaps."',
+  fail: '"No."',
+};
+
+/** A short reply when no narrator can write one. */
 export function fallbackReply(scenario: ParleyScenario, state: ParleyState, ex: Exchange): string {
-  const parts = [tellFor(scenario, ex.mood), effectLine(scenario, ex)];
+  const said = scenario.contest.kind === "haggle" ? effectLine(scenario, ex) : (FALLBACK_SAID[ex.roll.result] ?? '"Careful."');
+  const parts = [tellFor(scenario, ex.mood), ...(ex.ended ? [] : [said])];
   if (ex.ended?.kind === "final_offer") parts.push(`"${formatValue(scenario, state.value)}. Final. Take it or go."`);
   else if (ex.ended?.kind === "won") parts.push(`"Fine. Have it your way."`);
   else if (ex.ended?.kind === "refused") parts.push(`"We're done here."`);

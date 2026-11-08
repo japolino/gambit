@@ -41,6 +41,7 @@ play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battl
 cards.setPlaceHook({
   where: (u, c) => play!.where(u, c),
   moved: (u, c, pick, p, lines) => play!.moved(u, c, pick, p, lines),
+  settled: (u, c, now) => play!.settled(u, c, now),
   notice: (u, c, lines) => play!.notice(u, c, lines),
   extraCast: (u, c) => play!.extraCast(u, c),
 });
@@ -145,6 +146,8 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         break;
       case "scene.open":
         await play!.open(userId, msg.chatId);
+        // The chat may have gone on without the scene: it catches up in the background.
+        void cards.readScene(userId, msg.chatId).catch((err) => spindle.log.warn(`gambit: scene read failed: ${String(err).slice(0, 160)}`));
         break;
       case "scene.act":
         await acting.run(`${userId}:${msg.chatId}`, () => play!.act(userId, msg.chatId, msg.hotspot));
