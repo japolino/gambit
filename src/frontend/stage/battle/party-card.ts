@@ -8,7 +8,8 @@ import { Container, Graphics, Text } from "pixi.js";
 import { PuppetFigure } from "../puppet/puppet-figure.js";
 import type { FigureSource } from "../puppet/source.js";
 import { C, STATUS_STYLE, T } from "../theme.js";
-import { chamferPoints, drawBar, drawPanel, drawStatusGlyph, vgrad } from "../ui.js";
+import { caps, SKIN } from "../skin.js";
+import { chamferPoints, drawBar, drawPanel, drawStatusGlyph, vgrad, fitText } from "../ui.js";
 import type { DisplayUnit } from "./display.js";
 import type { Rect } from "./layout.js";
 
@@ -44,7 +45,7 @@ export class PartyCard extends Container {
     this.bust = new PuppetFigure({ source: bust, kind: "standing", key: `${unit.id}:bust`, strength, lite: true, framed: !cutout });
     this.portrait.addChild(this.bust);
     this.portrait.mask = this.portraitMask;
-    this.nameText = new Text({ text: unit.name, style: T.name(13) });
+    this.nameText = new Text({ text: caps(unit.name), style: T.name(13, C.onArt) });
     this.hpText = new Text({ text: "", style: T.num(12) });
     this.resText = new Text({ text: "", style: T.label(9) });
     this.addChild(this.glow, this.frame, this.portrait, this.portraitMask, this.shade, this.info, this.nameText, this.hpText, this.resText, this.flash);
@@ -61,12 +62,19 @@ export class PartyCard extends Container {
     const ph = Math.round(h * (w > 180 ? 0.56 : 0.5));
     const pad = Math.round(4 * ui);
     this.frame.clear();
-    drawPanel(this.frame, 0, 0, w, h, { chamfer: 7 * ui, inner: true, fill: 0x1d1813, fillBottom: 0x110e0b });
+    drawPanel(this.frame, 0, 0, w, h, { chamfer: 7 * ui, inner: true, fill: C.card, fillBottom: C.cardBottom });
     this.portraitMask.clear().poly(chamferPoints(pad, pad, w - 2 * pad, ph, 5 * ui)).fill({ color: 0xffffff });
     this.fitBust(this.bust, w, ph, pad);
     this.shade.clear().rect(pad, pad + ph * 0.55, w - 2 * pad, ph * 0.45).fill(vgrad(0x000000, 0x000000, 0, 0.75));
-    this.nameText.style = T.name(Math.round((w > 180 ? 15 : 12.5) * ui));
+    // On light card stock the name gets a paper ribbon across the portrait foot, in the theme's ink.
+    const light = luma(C.card) > 0.5;
+    this.nameText.style = T.name(Math.round((w > 180 ? 15 : 12.5) * ui), light ? C.text : C.onArt);
+    fitText(this.nameText, w - 2 * pad - 8 * ui);
     this.nameText.position.set(pad + 4 * ui, pad + ph - this.nameText.height - 2 * ui);
+    if (light) {
+      this.shade.clear().rect(pad, this.nameText.y - 2 * ui, w - 2 * pad, this.nameText.height + 4 * ui).fill({ color: C.panelHi });
+      this.shade.rect(pad, this.nameText.y - 2 * ui, w - 2 * pad, 1).fill({ color: C.line });
+    }
     this.hpText.style = T.num(Math.round((w > 180 ? 13 : 11) * ui));
     this.resText.style = T.label(Math.round(8.5 * ui), C.textDim);
     this.hitArea = { contains: (x: number, y: number) => x >= 0 && y >= 0 && x <= w && y <= h };
@@ -145,7 +153,7 @@ export class PartyCard extends Container {
     const label = this.hpText.height;
     drawBar(g, x, y + label * 0.5 - barH / 2, bw - this.hpText.width - 6 * ui, barH, this.shownHp, this.ghost, C.hp, C.hpHi, u.shield / Math.max(1, u.maxHp));
     y += label + Math.round(3 * ui);
-    drawBar(g, x, y, bw, Math.max(3, barH - 2), u.focus / Math.max(1, u.maxFocus), 0, C.focus, C.focusHi);
+    drawBar(g, x, y, bw, Math.max(3, barH - 2), u.focus / Math.max(1, u.maxFocus), 0, C.focus, C.focusHi, 0, C.shield, true);
     y += Math.max(3, barH - 2) + Math.round(5 * ui);
     if (u.resource) {
       const r = u.resource;
@@ -159,7 +167,7 @@ export class PartyCard extends Container {
           const cx = px + i * (s + 3) + s / 2;
           const cy = y + this.resText.height / 2 - 2 * ui;
           const pts = [cx, cy - s / 2, cx + s / 2, cy, cx, cy + s / 2, cx - s / 2, cy];
-          g.poly(pts).fill({ color: i < r.value ? C.gold : C.poiseEmpty }).stroke({ width: 1, color: 0x000000, alpha: 0.6 });
+          g.poly(pts).fill({ color: i < r.value ? C.gold : C.poiseEmpty }).stroke({ width: 1, color: i < r.value ? 0x000000 : C.goldDim, alpha: 0.8 });
         }
       } else {
         drawBar(g, px, y + 1, room, 4 * ui, r.value / Math.max(1, r.max), 0, C.goldDim, C.gold);
@@ -173,7 +181,11 @@ export class PartyCard extends Container {
     // Turn glow and target hint.
     const gl = this.glow;
     gl.clear();
-    if (this.active || this.targetable) {
+    if ((this.active || this.targetable) && SKIN.frame.corner === "square") {
+      // No glow on a pixel grid: a solid rule outside the frame.
+      const color = this.active ? C.gold : C.ally;
+      gl.rect(-3, -3, w + 6, h + 6).stroke({ width: 2, color, alignment: 1 });
+    } else if (this.active || this.targetable) {
       const color = this.active ? C.gold : C.ally;
       for (let i = 3; i >= 1; i -= 1) {
         gl.poly(chamferPoints(-i * 2, -i * 2, w + i * 4, h + i * 4, 7 * ui + i)).stroke({ width: 2, color, alpha: 0.12 * (4 - i) });
@@ -200,4 +212,9 @@ export class PartyCard extends Container {
   get portraitCentre(): { x: number; y: number } {
     return { x: this.rect.x + this.rect.w / 2, y: this.rect.y + this.rect.h * 0.28 - this.pivot.y };
   }
+}
+
+/** Perceived lightness of a colour, 0..1. */
+function luma(c: number): number {
+  return (0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255)) / 255;
 }

@@ -569,7 +569,7 @@ function perform(s: BattleState, action: Action, ctx: Ctx): void {
   const targets = resolveTargets(s, c, skill.target, action.targets, skill.count ?? 1);
   ctx.events.push({
     kind: "use", actor: c.id, skill: skill.id, name: skill.name, targets: targets.map((t) => t.id),
-    cutin: skill.visual, signature: skill.signature,
+    cutin: skill.visual, signature: skill.signature, tier: skill.tier,
   });
   const hit = freshHit();
   targets.forEach((t, i) => runAtoms(s, c, t, skill.atoms, ctx, hit, i === 0));

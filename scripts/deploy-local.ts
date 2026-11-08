@@ -26,4 +26,9 @@ const manifest = JSON.parse(readFileSync("spindle.json", "utf8"));
 manifest.dev_mode = true;
 writeFileSync(join(target, "spindle.json"), JSON.stringify(manifest, null, 2));
 mkdirSync(join(host, "data", "extensions", "gambit", "storage"), { recursive: true });
+// Effects and sounds: in the repo copy, and in storage where an install would seed them (spindle.json).
+if (existsSync("assets")) {
+  cpSync("assets", join(target, "assets"), { recursive: true });
+  cpSync("assets", join(host, "data", "extensions", "gambit", "storage", "assets"), { recursive: true });
+}
 console.log(`Deployed to ${target}`);

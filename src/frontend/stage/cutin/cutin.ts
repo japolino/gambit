@@ -4,6 +4,8 @@
  * through it, the skill name slams in, and the skill's FX layers play
  * around it. Data-driven from SkillVisual (palette, fx). About 1.5 s; a
  * tap or click skips it. Other templates fall back to this one for now.
+ * With an action splash (the fighter's signature move drawn from their own
+ * image) the whole figure bursts out of the band instead of a cropped face.
  */
 import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
 import type { SkillVisual } from "../../../engine/types.js";
@@ -11,6 +13,10 @@ import { ease, type Clock } from "../anim.js";
 import { C, FONT_DISPLAY, FONT_UI, mixColor, parsePalette, textStyle } from "../theme.js";
 import { vgrad } from "../ui.js";
 import { buildFx, resolveFx, type FxContext } from "./fx.js";
+import { playFramed } from "./framed.js";
+import { playPanel } from "./panel.js";
+
+export { FRAMED_SECONDS } from "./framed.js";
 
 export type CutInOptions = {
   layer: Container;
@@ -21,6 +27,12 @@ export type CutInOptions = {
   portrait: Texture;
   /** Face centre in the portrait texture (0..1). */
   face?: { x: number; y: number };
+  /** The portrait is a whole action splash: shown entire, bursting out of the band. */
+  splash?: boolean;
+  /** The portrait is an opaque, painted action splash: shown in the panel cut-in (panel.ts), or full screen (framed.ts) for an ultimate. */
+  framed?: boolean;
+  /** An ultimate (a tier-5 signature, or the "shatter" template; card kits stop at tier 4 today): the full-screen cut-in. */
+  ultimate?: boolean;
   visual: SkillVisual | undefined;
   skillName: string;
   actorName: string;
@@ -31,6 +43,7 @@ export type CutInOptions = {
 export const CUTIN_SECONDS = 1.5;
 
 export async function playCutIn(o: CutInOptions): Promise<void> {
+  if (o.framed) return o.ultimate ? playFramed(o) : playPanel({ ...o, face: { x: 0.5, y: 0.36 } });
   const { w, h, ui, clock } = o;
   // A skill's own palette, else the look's ink and gold (5.2a).
   const palette = parsePalette(o.visual?.palette, [C.ink, C.gold, 0xf3ede2]);
@@ -66,13 +79,20 @@ export async function playCutIn(o: CutInOptions): Promise<void> {
   holder.rotation = -angle;
   const sprite = new Sprite(o.portrait);
   const face = o.face ?? { x: 0.5, y: 0.38 };
-  const k = (thick * 1.55) / o.portrait.height;
+  // A splash fits whole, taller than the band (it breaks out above and below); a face crop fills the band.
+  const k = o.splash
+    ? Math.min((thick * 1.9) / o.portrait.height, (w * 0.62) / o.portrait.width)
+    : (thick * 1.55) / o.portrait.height;
   sprite.scale.set(k);
   sprite.anchor.set(face.x, face.y);
   holder.addChild(sprite);
   const over = new Container();
-  masked.addChild(holder, over);
-  band.addChild(bg, under, masked, mask);
+  masked.addChild(over);
+  if (o.splash) band.addChild(bg, under, masked, mask, holder);
+  else {
+    masked.addChildAt(holder, 0);
+    band.addChild(bg, under, masked, mask);
+  }
   const top = new Container();
 
   const nameStyle = textStyle(`cutin-name-${Math.round(ui * 10)}-${light}`, {
@@ -82,7 +102,7 @@ export async function playCutIn(o: CutInOptions): Promise<void> {
   });
   const name = new Text({ text: o.skillName, style: nameStyle });
   name.anchor.set(dir > 0 ? 1 : 0, 0.5);
-  const actor = new Text({ text: o.actorName.toUpperCase(), style: textStyle(`cutin-actor-${Math.round(ui * 10)}`, { fontFamily: FONT_UI, fontSize: Math.round(10 * ui), fontWeight: "700", fill: C.textDim, letterSpacing: 3 * ui }) });
+  const actor = new Text({ text: o.actorName.toUpperCase(), style: textStyle(`cutin-actor-${Math.round(ui * 10)}`, { fontFamily: FONT_UI, fontSize: Math.round(10 * ui), fontWeight: "700", fill: C.onArtDim, letterSpacing: 3 * ui }) });
   actor.anchor.set(dir > 0 ? 1 : 0, 1);
   const nameX = dir > 0 ? w - 18 * ui : 18 * ui;
   const nameY = h * 0.46 + thick * 0.5 + 34 * ui;
@@ -118,6 +138,8 @@ export async function playCutIn(o: CutInOptions): Promise<void> {
       const drift = ease.outQuint(Math.min(1, t / 0.4));
       holder.x = dir * (len * 0.16 * (1 - drift) - w * 0.04 * (t / total)) - dir * w * 0.12;
       sprite.alpha = Math.min(1, t / 0.12);
+      // A splash punches in a little large and settles.
+      if (o.splash) sprite.scale.set(k * (1 + 0.14 * (1 - ease.outCubic(Math.min(1, t / 0.3)))));
       // Name slam.
       const s = t - slam;
       if (s >= 0) {

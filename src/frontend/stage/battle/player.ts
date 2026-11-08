@@ -11,6 +11,8 @@ import type { BattleEvent, BattleState } from "../../../engine/types.js";
 import { ease } from "../anim.js";
 import { playCutIn } from "../cutin/cutin.js";
 import { C, ELEMENT_COLOR, STATUS_STYLE, parsePalette } from "../theme.js";
+import { fxLibrary } from "../fx-library.js";
+import type { FxSlot } from "../../../shared/fx.js";
 import { applyEvent } from "./display.js";
 import { screenFlash, shake } from "./floaters.js";
 import type { BattleStage } from "./stage.js";
@@ -72,6 +74,12 @@ function streak(stage: BattleStage, from: Point, to: Point, color: number): void
   }, ease.linear).then(() => g.destroy());
 }
 
+/** An effect from assets/ at a point on the field (only its sound under reduced motion). */
+function playFx(stage: BattleStage, slot: FxSlot, at: { x: number; y: number }, side: number, scale = 1): void {
+  if (stage.reduced) return fxLibrary.sound(slot);
+  void fxLibrary.play(slot, { layer: stage.fxLayer, clock: stage.clock, x: at.x, y: at.y, ui: stage.layout.ui, scale, flip: side < 0 });
+}
+
 function hitReaction(stage: BattleStage, ev: Extract<BattleEvent, { kind: "hit" }>): void {
   const u = stage.units.get(ev.target);
   const frac = u ? Math.min(1, ev.amount / Math.max(1, u.maxHp)) : 0.1;
@@ -102,6 +110,14 @@ function hitReaction(stage: BattleStage, ev: Extract<BattleEvent, { kind: "hit" 
     void stage.clock.tween(320, (k) => { g.alpha = 0.45 * (1 - k); }, ease.outCubic);
   }
   if (to) stage.floaters.spark(to.x, to.y, color, power * (0.8 + frac));
+  // Effect sheets and sounds from assets/ (fx-library.ts): the hit by element, a crit on top.
+  if (to && !ev.absorbed) {
+    const slot: FxSlot = ev.element === "physical"
+      ? fxLibrary.has("hit.slash") ? "hit.slash" : "hit.impact"
+      : fxLibrary.has("hit.magic") ? "hit.magic" : "hit.impact";
+    playFx(stage, slot, to, side, 0.9 + frac * 0.8 * power);
+    if (ev.crit) playFx(stage, "hit.crit", to, side, 1.2);
+  }
   if (ev.crit && !stage.reduced) void shake(stage.field, stage.clock, 6 * stage.layout.ui, 220);
 }
 
@@ -125,7 +141,7 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
         const portrait = stage.art.cutin(req);
         await playCutIn({
           layer: stage.cutLayer, clock: stage.clock, w: l.w, h: l.h, ui: l.ui,
-          portrait: portrait.texture, face: portrait.face, visual: ev.cutin, skillName: ev.name, actorName: actor.name, enemy,
+          portrait: portrait.texture, face: portrait.face, splash: portrait.splash, framed: portrait.framed, ultimate: ev.cutin?.cutin === "shatter" || (ev.tier ?? 0) >= 5, visual: ev.cutin, skillName: ev.name, actorName: actor.name, enemy,
         });
       } else if (ev.signature) {
         // Later uses (and reduced motion): a short flash in the skill's colour.
@@ -177,6 +193,8 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       stage.refreshUnit(ev.target);
       const spot = numberSpot(stage, ev.target);
       if (spot) stage.floaters.number(spot.x, spot.y, { amount: ev.amount, kind: ev.kind });
+      const healAt = anchorOf(stage, ev.target);
+      if (healAt && ev.kind === "heal") playFx(stage, "hit.heal", healAt, 1);
       const c = stage.cards.get(ev.target);
       if (c) {
         const g = c.flash;

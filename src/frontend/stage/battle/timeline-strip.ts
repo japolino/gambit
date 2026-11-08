@@ -6,6 +6,8 @@
  */
 import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
 import { C, T } from "../theme.js";
+import type { Filter } from "pixi.js";
+import { SKIN } from "../skin.js";
 import { chamferPoints, drawPanel } from "../ui.js";
 import type { Rect } from "./layout.js";
 
@@ -17,10 +19,12 @@ export class TimelineStrip extends Container {
   private chips: Chip[] = [];
   private rect: Rect = { x: 0, y: 0, w: 100, h: 40 };
   private ui = 1;
+  /** Filters for the chip portraits (a pixel theme's picture treatment). */
+  chipFilters: Filter[] = [];
 
   constructor() {
     super();
-    this.title = new Text({ text: "TURN ORDER", style: T.label(9, C.textFaint) });
+    this.title = new Text({ text: "TURN ORDER", style: T.label(9, C.textDim) });
     this.addChild(this.bg, this.title);
   }
 
@@ -29,8 +33,8 @@ export class TimelineStrip extends Container {
     this.ui = ui;
     this.position.set(rect.x, rect.y);
     this.bg.clear();
-    drawPanel(this.bg, 0, 0, rect.w, rect.h, { chamfer: 5 * ui, alpha: 0.78, fill: 0x14110d, fillBottom: 0x0d0b09 });
-    this.title.style = T.label(Math.round(8 * ui), C.textFaint);
+    drawPanel(this.bg, 0, 0, rect.w, rect.h, { chamfer: 5 * ui, alpha: 0.78, fill: C.strip, fillBottom: C.stripBottom });
+    this.title.style = T.label(Math.round(8 * ui), C.textDim);
     this.title.visible = rect.w > 360;
     this.title.position.set(8 * ui, (rect.h - this.title.height) / 2);
   }
@@ -63,6 +67,7 @@ export class TimelineStrip extends Container {
         const mask = new Graphics();
         c.addChild(sprite, mask, frame);
         sprite.mask = mask;
+        if (this.chipFilters.length) sprite.filters = this.chipFilters;
         c.alpha = 0;
         chip = { key, c, sprite, frame, x: x + 30 * ui, target: x };
         this.addChild(c);
@@ -70,14 +75,17 @@ export class TimelineStrip extends Container {
       chip.sprite.texture = o.texture;
       chip.target = x;
       const mask = chip.c.children[1] as Graphics;
-      mask.clear().poly(chamferPoints(0, 0, size, size, size * 0.18)).fill({ color: 0xffffff });
+      const cut = SKIN.frame.corner === "square" ? 0 : size * 0.18;
+      mask.clear().poly(chamferPoints(0, 0, size, size, cut)).fill({ color: 0xffffff });
       // Set the scale outright: the width setter keeps the old scale's sign,
       // so one negative size would mirror the chip out of its mask for good.
       chip.sprite.scale.set(size / Math.max(1, o.texture.width), size / Math.max(1, o.texture.height));
       const edge = i === 0 ? C.gold : o.enemy ? C.enemy : C.ally;
       chip.frame.clear();
-      chip.frame.poly(chamferPoints(0, 0, size, size, size * 0.18)).stroke({ width: i === 0 ? 2 : 1.25, color: edge, alpha: i === 0 ? 1 : 0.85 });
+      chip.frame.poly(chamferPoints(0, 0, size, size, cut)).stroke({ width: i === 0 ? 2 : 1.25, color: edge, alpha: i === 0 ? 1 : 0.85 });
       if (o.enemy) chip.frame.rect(size * 0.2, size - 2, size * 0.6, 2).fill({ color: C.enemy });
+      // The one acting now: a second rule outside, so it stands apart from the queue.
+      if (i === 0) chip.frame.poly(chamferPoints(-3, -3, size + 6, size + 6, cut ? cut + 2 : 0)).stroke({ width: 1.5, color: C.gold, alpha: 0.9 });
       chip.c.y = (h - size) / 2;
       chip.sprite.tint = o.alive ? 0xffffff : 0x555555;
       next.push(chip);

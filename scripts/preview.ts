@@ -32,6 +32,8 @@ Bun.serve({
     const url = new URL(req.url);
     if (url.pathname === "/main.js") return bundle();
     if (url.pathname === "/scene.js") return bundle("preview/scene.ts");
+    if (url.pathname === "/cutin.js") return bundle("preview/cutin.ts");
+    if (url.pathname === "/parley.js") return bundle("preview/parley.ts");
     // Optional real art for the scene preview (?real=1): files from a local folder outside the repo.
     // Lumiverse serves a person's own image at /api/v1/images/<id>; the preview maps ids to local files (?imageid=1).
     const local = url.pathname.startsWith("/localart/") ? url.pathname.slice(10) : url.pathname.startsWith("/api/v1/images/") ? `${url.pathname.slice(15)}.png` : null;
@@ -39,6 +41,15 @@ Bun.serve({
       const f = Bun.file(join(process.env.GAMBIT_PREVIEW_ART, local.replace(/[^\w.-]/g, "")));
       return (await f.exists()) ? new Response(f, { headers: { "cache-control": "max-age=3600" } }) : new Response("not found", { status: 404 });
     }
+    // The repo's effect sheets and sounds (fx-library.ts loadFrom).
+    if (url.pathname.startsWith("/assets/")) {
+      const rel = decodeURIComponent(url.pathname.slice(8));
+      if (rel.split("/").some((p) => p === ".." || p === "")) return new Response("bad path", { status: 400 });
+      const f = Bun.file(join(root, "assets", rel));
+      return (await f.exists()) ? new Response(f, { headers: { "cache-control": "no-store" } }) : new Response("not found", { status: 404 });
+    }
+    if (url.pathname === "/cutin") return new Response(Bun.file(join(root, "preview/cutin.html")), { headers: { "content-type": "text/html", "cache-control": "no-store" } });
+    if (url.pathname === "/parley") return new Response(Bun.file(join(root, "preview/parley.html")), { headers: { "content-type": "text/html", "cache-control": "no-store" } });
     if (url.pathname === "/scene") return new Response(Bun.file(join(root, "preview/scene.html")), { headers: { "content-type": "text/html", "cache-control": "no-store" } });
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return new Response(Bun.file(join(root, "preview/index.html")), { headers: { "content-type": "text/html", "cache-control": "no-store" } });

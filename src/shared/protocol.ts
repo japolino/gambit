@@ -11,6 +11,7 @@ import type { CardSheet, ContestChip, ModuleId, Tier } from "../engine/card/type
 import type { DelveMove } from "../engine/world/delve.js";
 import type { SceneView, ThemeId } from "./scene-view.js";
 import type { ForgeOp, ForgeView } from "./forge-view.js";
+import type { FxManifest } from "./fx.js";
 /** A look's palette tokens for the code-drawn layer (5.2a). */
 export type LookUi = Partial<Record<"ink" | "panel" | "gold" | "ally" | "enemy" | "accent", string>>;
 
@@ -149,6 +150,8 @@ export type StyleProbeKey = `style_probe:${string}:${"gate" | "bust"}`;
 
 export type ToBackend =
   | { type: "hello" }
+  /** The stage wants the effect sheets and sounds (shared/fx.ts). */
+  | { type: "fx.get" }
   /** The Stage opened: close the side drawer so it does not cover the fight. */
   | { type: "stage.opened" }
   // battle
@@ -222,6 +225,9 @@ export type ToBackend =
 
 export type ToFrontend =
   | { type: "welcome"; version: string; styleLook: string | null; ui?: LookUi | null }
+  /** Effects and sounds: the manifest (null when the install has none), then each file it uses, as base64 in parts under the 4 MB message cap. */
+  | { type: "fx.manifest"; manifest: FxManifest | null }
+  | { type: "fx.file"; file: string; mime: string; part: number; parts: number; data: string }
   // battle
   | { type: "battle.state"; state: BattleState; events: BattleEvent[] }
   | { type: "battle.error"; error: string }

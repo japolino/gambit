@@ -1,0 +1,228 @@
+{
+  "version": 1,
+  "effects": {
+    "pipoya_aura_arcane_3x10": {
+      "file": "fx/pipoya/aura_arcane_3x10.png",
+      "width": 1920,
+      "height": 4800,
+      "frameW": 640,
+      "frameH": 480,
+      "frames": 30,
+      "fps": 24,
+      "blend": "add",
+      "scale": 1,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_crack_lightning_5x3": {
+      "file": "fx/pipoya/crack_lightning_5x3.png",
+      "width": 1200,
+      "height": 720,
+      "frameW": 240,
+      "frameH": 240,
+      "frames": 15,
+      "fps": 24,
+      "blend": "add",
+      "scale": 1,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_crit_cross_slash_2x5": {
+      "file": "fx/pipoya/crit_cross_slash_2x5.png",
+      "width": 1280,
+      "height": 2400,
+      "frameW": 640,
+      "frameH": 480,
+      "frames": 10,
+      "fps": 24,
+      "blend": "add",
+      "scale": 0.6,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_heal_cross_5x2": {
+      "file": "fx/pipoya/heal_cross_5x2.png",
+      "width": 2400,
+      "height": 960,
+      "frameW": 480,
+      "frameH": 480,
+      "frames": 10,
+      "fps": 24,
+      "blend": "add",
+      "scale": 0.45,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_impact_burst_5x2": {
+      "file": "fx/pipoya/impact_burst_5x2.png",
+      "width": 2000,
+      "height": 800,
+      "frameW": 400,
+      "frameH": 400,
+      "frames": 10,
+      "fps": 24,
+      "blend": "add",
+      "scale": 0.6,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_magic_swirl_5x2": {
+      "file": "fx/pipoya/magic_swirl_5x2.png",
+      "width": 2000,
+      "height": 800,
+      "frameW": 400,
+      "frameH": 400,
+      "frames": 10,
+      "fps": 24,
+      "blend": "add",
+      "scale": 0.6,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_shatter_flash_2x8": {
+      "file": "fx/pipoya/shatter_flash_2x8.png",
+      "width": 1280,
+      "height": 3840,
+      "frameW": 640,
+      "frameH": 480,
+      "frames": 16,
+      "fps": 24,
+      "blend": "add",
+      "scale": 1,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_slash_4x4": {
+      "file": "fx/pipoya/slash_4x4.png",
+      "width": 2560,
+      "height": 1920,
+      "frameW": 640,
+      "frameH": 480,
+      "frames": 16,
+      "fps": 24,
+      "blend": "add",
+      "scale": 0.55,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_stamp_spark_5x2": {
+      "file": "fx/pipoya/stamp_spark_5x2.png",
+      "width": 1200,
+      "height": 480,
+      "frameW": 240,
+      "frameH": 240,
+      "frames": 10,
+      "fps": 24,
+      "blend": "add",
+      "scale": 1,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    },
+    "pipoya_whiteout_flare_3x3": {
+      "file": "fx/pipoya/whiteout_flare_3x3.png",
+      "width": 1920,
+      "height": 1440,
+      "frameW": 640,
+      "frameH": 480,
+      "frames": 9,
+      "fps": 24,
+      "blend": "add",
+      "scale": 1,
+      "source": "ぴぽや (Pipoya), https://pipoya.net/sozai/ - free effect animation; free redistribution allowed with the terms (fx/pipoya/LICENSE.md)"
+    }
+  },
+  "sounds": {
+    "soundeffect_lab_aura1": {
+      "file": "sfx/soundeffect-lab/aura1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_large_sword_slash1": {
+      "file": "sfx/soundeffect-lab/large-sword-slash1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_magic_cure1": {
+      "file": "sfx/soundeffect-lab/magic-cure1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_magic_electron1": {
+      "file": "sfx/soundeffect-lab/magic-electron1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_magic_flame1": {
+      "file": "sfx/soundeffect-lab/magic-flame1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_punch_heavy1": {
+      "file": "sfx/soundeffect-lab/punch-heavy1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_sceneswitch1": {
+      "file": "sfx/soundeffect-lab/sceneswitch1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_shakin1": {
+      "file": "sfx/soundeffect-lab/shakin1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_super_arts_hit1": {
+      "file": "sfx/soundeffect-lab/super-arts-hit1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_sword_slash3": {
+      "file": "sfx/soundeffect-lab/sword-slash3.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    },
+    "soundeffect_lab_text_impact1": {
+      "file": "sfx/soundeffect-lab/text-impact1.mp3",
+      "volume": 0.8,
+      "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
+    }
+  },
+  "slots": {
+    "cutin.shut": {
+      "fx": "none",
+      "sound": "soundeffect_lab_sceneswitch1"
+    },
+    "cutin.crack": {
+      "fx": "pipoya_crack_lightning_5x3",
+      "sound": "soundeffect_lab_magic_electron1"
+    },
+    "cutin.shatter": {
+      "fx": "pipoya_shatter_flash_2x8",
+      "sound": "soundeffect_lab_super_arts_hit1"
+    },
+    "cutin.aura": {
+      "fx": "pipoya_aura_arcane_3x10",
+      "sound": "soundeffect_lab_aura1"
+    },
+    "cutin.stamp": {
+      "fx": "pipoya_stamp_spark_5x2",
+      "sound": "soundeffect_lab_text_impact1"
+    },
+    "cutin.whiteout": {
+      "fx": "pipoya_whiteout_flare_3x3",
+      "sound": "soundeffect_lab_shakin1"
+    },
+    "hit.slash": {
+      "fx": "pipoya_slash_4x4",
+      "sound": "soundeffect_lab_sword_slash3"
+    },
+    "hit.impact": {
+      "fx": "pipoya_impact_burst_5x2",
+      "sound": "soundeffect_lab_punch_heavy1"
+    },
+    "hit.magic": {
+      "fx": "pipoya_magic_swirl_5x2",
+      "sound": "soundeffect_lab_magic_flame1"
+    },
+    "hit.crit": {
+      "fx": "pipoya_crit_cross_slash_2x5",
+      "sound": "soundeffect_lab_large_sword_slash1"
+    },
+    "hit.heal": {
+      "fx": "pipoya_heal_cross_5x2",
+      "sound": "soundeffect_lab_magic_cure1"
+    }
+  }
+}

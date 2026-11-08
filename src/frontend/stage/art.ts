@@ -7,7 +7,7 @@
  * appears (a phase-2 form); it is used when it does. Opaque images
  * (cutout: false) are shown framed rather than warped.
  */
-import { cutinArtKey, isCutinArtKey } from "../../shared/art-keys.js";
+import { actionArtKey, cutinArtKey, isCutinArtKey } from "../../shared/art-keys.js";
 import { Rectangle, Texture } from "pixi.js";
 import { CLASSES, MONSTERS } from "../../engine/content/index.js";
 import type { RigKind } from "../../engine/types.js";
@@ -137,8 +137,22 @@ export class ArtStore {
     return out;
   }
 
-  /** The cut-in portrait and where its face is (0..1). */
-  cutin(req: ArtRequest): { texture: Texture; face: { x: number; y: number } } {
+  /**
+   * The cut-in picture and where its face is (0..1). `splash`: the whole
+   * action splash (the move in action, trimmed to what is drawn), which the
+   * band shows breaking out of it rather than cropped to the face.
+   */
+  cutin(req: ArtRequest): { texture: Texture; face: { x: number; y: number }; splash?: boolean; framed?: boolean } {
+    const action = this.custom.get(actionArtKey(req.art));
+    if (req.side === "party" && action?.source) {
+      const f = action.source;
+      // Cut out: the whole figure, bursting out of the band. Painted on a backdrop (Inlay paints one): shown big in
+      // the framed cut-in, centred a little high, where the action is.
+      if (!action.cutout) return { texture: f.texture, face: { x: 0.42, y: 0.32 }, framed: true };
+      const [x0, y0, x1, y1] = f.bbox;
+      const frame = new Rectangle(x0 * f.width, y0 * f.height, Math.max(1, (x1 - x0) * f.width), Math.max(1, (y1 - y0) * f.height));
+      return { texture: new Texture({ source: f.texture.source, frame }), face: { x: 0.5, y: 0.5 }, splash: true };
+    }
     // A party member's determined expression, once drawn, outranks the portrait.
     const fierce = cutinArtKey(req.art);
     if (req.side === "party" && this.hasCustom(fierce)) return this.crop({ ...req, art: fierce }, true);

@@ -7,7 +7,12 @@ import { actAndAdvance } from "../src/engine/battle.js";
 import { chooseAction } from "../src/engine/ai.js";
 import { ENCOUNTERS, demoBattle, startEncounter } from "../src/engine/content/index.js";
 import type { BattleState } from "../src/engine/types.js";
+import type { ThemeId } from "../src/shared/scene-view.js";
 import { mountBattleStage, type BattleStageHandle } from "../src/frontend/stage/index.js";
+import { fxLibrary } from "../src/frontend/stage/fx-library.js";
+
+// Effects and sounds from the repo's assets/ (bun run fx:import).
+void fxLibrary.loadFrom("/assets/");
 
 const params = new URLSearchParams(location.search);
 const encounter = params.get("enc") ?? "drowned_shrine";
@@ -35,6 +40,7 @@ shadow.appendChild(root);
 let state: BattleState = encounter === "drowned_shrine" && !params.get("seed") ? demoBattle(seed) : startEncounter(encounter, seed);
 let stage: BattleStageHandle | null = null;
 stage = mountBattleStage(root, {
+  theme: (params.get("theme") as ThemeId | null) ?? null,
   state,
   onAction(action) {
     const result = actAndAdvance(state, action, chooseAction);
@@ -75,4 +81,4 @@ function testImage(kind: "cutout" | "opaque", hue: number): string {
 };
 
 // For poking at it from the console.
-Object.assign(globalThis, { gambit: { get state() { return state; }, stage } });
+Object.assign(globalThis, { gambit: { get state() { return state; }, stage, fx: fxLibrary } });

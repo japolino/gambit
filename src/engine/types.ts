@@ -284,7 +284,7 @@ export interface Action {
 
 export type BattleEvent =
   | { kind: "turn"; actor: string; turn: number }
-  | { kind: "use"; actor: string; skill: string; name: string; targets: string[]; cutin?: SkillVisual; signature?: boolean }
+  | { kind: "use"; actor: string; skill: string; name: string; targets: string[]; cutin?: SkillVisual; signature?: boolean; /** The skill's power tier (0 basic, 1-5). */ tier?: number }
   | { kind: "hit"; source: string; target: string; amount: number; element: Element; crit: boolean; weak: boolean; resisted: boolean; absorbed: boolean; shieldTaken: number }
   | { kind: "miss"; source: string; target: string }
   | { kind: "heal"; target: string; amount: number }

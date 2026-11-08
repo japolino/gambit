@@ -12,7 +12,8 @@ import { FACTS } from "../../engine/content/parleys.js";
 import { formatValue, effectLine, immersiveRead, rollLine, whyText } from "../../engine/parley/narrate.js";
 import type { Exchange, Mood, ParleyScenario, ParleyState } from "../../engine/parley/types.js";
 import { TIER_NAMES } from "../../engine/parley/types.js";
-import { expressionArtKey, isExpressionArtKey, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
+import { expressionArtKey, isExpressionArtKey, momentIndexOf, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
+import { parleyMoment } from "../../engine/parley/moments.js";
 import { EXPRESSION_FOR_MOOD } from "../../shared/parley-view.js";
 import type { ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
 import { figureStats, usableExpression } from "../art/key-background.js";
@@ -21,6 +22,9 @@ import { paintBackground } from "../stage/placeholder.js";
 import { PARLEY_CSS } from "./style.js";
 import { createPuppetDom } from "../scene/puppet-dom.js";
 import { PUPPET_ACT } from "./acting.js";
+import type { ThemeId } from "../../shared/scene-view.js";
+import { THEME_FONTS_CSS } from "../scene/fonts.js";
+import { PIXEL_FONT_CSS } from "../scene/pixel-font.js";
 
 export interface ParleyCallbacks {
   say(text: string): void;
@@ -76,6 +80,46 @@ function renderProse(target: HTMLElement, text: string): void {
 
 type FigureStats = ReturnType<typeof figureStats>;
 
+/** @font-face is ignored inside a shadow root: declare the theme fonts on the page once (the Scene view does the same). */
+function ensureFonts(): void {
+  if (document.getElementById("gambit-pixel-font") || document.getElementById("gambit-parley-fonts")) return;
+  const st = document.createElement("style");
+  st.id = "gambit-parley-fonts";
+  st.textContent = `${PIXEL_FONT_CSS}\n${THEME_FONTS_CSS}`;
+  document.head.append(st);
+}
+
+/**
+ * SVG filters for the pixel themes, referenced from style.ts: 1-bit art is
+ * thresholded through an ordered (Bayer) dither to ink and paper; Command
+ * art is posterised to the EGA's four levels per channel, dithered the same way.
+ */
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** One 4x4 Bayer tile, each threshold a grey square `cell` CSS pixels wide (drawn at size, so it is never resampled). */
+const bayerTile = (cell: number): string => {
+  const cells = BAYER4.map((v, i) => {
+    const g = Math.round(((v + 0.5) / 16) * 255);
+    return `<rect x='${(i % 4) * cell}' y='${Math.floor(i / 4) * cell}' width='${cell}' height='${cell}' fill='rgb(${g},${g},${g})'/>`;
+  }).join("");
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${cell * 4}' height='${cell * 4}' shape-rendering='crispEdges'>${cells}</svg>`)}`;
+};
+/** source (+ grey) + spread * (bayer - 1/2), quantised per channel by `tables`, cut back to the source's own alpha. */
+const ditherFilter = (id: string, cell: number, spread: number, tables: [string, string, string], grey: boolean): string =>
+  `<filter id="${id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB" primitiveUnits="userSpaceOnUse">` +
+  `<feImage href="${bayerTile(cell)}" x="0" y="0" width="${cell * 4}" height="${cell * 4}" result="b"/>` +
+  `<feTile in="b" result="bt"/>` +
+  (grey ? `<feColorMatrix in="SourceGraphic" type="matrix" values="0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0 0 0 1 0" result="g"/>` : "") +
+  `<feComposite in="${grey ? "g" : "SourceGraphic"}" in2="bt" operator="arithmetic" k2="1" k3="${spread}" k4="${-spread / 2}" result="sum"/>` +
+  `<feColorMatrix in="sum" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0 1" result="op"/>` +
+  `<feComponentTransfer in="op" result="q"><feFuncR type="discrete" tableValues="${tables[0]}"/><feFuncG type="discrete" tableValues="${tables[1]}"/><feFuncB type="discrete" tableValues="${tables[2]}"/></feComponentTransfer>` +
+  `<feComposite in="q" in2="SourceGraphic" operator="in"/>` +
+  `</filter>`;
+const PIXEL_FILTERS =
+  `<svg class="pl-defs" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">` +
+  ditherFilter("pl-mono", 2, 0.9, ["0.031 0.941", "0.027 0.933", "0.027 0.902"], true) +
+  ditherFilter("pl-ega", 2, 0.3, ["0 0.333 0.667 1", "0 0.333 0.667 1", "0 0.333 0.667 1"], false) +
+  `</svg>`;
+
 const colorsOf = (palette: string): number[] => palette.split(",").map((h) => parseInt(h.trim().replace("#", ""), 16)).filter((n) => Number.isFinite(n));
 
 export function mountParley(
@@ -84,7 +128,14 @@ export function mountParley(
   initial: ParleyState,
   journal: string[],
   mode: ParleyViewMode,
-  where: { chatBound: boolean; narrator: ParleyNarrator; table?: boolean },
+  where: {
+    chatBound: boolean;
+    narrator: ParleyNarrator;
+    /** The scene theme to dress the talk in (style.ts); none keeps the painted default. */
+    theme?: ThemeId;
+    /** The Table theme's hand of fact cards (same as `theme: "table"`; kept for older callers). */
+    table?: boolean;
+  },
   cb: ParleyCallbacks,
 ): ParleyView {
   const chatBound = where.chatBound;
@@ -100,12 +151,16 @@ export function mountParley(
   const replies = new Map<number, { text: string; final: boolean }>();
   const blocks = new Map<number, { npc: HTMLElement; read: HTMLElement; ready: boolean }>();
 
+  ensureFonts();
   const style = el("style");
   style.textContent = PARLEY_CSS;
   const wrap = el("div", "pl");
   wrap.dataset.mode = viewMode;
+  const theme: ThemeId | undefined = where.theme ?? (where.table ? "table" : undefined);
+  if (theme) wrap.classList.add(`th-${theme}`);
   // The Table theme (6.1): a game across a table, with what you know as a hand of cards.
-  if (where.table) wrap.classList.add("table");
+  if (where.table || theme === "table") wrap.classList.add("table");
+  if (theme === "onebit" || theme === "command") wrap.insertAdjacentHTML("afterbegin", PIXEL_FILTERS);
 
   /* ---------------- scene ---------------- */
   const scene = el("div", "scene");
@@ -132,7 +187,54 @@ export function mountParley(
   const plaque = el("div", "plaque");
   plaque.append(el("div", "who", npc.name), el("div", "role", npc.role));
   const tellLine = el("div", "tell");
-  scene.append(plate, el("div", "vignette"), figure, plaque, tellLine);
+  // Moments: a still over the scene when a beat's picture lands, then a thumbnail to see it again.
+  const momentBox = el("div", "moment");
+  const momentImg = el("img");
+  momentImg.alt = "";
+  const momentCap = el("div", "cap");
+  momentBox.append(momentImg, momentCap);
+  const momentStrip = el("div", "moments");
+  const moments = new Map<number, string>();
+  let momentTimer: ReturnType<typeof setTimeout> | null = null;
+  const hideMoment = () => {
+    momentBox.classList.remove("show");
+    if (momentTimer) clearTimeout(momentTimer);
+    momentTimer = null;
+  };
+  momentBox.addEventListener("click", hideMoment);
+  function showMoment(index: number) {
+    const url = moments.get(index);
+    const ex = state.exchanges[index];
+    if (!url || !ex) return;
+    momentImg.src = url;
+    momentCap.textContent = parleyMoment(scenario, ex)?.caption ?? "";
+    momentBox.classList.remove("show");
+    void momentBox.offsetWidth;
+    momentBox.classList.add("show");
+    if (momentTimer) clearTimeout(momentTimer);
+    momentTimer = setTimeout(hideMoment, 7000);
+  }
+  function addMoment(index: number, url: string) {
+    const fresh = !moments.has(index);
+    moments.set(index, url);
+    if (fresh) {
+      const b = el("button");
+      b.type = "button";
+      b.title = parleyMoment(scenario, state.exchanges[index]!)?.caption ?? "";
+      const t = el("img");
+      t.src = url;
+      t.alt = "";
+      b.append(t);
+      b.addEventListener("click", () => showMoment(index));
+      const after = [...momentStrip.children].find((c) => Number((c as HTMLElement).dataset.i) > index);
+      b.dataset.i = String(index);
+      momentStrip.insertBefore(b, after ?? null);
+    }
+    // The newest beat plays as it lands; older ones (a resumed Parley) wait in the strip.
+    if (fresh && index === state.exchanges.length - 1 && Date.now() - lastExchangeAt < 120_000) showMoment(index);
+  }
+  let lastExchangeAt = 0;
+  scene.append(plate, el("div", "vignette"), figure, plaque, tellLine, momentStrip, momentBox);
 
   /* ---------------- side ---------------- */
   const side = el("div", "side");
@@ -468,6 +570,8 @@ export function mountParley(
   paintHead();
   paintFoot();
   rebuild();
+  // The theme fonts can arrive after the first layout and reflow the log; land on the newest line again.
+  void document.fonts?.ready.then(() => scrollDown());
 
   return {
     parleyId: initial.id,
@@ -485,6 +589,8 @@ export function mountParley(
     },
     exchange(next, ex, narrated) {
       state = next;
+      lastExchangeAt = Date.now();
+      hideMoment();
       const from = shownValue;
       shownValue = next.value;
       if (pendingYou) pendingYou = null;
@@ -530,6 +636,11 @@ export function mountParley(
         plateImg.onload = () => plate.classList.add("painted");
         return;
       }
+      const mi = momentIndexOf(key, state.id);
+      if (mi !== null) {
+        if (state.exchanges[mi]) addMoment(mi, url);
+        return;
+      }
       if (!key.startsWith(npcArtKey(npc.id))) return;
       // Generated expressions come on a flat ground and are keyed; art sent as drawn (cutout: true) never is.
       const needsKey = cutout === false || (isExpressionArtKey(key) && cutout !== true);
@@ -571,6 +682,7 @@ export function mountParley(
       paintFoot();
     },
     destroy() {
+      if (momentTimer) clearTimeout(momentTimer);
       puppets.destroy();
       objectUrls.forEach((u) => URL.revokeObjectURL(u));
       style.remove();

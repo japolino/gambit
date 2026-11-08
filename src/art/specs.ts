@@ -25,6 +25,7 @@
 import type { ClassDef, MonsterDef, RigKind } from "../engine/types.js";
 import type { ArtKind } from "../shared/protocol.js";
 import { GPT_NO_TEXT, LOOKS, NAI_BASE_NEGATIVE, NAI_NO_TEXT, PROBE_BRIEFS, type LookPreset, type ProbeSubject } from "./looks.js";
+import { CUTIN_DIRECTION, PARLEY_DIRECTION } from "./directions.js";
 
 /* ------------------------------------------------------------------ */
 /* Spec types                                                           */
@@ -89,7 +90,8 @@ export type ArtSpec = SpecBase &
   (
     | { kind: "portrait"; character: CharacterDNA; /** Fusion: both parents' portraits as references (GPT edit). */ parents?: ImageRef[] }
     | { kind: "expression"; character: CharacterDNA; expression: ExpressionId; canonical: ImageRef }
-    | { kind: "pose"; character: CharacterDNA; pose: string; canonical: ImageRef }
+    /** A combat cut-in (art/directions.ts CUTIN_DIRECTION): `pose` is the move as tags, `poseText` in words. */
+    | { kind: "pose"; character: CharacterDNA; pose: string; poseText?: string; canonical: ImageRef }
     | { kind: "monster"; monster: MonsterBrief }
     | { kind: "monster_phase2"; monster: MonsterBrief; phase1: ImageRef; change: string }
     | { kind: "background"; location: LocationBrief }
@@ -99,7 +101,8 @@ export type ArtSpec = SpecBase &
     /** A character's own full figure, drawn from their tags (Inlay's character tags when there), transparent: what scenes, tokens and cut-ins show. */
     | { kind: "figure"; character: CharacterDNA }
     /** A moment as a wide illustration (a CG): who is in it (with their figures as references), where, and what happens. */
-    | { kind: "cg"; moment: string; tags?: string; cast: { character: CharacterDNA; ref?: ImageRef }[]; location?: LocationBrief }
+    /** `direction: "parley"`: a Parley moment, the one person seen from the speaker's eyes (art/directions.ts). */
+    | { kind: "cg"; moment: string; tags?: string; cast: { character: CharacterDNA; ref?: ImageRef }[]; location?: LocationBrief; direction?: "event" | "parley" }
     /** A place seen from above as a tabletop map, for the expedition board (its painting rides along as a style reference). */
     | { kind: "map"; location: LocationBrief; painting?: ImageRef }
   );
@@ -237,7 +240,7 @@ const RIG_TEXT: Readonly<Record<RigKind, string>> = {
 const NAI_SIZE: Readonly<Record<ArtKind, { width: number; height: number }>> = {
   portrait: { width: 832, height: 1216 },
   expression: { width: 832, height: 1216 },
-  pose: { width: 832, height: 1216 },
+  pose: { width: 1216, height: 832 },
   monster: { width: 1024, height: 1024 },
   monster_phase2: { width: 1024, height: 1024 },
   background: { width: 1216, height: 832 },
@@ -253,7 +256,7 @@ const NAI_SIZE: Readonly<Record<ArtKind, { width: number; height: number }>> = {
 const GPT_SIZE: Readonly<Record<ArtKind, string>> = {
   portrait: "1024x1536",
   expression: "1024x1536",
-  pose: "1024x1536",
+  pose: "1536x1024",
   monster: "1024x1024",
   monster_phase2: "1024x1024",
   background: "1536x1024",
@@ -351,31 +354,36 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
   });
 
   switch (spec.kind) {
-    case "portrait":
-    case "expression":
     case "pose": {
+      // A combat cut-in: the move bursting out of the frame (CUTIN_DIRECTION).
+      const c = spec.character;
+      const charCaption = join(c.sex ?? "other", c.booru || (fromCard ? "" : c.tags), spec.pose);
+      const prompt = join(countTag(c.sex), style, CUTIN_DIRECTION.tags, naiPaletteTags(c.palette), bg.pos);
+      const negative = baseNeg(CUTIN_DIRECTION.negative);
+      const action = spec.poseText || spec.pose;
+      const subject = opts.standalone
+        ? `${CUTIN_DIRECTION.text} The character is ${action}. ${c.description}`
+        : `The same character as in the reference image, as a cut-in: ${CUTIN_DIRECTION.text} They are ${action}. Keep their face, outfit and colours exactly. ${c.description}`;
+      return out(prompt, negative, [charCaption], sentences(subject, gptPaletteSentence(c.palette), gptTail));
+    }
+    case "portrait":
+    case "expression": {
       const c = spec.character;
       const lead = c.sex ?? "other";
-      const mood = spec.kind === "expression" ? EXPRESSION_TAGS[spec.expression] : spec.kind === "pose" ? "" : "light smile";
-      const framing = spec.kind === "pose" ? "solo, full body, dynamic pose, action pose" : FIGURE_FRAMING;
-      const poseTags = spec.kind === "pose" ? spec.pose : "";
+      const mood = spec.kind === "expression" ? EXPRESSION_TAGS[spec.expression] : "light smile";
       // A card's look is prose from the reader, not tags; the reference shows who they are.
       // Library tags (Inlay) are real tags and keep the details on-model.
-      const charCaption = join(lead, c.booru || (fromCard ? "" : c.tags), mood, poseTags);
-      const prompt = join(countTag(c.sex), style, framing, naiPaletteTags(c.palette), bg.pos);
-      const negative = baseNeg(join(FIGURE_NEGATIVE, spec.kind === "pose" ? "motion lines, speed lines, special effects" : ""));
+      const charCaption = join(lead, c.booru || (fromCard ? "" : c.tags), mood);
+      const prompt = join(countTag(c.sex), style, FIGURE_FRAMING, naiPaletteTags(c.palette), bg.pos);
+      const negative = baseNeg(FIGURE_NEGATIVE);
       const subject =
         spec.kind === "portrait"
           ? spec.parents?.length
             ? `A single new character who fuses the two reference characters: blend their outfits, colours and motifs into one coherent design. ${c.description}`
             : `Character portrait, three-quarter length, standing and facing the viewer: ${c.description}`
           : opts.standalone
-            ? spec.kind === "expression"
-              ? `Character portrait, three-quarter length, standing and facing the viewer, ${EXPRESSION_TEXT[spec.expression]}: ${c.description}`
-              : `Full-body character in a dynamic action pose: ${spec.pose}. ${c.description}`
-            : spec.kind === "expression"
-              ? `The same character as in the reference image, same outfit, framing and pose, now ${EXPRESSION_TEXT[spec.expression]}. ${c.description}`
-              : `The same character as in the reference image, full body in a dynamic action pose: ${spec.pose}. Keep their face, outfit and colours exactly. ${c.description}`;
+            ? `Character portrait, three-quarter length, standing and facing the viewer, ${EXPRESSION_TEXT[spec.expression]}: ${c.description}`
+            : `The same character as in the reference image, same outfit, framing and pose, now ${EXPRESSION_TEXT[spec.expression]}. ${c.description}`;
       return out(prompt, negative, [charCaption], sentences(subject, gptPaletteSentence(c.palette), gptTail));
     }
     case "figure": {
@@ -393,11 +401,15 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
       // An event illustration: wide, with a background, the characters acting in it.
       const where = spec.location ? `${spec.location.name}, ${spec.location.description}` : "";
       const counts = spec.cast.map((x) => countTag(x.character.sex)).filter((t) => t !== "solo focus");
-      const prompt = join(counts.join(", ") || "no humans", style, spec.tags, where, spec.location?.timeOfDay, "cinematic composition, detailed background, dynamic angle, event illustration");
-      const negative = baseNeg("multiple views, split screen, border, comic, panels, text, speech bubble");
-      const captions = spec.cast.map((x) => join(x.character.sex ?? "other", x.character.booru || x.character.tags.slice(0, 200)));
+      const parley = spec.direction === "parley";
+      const shot = parley ? PARLEY_DIRECTION.tags : "cinematic composition, detailed background, dynamic angle, event illustration";
+      const prompt = join(counts.join(", ") || "no humans", style, parley ? "" : spec.tags, shot, where, spec.location?.timeOfDay);
+      const negative = baseNeg(join("multiple views, split screen, border, comic, panels, text, speech bubble", parley ? PARLEY_DIRECTION.negative : ""));
+      // A Parley moment's tags are the person's own reaction: they ride in their caption.
+      const captions = spec.cast.map((x, i) => join(x.character.sex ?? "other", x.character.booru || x.character.tags.slice(0, 200), parley && i === 0 ? spec.tags : ""));
       const people = spec.cast.map((x) => `${x.character.name}: ${x.character.description}`).join(" ");
-      return out(prompt, negative, captions, sentences(`A cinematic illustration of a story moment: ${spec.moment}.`, where ? `Setting: ${where}.` : "", people, spec.cast.some((x) => x.ref) ? "Keep each character exactly as in their reference image." : "", gptTail));
+      const lead = parley ? `${PARLEY_DIRECTION.text} The moment: ${spec.moment}.` : `A cinematic illustration of a story moment: ${spec.moment}.`;
+      return out(prompt, negative, captions, sentences(lead, where ? `Setting: ${where}.` : "", people, spec.cast.some((x) => x.ref) ? "Keep each character exactly as in their reference image." : "", gptTail));
     }
     case "map": {
       const l = spec.location;

@@ -14,15 +14,17 @@
  * rewinds the Parley to before it.
  */
 import { createFigurePrints } from "./figure-prints.js";
+import { createInlayPictures } from "./inlay-pictures.js";
 import type { InterceptorContextDTO, InterceptorResultDTO, LlmMessageDTO, SpindleAPI } from "lumiverse-spindle-types";
 import type { ArtApi } from "../art/controller.js";
 import type { CharacterDNA } from "../art/specs.js";
 import { PARLEYS } from "../engine/content/parleys.js";
 import { applyExchange, closeParley, createParley, replayParley } from "../engine/parley/exchange.js";
+import { momentIndexes, parleyMoment } from "../engine/parley/moments.js";
 import { cleanReply, fallbackReply, narratorPrompt, outcomeBlock, sceneBlock } from "../engine/parley/narrate.js";
 import type { Exchange, ParleyScenario, ParleyState, RefereeRead } from "../engine/parley/types.js";
 import { EXPRESSION_FOR_MOOD } from "../shared/parley-view.js";
-import { expressionArtKey, figureArtKey, npcArtKey, placeArtKey } from "../shared/art-keys.js";
+import { expressionArtKey, figureArtKey, momentArtKey, npcArtKey, placeArtKey } from "../shared/art-keys.js";
 import type { ParleyMessageMeta, ParleyNarrator, ParleyViewMode, ToFrontend } from "../shared/protocol.js";
 import { modelsFor } from "./models.js";
 import { judge } from "./referee-host.js";
@@ -85,6 +87,7 @@ export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: Pa
 
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
   const figures = createFigurePrints(spindle, art);
+  let pictures: ReturnType<typeof createInlayPictures> | null = null;
   let endHook: ParleyEndHook | null = null;
   const live = new Map<string, ParleyState>();
   const scenes = new Map<string, ParleyScenario>();
@@ -221,6 +224,56 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     portrait();
   }
 
+  /**
+   * Parley moments (engine/parley/moments.ts): the beats worth a picture,
+   * each the person seen from the speaker's eyes in the place, from their
+   * tags (Inlay's when there), with their figure along for a GPT edit. A
+   * picture already drawn is sent again (a resumed Parley shows it).
+   */
+  function requestMoments(scenario: ParleyScenario, state: ParleyState, userId: string): void {
+    const figureKey = scenario.card ? figureArtKey(scenario.card.cardKey, scenario.card.castId) : npcArtKey(scenario.npc.id);
+    pictures ??= createInlayPictures(spindle, (m) => log(m));
+    for (const index of momentIndexes(scenario, state)) {
+      const ex = state.exchanges[index];
+      const m = ex && parleyMoment(scenario, ex);
+      if (!m) continue;
+      const key = momentArtKey(state.id, index);
+      // In a chat, Inlay draws it (its Gambit: Parley guideline over the chat's cast and the user's preset).
+      if (state.chatId) {
+        const said = ex.text.replace(/\s+/g, " ").trim().slice(0, 320);
+        const answer = (ex.reply ?? "").replace(/\s+/g, " ").trim().slice(0, 600);
+        const text = `${m.moment}. The persona had just said to ${scenario.npc.name}: "${said}"${answer ? `\n\n${answer}` : ""}`;
+        void pictures
+          .request(userId, { id: key, chatId: state.chatId, direction: "parley", text })
+          .then((pic) => {
+            if (pic) send({ type: "art.update", items: [{ key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
+            else drawOwnMoment(scenario, state, index, m, figureKey, userId);
+          })
+          .catch(() => drawOwnMoment(scenario, state, index, m, figureKey, userId));
+        continue;
+      }
+      drawOwnMoment(scenario, state, index, m, figureKey, userId);
+    }
+  }
+
+  /** Gambit's own picture of a moment (no chat, or Inlay could not make it). */
+  function drawOwnMoment(scenario: ParleyScenario, state: ParleyState, index: number, m: NonNullable<ReturnType<typeof parleyMoment>>, figureKey: string, userId: string): void {
+    const fig = art.status(figureKey, userId);
+    art.request(
+      momentArtKey(state.id, index),
+      {
+        kind: "cg",
+        direction: "parley",
+        moment: m.moment,
+        tags: m.tags,
+        cast: [{ character: npcDna(scenario), ...(fig?.state === "ready" && fig.imageId ? { ref: { imageId: fig.imageId } } : {}) }],
+        location: { id: scenario.id, name: scenario.name, description: scenario.setting, palette: scenario.npc.look.palette },
+      },
+      0,
+      userId,
+    );
+  }
+
   /** After an exchange: journal entries for a win, and the frontend event. */
   async function settle(userId: string, scenario: ParleyScenario, state: ParleyState, exchange: Exchange, narrated: boolean): Promise<void> {
     if (state.end?.kind === "won") await learn(userId, scenario, scenario.reveals ?? []);
@@ -233,6 +286,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     }
     send({ type: "parley.exchange", parleyId: state.id, state, exchange, narrated }, userId);
     if (!narrated) send({ type: "parley.reply", parleyId: state.id, index: exchange.index, text: fallbackReply(scenario, state, exchange), final: true }, userId);
+    requestMoments(scenario, state, userId);
   }
 
   /** Store a reply (and the message that carries the exchange) on the saved exchange. */
@@ -340,6 +394,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       if (state && scenario && !state.end) {
         await pushState(userId, state, true);
         requestNpcArt(scenario, userId);
+        requestMoments(scenario, state, userId);
       }
     },
 

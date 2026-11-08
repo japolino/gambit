@@ -14,12 +14,19 @@ import { Application } from "pixi.js";
 import type { Action, BattleEvent, BattleState } from "../../engine/types.js";
 import { reducedMotion } from "./anim.js";
 import { BattleStage, type ArtOptions, type StepResult } from "./battle/stage.js";
-import { C } from "./theme.js";
+import type { ThemeId } from "../../shared/scene-view.js";
+import { applyStageSkin, loadSkinFonts } from "./skin.js";
+import { C, hex } from "./theme.js";
 
 export type BattleStageOptions = {
   state: BattleState;
   onAction(action: Action): Promise<StepResult> | StepResult;
   portraitFor?(id: string): string | undefined;
+  /**
+   * The scene theme to dress the fight in (skin.ts). Omitted: the stage's own look, as the colour tokens stand
+   * (a caller may have applied a look's tokens, theme.ts applyUiTokens).
+   */
+  theme?: ThemeId | null;
 };
 
 export type BattleStageHandle = {
@@ -39,7 +46,8 @@ export type BattleStageHandle = {
 export function mountBattleStage(root: HTMLElement, opts: BattleStageOptions): BattleStageHandle {
   const host = document.createElement("div");
   host.setAttribute("data-gambit-stage", "battle");
-  host.style.cssText = "position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:#0b0a09;";
+  if (opts.theme) applyStageSkin(opts.theme);
+  host.style.cssText = `position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:${hex(C.ink)};`;
   root.appendChild(host);
 
   const app = new Application();
@@ -52,6 +60,7 @@ export function mountBattleStage(root: HTMLElement, opts: BattleStageOptions): B
   const onMotion = () => stage?.setReduced(reducedMotion());
 
   const ready = (async () => {
+    await loadSkinFonts(opts.theme);
     const width = Math.max(1, host.clientWidth);
     const height = Math.max(1, host.clientHeight);
     await app.init({

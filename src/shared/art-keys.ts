@@ -9,11 +9,15 @@ export type Expression = (typeof EXPRESSIONS)[number];
 
 export const expressionArtKey = (art: string, expression: Expression): string => `${art}#${expression}`;
 
-/** The determined-expression variant a party member's signature cut-in uses. */
+/** The determined-expression variant a party member's signature cut-in falls back to. */
 export const cutinArtKey = (art: string): string => expressionArtKey(art, "determined");
 
-/** Whether a key is a cut-in expression (opaque ones get their background keyed out). */
-export const isCutinArtKey = (key: string): boolean => key.endsWith("#determined");
+/** A party member's cut-in splash: their signature move in action (art kind "pose"). */
+export const actionArtKey = (art: string): string => `${art}#action`;
+export const isActionArtKey = (key: string): boolean => key.endsWith("#action");
+
+/** Whether a key is cut-in art (opaque ones get their background keyed out). */
+export const isCutinArtKey = (key: string): boolean => key.endsWith("#determined") || isActionArtKey(key);
 
 /** Whether a key is any expression variant (V5 inset renders are opaque on white). */
 export const isExpressionArtKey = (key: string): boolean => EXPRESSIONS.some((e) => key.endsWith(`#${e}`));
@@ -24,3 +28,9 @@ export const npcArtKey = (npcId: string): string => `npc:${npcId}`;
 export const figureArtKey = (cardKey: string, castId: string): string => `figure:${cardKey}:${castId}`;
 export const isFigureArtKey = (key: string): boolean => key.startsWith("figure:");
 export const placeArtKey = (placeId: string): string => `place:${placeId}`;
+/** A Parley moment (engine/parley/moments.ts): exchange `index` of Parley `parleyId`. */
+export const momentArtKey = (parleyId: string, index: number): string => `moment:${parleyId}.${index}`;
+export const momentIndexOf = (key: string, parleyId: string): number | null => {
+  const m = key.startsWith(`moment:${parleyId}.`) ? Number(key.slice(`moment:${parleyId}.`.length)) : NaN;
+  return Number.isInteger(m) ? m : null;
+};

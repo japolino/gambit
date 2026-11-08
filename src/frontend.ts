@@ -3,12 +3,14 @@
  * relays between the backend (authoritative engine) and the battle stage.
  */
 import { applyUiTokens } from "./frontend/stage/theme.js";
+import { applyStageSkin } from "./frontend/stage/skin.js";
 import type { SpindleFrontendContext } from "lumiverse-spindle-types";
 import type { Action, BattleEvent, BattleState } from "./engine/types.js";
 import type { ToBackend, ToFrontend } from "./shared/protocol.js";
 import { createOverlay, type Overlay } from "./frontend/host/overlay.js";
 import { createPanel } from "./frontend/host/panel.js";
 import { mountBattleStage } from "./frontend/stage/index.js";
+import { fxLibrary } from "./frontend/stage/fx-library.js";
 import { registerArtFrontend } from "./frontend/art/client.js";
 import type { ParleyScenario, ParleyState } from "./engine/parley/types.js";
 import type { ContestChip } from "./engine/card/types.js";
@@ -71,6 +73,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   /** The Scene on screen (6.1), the last view the backend sent, and whether a click asked for it. */
   let scene: SceneHandle | null = null;
   let sceneView: SceneView | null = null;
+  /** The locked look's palette tokens (a battle outside a themed chat wears them). */
+  let lookUi: Parameters<typeof applyUiTokens>[0] = null;
   let wantScene = false;
   /** A fact card played in the Table theme: its citation waits for the Parley it starts. */
   let pendingCite: string | null = null;
@@ -269,7 +273,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     parley = null;
     scene?.hide();
     if (!stage) {
-      stage = mountBattleStage(ov.content, { state, onAction });
+      // A fight in a chat wears that chat's scene theme; elsewhere the stage's own look with the look's tokens.
+      const theme = sceneView && sceneView.chatId === state.meta?.chatId ? sceneView.theme : null;
+      if (!theme) {
+        applyStageSkin(null);
+        applyUiTokens(lookUi);
+      }
+      stage = mountBattleStage(ov.content, { state, onAction, theme });
       pushArt();
       if (events.length) await stage.update(state, events);
     } else {
@@ -291,7 +301,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       return;
     }
     parley?.destroy();
-    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, table: sceneView?.theme === "table" && sceneView.chatId === state.chatId }, {
+    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, theme: sceneView && sceneView.chatId === state.chatId ? sceneView.theme : undefined }, {
       say: (text) => send({ type: "parley.say", parleyId: state.id, text }),
       close: (how) => send({ type: "parley.close", parleyId: state.id, how }),
       setMode: (mode) => send({ type: "parley.view", mode }),
@@ -311,10 +321,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   const unsub = ctx.onBackendMessage((raw: unknown) => {
     const msg = raw as ToFrontend;
+    if (fxLibrary.receive(msg)) return;
     switch (msg.type) {
       case "welcome":
+        fxLibrary.request(send);
         panel.setStatus("");
         panel.setLook(msg.styleLook);
+        lookUi = msg.ui;
         applyUiTokens(msg.ui);
         break;
       case "style.probes":
@@ -322,6 +335,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "style.locked":
         panel.setLook(msg.lookId);
+        lookUi = msg.ui;
         applyUiTokens(msg.ui);
         break;
       case "look.file": {

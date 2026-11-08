@@ -5,11 +5,28 @@
  * status glyphs drawn as vector marks.
  */
 import { FillGradient, Graphics } from "pixi.js";
+import { SKIN } from "./skin.js";
 import { C } from "./theme.js";
 
 const gradients = new Map<string, FillGradient>();
 
 /** A vertical gradient in shape-local space (cached by its stops). */
+let sheenGrad: FillGradient | null = null;
+function sheen(): FillGradient {
+  sheenGrad ??= new FillGradient({
+    type: "linear",
+    start: { x: 0, y: 0 },
+    end: { x: 0.7, y: 1 },
+    colorStops: [
+      { offset: 0, color: "rgba(255,255,255,0.13)" },
+      { offset: 0.42, color: "rgba(255,255,255,0.0)" },
+      { offset: 1, color: "rgba(255,255,255,0.0)" },
+    ],
+    textureSpace: "local",
+  });
+  return sheenGrad;
+}
+
 export function vgrad(top: number, bottom: number, topAlpha = 1, bottomAlpha = 1): FillGradient {
   const key = `${top}-${bottom}-${topAlpha}-${bottomAlpha}`;
   let g = gradients.get(key);
@@ -49,26 +66,67 @@ export type PanelStyle = {
   inner?: boolean;
 };
 
+/** A panel's outline in the skin's corner style. */
+function panelShape(g: Graphics, x: number, y: number, w: number, h: number, c: number): Graphics {
+  const f = SKIN.frame;
+  if (f.corner === "square" || c <= 0) return g.rect(x, y, w, h);
+  if (f.corner === "round") return g.roundRect(x, y, w, h, c * f.size);
+  return g.poly(chamferPoints(x, y, w, h, c * f.size));
+}
+
+/** A framed panel in the skin's material: cut, rounded or square corners, gradient or flat, a gilt or double inner rule. */
 export function drawPanel(g: Graphics, x: number, y: number, w: number, h: number, s: PanelStyle = {}): Graphics {
+  const f = SKIN.frame;
   const c = s.chamfer ?? 6;
-  const pts = chamferPoints(x, y, w, h, c);
-  g.poly(pts).fill(vgrad(s.fill ?? C.panelHi, s.fillBottom ?? C.panel, s.alpha ?? 0.92, s.alpha ?? 0.92));
-  g.poly(pts).stroke({ width: 1, color: s.line ?? C.line, alpha: s.lineAlpha ?? 0.9, alignment: 1 });
-  if (s.inner) {
-    g.poly(chamferPoints(x + 3, y + 3, w - 6, h - 6, Math.max(1, c - 2))).stroke({ width: 1, color: C.gold, alpha: 0.18, alignment: 1 });
+  const a = (s.alpha ?? 0.92) * (f.alpha / 0.92);
+  const top = s.fill ?? C.panelHi;
+  const bottom = s.fillBottom ?? C.panel;
+  if (f.shadow) panelShape(g, x, y + f.shadow, w, h, c).fill({ color: 0x0a0604, alpha: 0.85 });
+  panelShape(g, x, y, w, h, c).fill(f.gradient ? vgrad(top, bottom, a, a) : { color: top, alpha: Math.min(1, a) });
+  panelShape(g, x, y, w, h, c).stroke({ width: f.line, color: s.line ?? C.line, alpha: s.lineAlpha ?? (f.inner === "double" ? 1 : 0.9), alignment: 1 });
+  const inset = Math.max(3, f.line + 2);
+  if (f.inner === "double") {
+    panelShape(g, x + inset, y + inset, w - inset * 2, h - inset * 2, Math.max(0, c - inset)).stroke({ width: 1, color: s.line ?? C.line, alpha: s.lineAlpha ?? 1, alignment: 1 });
+  } else if (f.inner === "gilt" && (s.inner || f.innerAll)) {
+    const i = f.innerInset;
+    panelShape(g, x + i, y + i, w - i * 2, h - i * 2, Math.max(1, c - i * 0.6)).stroke({ width: 1, color: C.gold, alpha: f.innerAlpha, alignment: 1 });
+  }
+  if (f.sheen) {
+    // Glass: a diagonal specular wash from the top-left corner.
+    panelShape(g, x, y, w, h, c).fill(sheen());
+    g.rect(x + 1, y + 1, w - 2, 1).fill({ color: 0xffffff, alpha: 0.1 });
   }
   return g;
 }
 
-/** A thin bar: track, ghost (recent loss), value, and a top highlight. */
-export function drawBar(g: Graphics, x: number, y: number, w: number, h: number, value: number, ghost: number, color: number, hi: number, extra = 0, extraColor: number = C.shield): Graphics {
+/** A thin bar: track, ghost (recent loss), value, and a top highlight. `secondary` (focus) draws hollow cells in a cell skin so it reads apart from health. */
+export function drawBar(g: Graphics, x: number, y: number, w: number, h: number, value: number, ghost: number, color: number, hi: number, extra = 0, extraColor: number = C.shield, secondary = false): Graphics {
   const v = Math.max(0, Math.min(1, value));
   const gh = Math.max(v, Math.min(1, ghost));
   g.rect(x, y, w, h).fill({ color: 0x000000, alpha: 0.55 });
-  if (gh > v) g.rect(x + w * v, y, w * (gh - v), h).fill({ color: C.hpGhost, alpha: 0.55 });
-  if (v > 0) {
-    g.rect(x, y, w * v, h).fill(vgrad(hi, color));
-    g.rect(x, y, w * v, Math.max(1, h * 0.3)).fill({ color: 0xffffff, alpha: 0.12 });
+  if (SKIN.bar.trough) g.rect(x - 1, y - 1, w + 2, h + 2).stroke({ width: 1.5, color: SKIN.bar.trough, alignment: 1 });
+  const cells = SKIN.bar.cells;
+  // The second bar (focus) reads as hollow cells so it is not mistaken for health.
+  const hollow = cells > 0 && secondary;
+  if (cells > 0) {
+    // Block cells: whole cells only, a gap between them, the recent loss as hollow cells.
+    const gap = Math.max(1, Math.round(w / cells / 6));
+    const cw = (w - gap * (cells - 1)) / cells;
+    for (let i = 0; i < cells; i++) {
+      const cx = x + i * (cw + gap);
+      const at = (i + 0.5) / cells;
+      if (at <= v) {
+        if (hollow) g.rect(cx, y, cw, h).stroke({ width: 1, color: hi, alignment: 1 });
+        else g.rect(cx, y, cw, h).fill({ color: hi });
+      }
+      else if (at <= gh) g.rect(cx, y, cw, h).stroke({ width: 1, color: C.hpGhost, alignment: 1 });
+    }
+  } else {
+    if (gh > v) g.rect(x + w * v, y, w * (gh - v), h).fill({ color: C.hpGhost, alpha: 0.55 });
+    if (v > 0) {
+      g.rect(x, y, w * v, h).fill(vgrad(hi, color));
+      if (SKIN.bar.sheen) g.rect(x, y, w * v, Math.max(1, h * 0.3)).fill({ color: 0xffffff, alpha: 0.12 });
+    }
   }
   if (extra > 0) {
     const e = Math.min(1, extra);
@@ -85,7 +143,8 @@ export function drawPips(g: Graphics, cx: number, y: number, value: number, max:
   const x0 = cx - ((n - 1) * step) / 2;
   for (let i = 0; i < n; i += 1) {
     const x = x0 + i * step;
-    const pts = [x, y - size / 2, x + size / 2, y, x, y + size / 2, x - size / 2, y];
+    const square = SKIN.frame.corner === "square";
+    const pts = square ? [x - size * 0.4, y - size * 0.4, x + size * 0.4, y - size * 0.4, x + size * 0.4, y + size * 0.4, x - size * 0.4, y + size * 0.4] : [x, y - size / 2, x + size / 2, y, x, y + size / 2, x - size / 2, y];
     const on = i < value && !broken;
     g.poly(pts).fill({ color: on ? color : C.poiseEmpty, alpha: on ? 1 : 0.85 });
     g.poly(pts).stroke({ width: 1, color: broken ? C.break : 0x000000, alpha: broken ? 0.7 : 0.7 });
@@ -95,7 +154,7 @@ export function drawPips(g: Graphics, cx: number, y: number, value: number, max:
 
 /** A small status glyph in a dark diamond-cornered tile. */
 export function drawStatusGlyph(g: Graphics, glyph: string, x: number, y: number, s: number, color: number): Graphics {
-  g.poly(chamferPoints(x, y, s, s, s * 0.22)).fill({ color: 0x0b0a09, alpha: 0.85 }).stroke({ width: 1, color, alpha: 0.85 });
+  g.poly(chamferPoints(x, y, s, s, SKIN.frame.corner === "square" ? 0 : s * 0.22)).fill({ color: C.ink, alpha: 0.85 }).stroke({ width: 1, color, alpha: 0.85 });
   const cx = x + s / 2;
   const cy = y + s / 2;
   const r = s * 0.3;
@@ -145,4 +204,10 @@ export function drawStatusGlyph(g: Graphics, glyph: string, x: number, y: number
       g.moveTo(cx - r, cy).lineTo(cx + r, cy).stroke(line);
   }
   return g;
+}
+
+/** Shrink a label to fit `maxW` (wide bitmap fonts on a phone); never grows it. */
+export function fitText(t: { scale: { set(v: number): void }; width: number }, maxW: number): void {
+  t.scale.set(1);
+  if (maxW > 0 && t.width > maxW) t.scale.set(maxW / t.width);
 }

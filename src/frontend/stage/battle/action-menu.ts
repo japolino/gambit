@@ -6,8 +6,9 @@
  * choose again). Drawn in Pixi like the rest of the UI.
  */
 import { Container, Graphics, Text } from "pixi.js";
-import { C, T } from "../theme.js";
-import { drawPanel } from "../ui.js";
+import { C, T, mixColor } from "../theme.js";
+import { caps } from "../skin.js";
+import { drawPanel, fitText } from "../ui.js";
 import type { Rect } from "./layout.js";
 
 export type MenuSkill = {
@@ -41,9 +42,9 @@ class Button extends Container {
     const hot = this.hovered && this.enabled;
     drawPanel(g, 0, 0, this.w, this.h, {
       chamfer: 5 * this.ui,
-      fill: hot ? 0x2e261d : this.enabled ? 0x221c16 : 0x16130f,
-      fillBottom: hot ? 0x1d1812 : 0x141110,
-      line: hot ? this.accent : this.enabled ? C.line : 0x3a3127,
+      fill: hot ? C.btnHot : this.enabled ? C.btnOn : C.btnOff,
+      fillBottom: hot ? mixColor(C.btnHot, C.btnBottom, 0.5) : C.btnBottom,
+      line: hot ? this.accent : this.enabled ? C.line : C.btnLineOff,
       alpha: 0.96,
     });
     if (hot) g.rect(0, 4 * this.ui, 2, this.h - 8 * this.ui).fill({ color: this.accent });
@@ -70,7 +71,7 @@ export class ActionMenu extends Container {
     this.ui = ui;
     this.position.set(rect.x, rect.y);
     this.bg.clear();
-    drawPanel(this.bg, 0, 0, rect.w, rect.h, { chamfer: 8 * ui, inner: true, alpha: 0.9, fill: 0x17130f, fillBottom: 0x0e0c0a });
+    drawPanel(this.bg, 0, 0, rect.w, rect.h, { chamfer: 8 * ui, inner: true, alpha: 0.9, fill: C.menu, fillBottom: C.menuBottom });
     this.render();
   }
 
@@ -92,7 +93,7 @@ export class ActionMenu extends Container {
   private header(title: string, sub: string): number {
     const ui = this.ui;
     const pad = 12 * ui;
-    const t = new Text({ text: title, style: T.name(Math.round(16 * ui)) });
+    const t = new Text({ text: caps(title), style: T.name(Math.round(16 * ui)) });
     t.position.set(pad, pad - 2 * ui);
     const s = new Text({ text: sub.toUpperCase(), style: T.label(Math.round(8.5 * ui), C.goldDim) });
     s.position.set(this.rect.w - pad - s.width, pad + (t.height - s.height) / 2);
@@ -145,9 +146,10 @@ export class ActionMenu extends Container {
     const b = new Button(w, h, ui, enabled, accent, onTap);
     b.position.set(x, y);
     const size = Math.round(Math.min(14.5, h / ui / 3) * ui);
-    const name = new Text({ text: label, style: T.name(size) });
-    name.alpha = enabled ? 1 : 0.45;
+    const name = new Text({ text: caps(label), style: T.name(size, C.btnText) });
+    name.alpha = enabled ? 1 : 0.62;
     const inset = 10 * ui + (signature ? 10 * ui : 0);
+    fitText(name, w - inset - 8 * ui);
     const twoLine = h > 40 * ui && sub;
     name.position.set(inset, twoLine ? h / 2 - name.height + 1 * ui : (h - name.height) / 2);
     b.addChild(name);
@@ -160,7 +162,7 @@ export class ActionMenu extends Container {
       b.addChild(d);
     }
     if (sub) {
-      const st = new Text({ text: subIsReason ? sub : sub.toUpperCase(), style: subIsReason ? T.body(Math.round(10.5 * ui), C.textFaint) : T.label(Math.round(8.5 * ui), C.goldDim) });
+      const st = new Text({ text: subIsReason ? sub : sub.toUpperCase(), style: subIsReason ? T.body(Math.round(10.5 * ui), C.btnTextDim) : T.label(Math.round(8.5 * ui), C.btnTextDim) });
       if (twoLine) st.position.set(inset, h / 2 + 2 * ui);
       else st.position.set(w - st.width - 8 * ui, (h - st.height) / 2);
       if (!twoLine && st.x < name.x + name.width + 6 * ui) st.visible = false;

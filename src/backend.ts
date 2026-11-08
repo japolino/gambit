@@ -8,6 +8,8 @@ import { registerArt } from "./art/controller.js";
 import { requestBattleArt } from "./backend/battle-art.js";
 import { createBattles } from "./backend/battles.js";
 import { createCards } from "./backend/cards.js";
+import { createFxAssets } from "./backend/fx-assets.js";
+import { createInlayPictures } from "./backend/inlay-pictures.js";
 import { modelsFor } from "./backend/models.js";
 import { createParleys } from "./backend/parleys.js";
 import { createPlay } from "./backend/play.js";
@@ -22,12 +24,15 @@ const send = (msg: ToFrontend, userId?: string) => spindle.sendToFrontend(msg, u
 // the game runs on the stage's procedural figures.
 const art = registerArt(spindle, send, { gptConcurrency: 2 });
 let play: ReturnType<typeof createPlay> | null = null;
+// Cut-ins of fights in a chat are drawn by Inlay Illustrator when it is there (backend/inlay-pictures.ts).
+const cutinPictures = { inlay: createInlayPictures(spindle, (m) => spindle.log.info(`gambit ${m}`)), send: (msg: ToFrontend, userId: string) => send(msg, userId) };
 const battles = createBattles(
   spindle,
   send,
-  (state, userId) => requestBattleArt(art, state, userId),
+  (state, userId) => requestBattleArt(art, state, userId, cutinPictures),
   (state, userId) => void play?.onBattleEnd(state, userId).catch((e) => spindle.log.error(`gambit play end: ${String(e)}`)),
 );
+const fxAssets = createFxAssets(spindle, (msg, userId) => send(msg, userId), (m) => spindle.log.warn(`gambit ${m}`));
 const parleys = createParleys(spindle, (msg, userId) => send(msg, userId), art);
 const cards = createCards(spindle, (msg, userId) => send(msg, userId), parleys);
 play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles);
@@ -72,6 +77,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
   try {
     if (art.handle(msg, userId)) return;
     switch (msg.type) {
+      case "fx.get":
+        await fxAssets.serve(userId);
+        return;
       case "hello": {
         await art.setCampaign(CAMPAIGN, userId);
         send({ type: "welcome", version: VERSION, styleLook: art.styleLock(userId)?.lookId ?? null, ui: art.lookUi(userId) }, userId);

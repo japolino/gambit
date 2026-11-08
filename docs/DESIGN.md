@@ -206,6 +206,16 @@ The read is shown in two modes, a player setting:
 | Seduce | interest |
 | Interrogate | secrets revealed |
 
+#### 4.1.6 Moments
+
+A few exchanges get a picture: the beat that changes the talk.
+
+- **Beats** (`engine/parley/moments.ts`): a critical success (*it lands*), a critical failure (*it blows up*), a caught bluff, and the end (a win, a deal, a walk-out). A final offer is not the end.
+- **At most four per Parley**, and the end always gets one. Which exchanges count is fixed, so an early moment keeps its picture as the talk goes on.
+- **The Parley direction** (`art/directions.ts`): the person seen from the speaker's own eyes (POV), chest up, eye contact, the place soft behind them, lit like a film still. Their reaction (the mood, or the beat's gesture: pointing at you, glaring down, turning away) rides in their own caption, so it stays on them.
+- Drawn as a CG (`kind: "cg", direction: "parley"`) from their tags (Inlay's when there); their figure goes along as the reference for a GPT edit.
+- **In the view:** the newest beat's picture flashes in over the scene with its caption and a slow push-in, then fades back after a few seconds or a click. Every moment stays as a thumbnail in the corner to see again.
+
 ### 4.2 Combat
 
 **Format: front-view, turn-based, on a visible timeline.**
@@ -465,6 +475,14 @@ A cut-in is **one generated pose image + a code-rendered template**, made once w
   - speed lines, chromatic split, impact frame, vignette flash.
 - **The Architect picks** template + 2 to 4 FX layers + palette + timing curve + name-slam style, all as data.
 - **The Illustrator makes** the pose: the character, transparent, in a dynamic action pose fitting the skill.
+  - **The cut-in direction** (`art/directions.ts`): splash art like a fighting-game special move. A dynamic, foreshortened pose at a slanted angle, an intense glare, hair and clothes whipped by the motion, the move's effects around them, nothing behind them.
+  - **The action comes from the move** (`cutinAction`): a spirit hit is a spell thrust at the viewer, a might hit a weapon strike, a heal is light between the hands, a shield a flaring barrier. The element adds its effects (fire and embers, ice, lightning), and the skill's FX ids add theirs (a glyph ring is a magic circle).
+  - **Which move:** the fighter's signature, else their strongest skill, else their attack (`cutinSkill`).
+  - **Drawn from the fighter's own image** (figure, portrait, or card art) with the V5 inset's wide layout, landscape (key `<art>#action`). The stage keys out the white ground.
+  - **On the band**, the splash is shown whole and taller than the band, so it bursts out of it, punching in a little large and settling. Without one, the determined face crop is used.
+  - **Painted splashes** (Inlay draws one with its own backdrop) get their own two templates:
+    - *Panel* (`cutin/panel.ts`, 1.9 s): for a regular signature. The field dims, a slanted panel snaps open from a line with the picture pushing in, speed lines stream behind, and the name slams onto a plate across the lower edge.
+    - *Full screen* (`cutin/framed.ts`, 2.45 s): reserved for ultimates (a tier-5 signature or the *Shatter* template; card kits stop at tier 4, so nothing reaches it yet). The screen shuts to a slit, cracks race out from the move and the black shatters, then the picture slams in full height with a colour split. The name stamps word by word onto a black wedge. It holds in a tunnel of ribbons, arcs and embers with a flare on the move, then ends on an ink impact frame and a whiteout with the name burned in. Its colours come from the picture's dominant hue.
 - **Code renders** the result at 60 fps.
   - Length is 1.2 to 1.8 s, and tapping skips it.
   - It plays on first use, ultimates, crits, and finishing blows. Otherwise it is a short flash, to avoid fatigue.

@@ -12,6 +12,8 @@ import type { Action, BattleEvent, BattleState, SkillDef, TargetRule } from "../
 import { puppetQuality, puppetQualityFrame, puppetRenderScale } from "../../../vendor/cue-puppet/sprite-puppet-quality.js";
 import { Clock, ease, reducedMotion } from "../anim.js";
 import { ArtStore, paletteFor, type ArtRequest } from "../art.js";
+import { PostFilter } from "../post-filter.js";
+import { SKIN } from "../skin.js";
 import { C } from "../theme.js";
 import { vgrad } from "../ui.js";
 import { ActionMenu, type MenuSkill } from "./action-menu.js";
@@ -59,6 +61,16 @@ export class BattleStage {
   readonly hud = new Container();
   readonly fxLayer = new Container();
   readonly cutLayer = new Container();
+  /** The backdrop plate, wrapped so a pixel theme's shader covers it in one pass. */
+  private readonly back = new Container();
+  /** Damage numbers and labels, above the effects and never pixelated. */
+  readonly floatLayer = new Container();
+  /** A pixel theme's picture treatment (skin.ts), on the art layers only. */
+  private post: PostFilter | null = null;
+  /** The same, dimmer, for the backdrop. */
+  private postBack: PostFilter | null = null;
+  /** Brighter, for the party busts and timeline chips (small, dark faces vanish in two tones otherwise). */
+  private postBust: PostFilter | null = null;
   readonly flash = new Graphics();
   readonly timeline = new TimelineStrip();
   readonly menu = new ActionMenu();
@@ -90,14 +102,29 @@ export class BattleStage {
     this.art = new ArtStore();
     this.baseResolution = app.renderer.resolution;
     this.layout = computeLayout(app.screen.width, app.screen.height, this.party().length);
-    this.floaters = new Floaters(this.fxLayer, this.clock, () => this.layout.ui, () => this.reduced);
+    this.floaters = new Floaters(this.floatLayer, this.clock, () => this.layout.ui, () => this.reduced);
     this.field.sortableChildren = true;
-    app.stage.addChild(this.plate, this.field, this.bgShade, this.hud, this.fxLayer, this.flash, this.cutLayer);
+    this.back.addChild(this.plate);
+    app.stage.addChild(this.back, this.field, this.bgShade, this.hud, this.fxLayer, this.floatLayer, this.flash, this.cutLayer);
+    if (SKIN.post) {
+      // Figures, busts, effects and cut-ins each carry the filter; nameplates and the HUD stay sharp.
+      this.post = new PostFilter(SKIN.post);
+      this.postBack = new PostFilter(SKIN.post, SKIN.post.kind === "mono" ? 0.5 : 0.6);
+      this.postBust = new PostFilter(SKIN.post, 1.35);
+      this.postBust.fit(app.screen.height);
+      this.timeline.chipFilters = [this.postBust];
+      this.post.fit(app.screen.height);
+      this.postBack.fit(app.screen.height);
+      this.back.filters = [this.postBack];
+      this.fxLayer.filters = [this.post];
+      this.cutLayer.filters = [this.post];
+    }
     this.hud.addChild(this.timeline, this.menu);
     this.bgSeed = `${opts.state.id}`;
     const accent = paletteFor(this.enemiesOf(opts.state)[0]?.defId ?? "", this.bgSeed);
     const plate = this.art.background(this.bgSeed, accent);
     this.bg.texture = plate.color;
+    this.bg.tint = SKIN.grade;
     // Depth parallax: the depth map rides on the plate (same frame) and
     // displaces it, so near pillars and floor slide more than the far fog.
     this.depthMap = new Sprite(plate.depth);
@@ -143,6 +170,7 @@ export class BattleStage {
       view.on("pointerover", () => view.hover(true));
       view.on("pointerout", () => view.hover(false));
       this.enemies.set(c.id, view);
+      if (this.post) view.body.filters = [this.post];
       this.field.addChild(view);
     }
     for (const c of this.party()) {
@@ -152,6 +180,7 @@ export class BattleStage {
       const card = new PartyCard(u, pick.source, this.strength(BUST_STRENGTH), pick.cutout);
       card.on("pointertap", (e) => { e.stopPropagation(); this.tapTarget(c.id); });
       this.cards.set(c.id, card);
+      if (this.postBust) card.portrait.filters = [this.postBust];
       this.hud.addChild(card);
     }
     // The older per-combatant hook feeds the same path as setArt.
@@ -220,9 +249,12 @@ export class BattleStage {
     const s = Math.max(w / pw, l.floorY / (floor * ph), (h - l.floorY) / ((1 - floor) * ph)) * 1.04;
     this.plate.scale.set(s);
     this.plate.position.set((w - pw * s) / 2, l.floorY - floor * ph * s);
+    this.post?.fit(h);
+    this.postBack?.fit(h);
+    this.postBust?.fit(h);
     this.bgShade.clear();
     const shadeTop = l.portrait ? l.enemyArea.h * 0.86 : l.floorY - 20 * l.ui;
-    this.bgShade.rect(0, shadeTop, w, h - shadeTop).fill(vgrad(0x070605, 0x070605, 0, l.portrait ? 0.92 : 0.78));
+    this.bgShade.rect(0, shadeTop, w, h - shadeTop).fill(vgrad(C.ink, C.ink, 0, l.portrait ? 0.92 : 0.78));
     const enemies = this.enemiesOf();
     const slots = enemySlots(l, enemies.map((c) => this.units.get(c.id)?.rig ?? c.rig));
     enemies.forEach((c, i) => this.enemies.get(c.id)?.place(slots[i]!, l.ui, w));

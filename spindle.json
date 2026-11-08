@@ -25,5 +25,6 @@
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",
   "interceptorTimeoutMs": 30000,
+  "storage_seed_files": [{ "from": "assets", "to": "assets", "overwrite": true }],
   "minimum_lumiverse_version": "1.2.4"
 }

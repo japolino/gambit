@@ -8,11 +8,25 @@
 import { TextStyle, type TextStyleOptions } from "pixi.js";
 import type { Element, StatusId } from "../../engine/types.js";
 
-export const FONT_DISPLAY = '"Cormorant Garamond", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
-export const FONT_UI = '"Segoe UI", "Helvetica Neue", system-ui, -apple-system, Roboto, sans-serif';
-export const FONT_NUMBER = '"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
+const BASE_FONTS = {
+  display: '"Cormorant Garamond", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif',
+  ui: '"Segoe UI", "Helvetica Neue", system-ui, -apple-system, Roboto, sans-serif',
+  number: '"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif',
+};
+// Live bindings: a scene theme's skin (skin.ts) swaps the type before the stage is built.
+export let FONT_DISPLAY = BASE_FONTS.display;
+export let FONT_UI = BASE_FONTS.ui;
+export let FONT_NUMBER = BASE_FONTS.number;
 
-const DEFAULTS = {
+/** Set the stage's three type stacks (undefined keeps the base one) and drop cached text styles. */
+export function setFonts(f: { display?: string; ui?: string; number?: string } = {}): void {
+  FONT_DISPLAY = f.display ?? BASE_FONTS.display;
+  FONT_UI = f.ui ?? BASE_FONTS.ui;
+  FONT_NUMBER = f.number ?? BASE_FONTS.number;
+  cache.clear();
+}
+
+export const DEFAULTS = {
   ink: 0x0b0a09,
   ink2: 0x151210,
   panel: 0x17130f,
@@ -39,11 +53,34 @@ const DEFAULTS = {
   enemy: 0xc4544a,
   ally: 0x6fa7c2,
   break: 0xffe2a0,
+  /** Party card fill (top, bottom), the action menu's buttons (hot, on, off) and its frame, the timeline strip. */
+  card: 0x1d1813,
+  cardBottom: 0x110e0b,
+  menu: 0x17130f,
+  menuBottom: 0x0e0c0a,
+  btnHot: 0x2e261d,
+  btnOn: 0x221c16,
+  btnOff: 0x16130f,
+  btnBottom: 0x141110,
+  btnLineOff: 0x3a3127,
+  strip: 0x14110d,
+  stripBottom: 0x0d0b09,
+  /** Floating numbers' outline and the dark backing behind banners. */
+  outline: 0x0a0806,
+  backing: 0x0b0907,
+  // Action button labels (a theme with light buttons darkens them).
+  btnText: 0xece3cf,
+  btnTextDim: 0x7d6a45,
+  // Text over the picture (nameplates, floating numbers, cut-ins): stays light when a theme has light panels.
+  onArt: 0xece3cf,
+  onArtDim: 0x9d927f,
 };
 
-type Colors = { -readonly [K in keyof typeof DEFAULTS]: number };
+export type Colors = { -readonly [K in keyof typeof DEFAULTS]: number };
 /** The stage's colours. A look's palette tokens (5.2a) can retint the frames, panels and sides. */
 export const C: Colors = { ...DEFAULTS };
+
+const cache = new Map<string, TextStyle>();
 
 const hexNum = (v: string | undefined): number | null => (v && /^#[0-9a-f]{6}$/i.test(v) ? parseInt(v.slice(1), 16) : null);
 
@@ -72,6 +109,7 @@ export function applyUiTokens(ui: Partial<Record<"ink" | "panel" | "gold" | "all
   if (gold !== null) {
     C.gold = gold;
     C.goldDim = mixColor(gold, C.ink, 0.45);
+    C.btnTextDim = C.goldDim;
   }
   C.line = mixColor(C.gold, C.panel, 0.55);
   if (ally !== null) C.ally = ally;
@@ -130,7 +168,6 @@ export function mixColor(a: number, b: number, t: number): number {
   return (r << 16) | (g << 8) | bl;
 }
 
-const cache = new Map<string, TextStyle>();
 
 /** Shared text styles (cached by key so Pixi reuses glyph work). */
 export function textStyle(key: string, opts: TextStyleOptions): TextStyle {
@@ -143,7 +180,7 @@ export function textStyle(key: string, opts: TextStyleOptions): TextStyle {
 }
 
 export const T = {
-  name: (size: number) => textStyle(`name${size}`, { fontFamily: FONT_DISPLAY, fontSize: size, fill: C.text, fontWeight: "600", letterSpacing: 0.5 }),
+  name: (size: number, color: number = C.text) => textStyle(`name${size}-${color}`, { fontFamily: FONT_DISPLAY, fontSize: size, fill: color, fontWeight: "600", letterSpacing: 0.5 }),
   label: (size: number, color: number = C.textDim) => textStyle(`label${size}-${color}`, { fontFamily: FONT_UI, fontSize: size, fill: color, letterSpacing: 1.2, fontWeight: "600" }),
   body: (size: number, color: number = C.text) => textStyle(`body${size}-${color}`, { fontFamily: FONT_UI, fontSize: size, fill: color }),
   num: (size: number, color: number = C.text) => textStyle(`num${size}-${color}`, { fontFamily: FONT_NUMBER, fontSize: size, fill: color, fontWeight: "700" }),

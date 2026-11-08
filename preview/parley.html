@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Gambit Parley harness</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #070605; color: #d8cfbd; font: 12px/1.4 "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+    #host { position: fixed; inset: 0; }
+    #bar { position: fixed; left: 50%; top: 4px; translate: -50% 0; z-index: 10; display: none; gap: 6px; align-items: center; padding: 4px 8px; background: #0d0b09e6; border: 1px solid #2a231b; border-radius: 6px; }
+    #bar.on { display: flex; }
+    #bar select, #bar button { background: #17130f; color: #e6dcc7; border: 1px solid #4a3d2d; padding: 2px 6px; font: inherit; }
+  </style>
+</head>
+<body>
+  <div id="host"></div>
+  <div id="bar"></div>
+  <script type="module" src="./parley.js"></script>
+</body>
+</html>

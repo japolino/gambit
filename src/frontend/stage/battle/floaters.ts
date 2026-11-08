@@ -11,16 +11,16 @@ import { C, FONT_DISPLAY, FONT_NUMBER, FONT_UI, textStyle } from "../theme.js";
 
 const numStyle = (size: number, color: number) => textStyle(`fnum${size}-${color}`, {
   fontFamily: FONT_NUMBER, fontSize: size, fontWeight: "700", fill: color,
-  stroke: { color: 0x0a0806, width: Math.max(3, size * 0.14), join: "round" },
+  stroke: { color: C.outline, width: Math.max(3, size * 0.14), join: "round" },
   dropShadow: { color: 0x000000, alpha: 0.6, blur: 4, distance: 2, angle: Math.PI / 2 },
 });
 const tagStyle = (size: number, color: number) => textStyle(`ftag${size}-${color}`, {
   fontFamily: FONT_UI, fontSize: size, fontWeight: "700", fill: color, letterSpacing: size * 0.25,
-  stroke: { color: 0x0a0806, width: 3, join: "round" },
+  stroke: { color: C.outline, width: 3, join: "round" },
 });
 const displayStyle = (size: number, color: number, spacing = 0) => textStyle(`fdisp${size}-${color}-${spacing}`, {
   fontFamily: FONT_DISPLAY, fontSize: size, fontWeight: "700", fill: color, letterSpacing: spacing,
-  stroke: { color: 0x0a0806, width: Math.max(2, size * 0.06), join: "round" },
+  stroke: { color: C.outline, width: Math.max(2, size * 0.06), join: "round" },
   dropShadow: { color: 0x000000, alpha: 0.7, blur: 8, distance: 0 },
 });
 
@@ -35,10 +35,10 @@ export class Floaters {
     const ui = this.ui();
     const c = new Container();
     c.position.set(x, y);
-    let color: number = o.color ?? C.text;
+    let color: number = o.color ?? C.onArt;
     let size = 26;
     let tag = "";
-    let tagColor: number = C.textDim;
+    let tagColor: number = C.onArtDim;
     let text = String(Math.round(o.amount));
     if (o.kind === "heal") { color = C.heal; text = `+${text}`; }
     else if (o.kind === "shield") { color = C.shield; text = `+${text}`; size = 20; tag = "SHIELD"; tagColor = C.shield; }
@@ -71,7 +71,7 @@ export class Floaters {
     }, ease.linear).then(() => c.destroy({ children: true }));
   }
 
-  label(x: number, y: number, text: string, color: number = C.text, size = 11): void {
+  label(x: number, y: number, text: string, color: number = C.onArt, size = 11): void {
     const ui = this.ui();
     const t = new Text({ text: text.toUpperCase(), style: tagStyle(Math.round(size * ui), color) });
     t.anchor.set(0.5, 1);
@@ -88,20 +88,20 @@ export class Floaters {
     const ui = this.ui();
     const c = new Container();
     c.position.set(x, y);
-    const t = new Text({ text: title, style: displayStyle(Math.round(20 * ui), C.text, 1) });
+    const t = new Text({ text: title, style: displayStyle(Math.round(20 * ui), C.onArt, 1) });
     t.anchor.set(0.5);
-    const s = new Text({ text: sub.toUpperCase(), style: tagStyle(Math.round(8.5 * ui), C.textDim) });
+    const s = new Text({ text: sub.toUpperCase(), style: tagStyle(Math.round(8.5 * ui), C.onArtDim) });
     s.anchor.set(0.5);
     s.y = -t.height * 0.5 - 6 * ui;
     const w = Math.max(t.width, s.width) + 70 * ui;
     const h = t.height + 8 * ui;
     const g = new Graphics();
-    g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x0b0907, alpha: 0.78 });
+    g.rect(-w / 2, -h / 2, w, h).fill({ color: C.backing, alpha: 0.78 });
     g.rect(-w / 2, -h / 2, w, 1).fill({ color: accent, alpha: 0.7 });
     g.rect(-w / 2, h / 2 - 1, w, 1).fill({ color: accent, alpha: 0.7 });
     for (const sx of [-1, 1]) {
       const ex = (sx * w) / 2;
-      g.poly([ex, -h / 2, ex + sx * 14 * ui, 0, ex, h / 2]).fill({ color: 0x0b0907, alpha: 0.78 });
+      g.poly([ex, -h / 2, ex + sx * 14 * ui, 0, ex, h / 2]).fill({ color: C.backing, alpha: 0.78 });
     }
     c.addChild(g, s, t);
     this.layer.addChild(c);

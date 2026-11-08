@@ -8,7 +8,8 @@ import { Container, Graphics, Text } from "pixi.js";
 import { PuppetFigure } from "../puppet/puppet-figure.js";
 import type { FigureSource } from "../puppet/source.js";
 import { C, STATUS_STYLE, T } from "../theme.js";
-import { drawBar, drawPips, drawStatusGlyph } from "../ui.js";
+import { caps } from "../skin.js";
+import { drawBar, drawPips, drawStatusGlyph, fitText } from "../ui.js";
 import type { DisplayUnit } from "./display.js";
 import type { EnemySlot } from "./layout.js";
 
@@ -39,7 +40,7 @@ export class EnemyView extends Container {
     this.figure = new PuppetFigure({ source, kind: unit.rig, key: unit.id, strength, framed: !cutout });
     this.shownHp = unit.hp / Math.max(1, unit.maxHp);
     this.ghost = this.shownHp;
-    this.nameText = new Text({ text: unit.name, style: T.name(13) });
+    this.nameText = new Text({ text: caps(unit.name), style: T.name(13, C.onArt) });
     this.nameText.anchor.set(0.5, 0);
     this.plate.addChild(this.plateG, this.nameText);
     this.body.addChild(this.figure);
@@ -103,7 +104,7 @@ export class EnemyView extends Container {
     for (let i = 4; i >= 1; i -= 1) {
       this.shadow.ellipse(0, sy, fw * (0.35 + i * 0.12), fw * (0.07 + i * 0.02)).fill({ color: 0x000000, alpha: 0.12 });
     }
-    this.nameText.style = T.name(Math.round(12.5 * ui));
+    this.nameText.style = T.name(Math.round(12.5 * ui), C.onArt);
     // The plate sits on the floor under the figure (the huge one keeps it near its chest band).
     const plateY = this.unit.rig === "huge" ? -slot.height * 0.42 : sy + 8 * ui;
     this.plate.position.set(0, plateY);
@@ -122,7 +123,7 @@ export class EnemyView extends Container {
     if (next < prev) this.ghostHoldUntil = this.now + 0.45;
     else this.ghost = Math.max(this.ghost, next);
     this.shownHp = next;
-    if (this.nameText.text !== unit.name) this.nameText.text = unit.name;
+    if (this.nameText.text !== caps(unit.name)) this.nameText.text = caps(unit.name);
     this.redraw();
   }
 
@@ -162,6 +163,7 @@ export class EnemyView extends Container {
     const g = this.plateG;
     g.clear();
     const w = Math.round(Math.min(130, Math.max(84, this.slot.height * 0.42)) * ui);
+    fitText(this.nameText, Math.max(w + 12 * ui, Math.min(this.screenW > 0 ? this.screenW * 0.44 : 9999, this.slot.height * 0.9)));
     const half = Math.max(w / 2 + 6 * ui, this.nameText.width / 2 + 4 * ui);
     if (this.screenW > 0) {
       const lo = half + 4 - this.slot.x;
