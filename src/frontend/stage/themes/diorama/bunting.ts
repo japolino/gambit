@@ -101,7 +101,7 @@ export class Bunting extends TimelineStrip {
     if (first) {
       // A little brass plate riveted to the acting card's peg.
       const c = new Container();
-      const t = new Text({ text: "ACTING", style: { fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(8.5 * ui), fill: 0x2a1404, letterSpacing: 1.2 * ui } });
+      const t = new Text({ text: "ACTING", style: { fontFamily: CINZEL, fontWeight: "800", fontSize: innerWidth <= 760 || innerHeight <= 480 ? 12 : Math.round(8.5 * ui), fill: 0x2a1404, letterSpacing: 1.2 * ui } });
       t.anchor.set(0.5);
       const g = new Graphics();
       const w = t.width + 12 * ui;

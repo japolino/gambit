@@ -75,6 +75,8 @@ function css(): string {
     say: brocade("#2a0d0c", "#c4553a", 3),
   };
   const P = ".pl.th-storybook";
+  const Ph = `${P}.pl-phone`;
+  const S = `${P}.pl-short`;
   return `
 ${P} { ${GEO}
   --p-font: 500 var(--fs)/1.45 ${GARA}; --p-ui: ${CINZ}; --p-prose: ${FELL};
@@ -148,10 +150,10 @@ ${P} .you .speaker { text-align: left; color: #8b1a1a; }
 ${P} .you .prose { font: italic 500 .84em/1.4 ${GARA}; color: #4a2511; }
 ${P} .read { border-left: 2px dotted #a8742f; padding-left: .8em; gap: 4px; font-size: .8em; }
 /* On a desktop page the roll and its tell share one row, so a whole beat fits the page at once. */
-${P}:not(.sbp-phone) .read { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 4px; }
-${P}:not(.sbp-phone) .read > * { flex: 1 1 100%; }
-${P}:not(.sbp-phone) .read > .tray, ${P}:not(.sbp-phone) .read > .imm { flex: 0 1 auto; }
-${P}:not(.sbp-phone) .read > .imm { flex: 1 1 320px; line-height: 1.3; }
+${P}:not(.pl-phone) .read { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 4px; }
+${P}:not(.pl-phone) .read > * { flex: 1 1 100%; }
+${P}:not(.pl-phone) .read > .tray, ${P}:not(.pl-phone) .read > .imm { flex: 0 1 auto; }
+${P}:not(.pl-phone) .read > .imm { flex: 1 1 320px; line-height: 1.3; }
 ${P} .tray { gap: 10px; }
 ${P} .die { width: 38px; height: 38px; padding-top: 3px; font: 700 16px/1 ${CINZ}; color: #fff5d6; text-shadow: 0 1px 2px #000; background: ${D20("#3a2416")} center / 100% 100% no-repeat; filter: drop-shadow(0 2px 2px rgba(40,20,5,.55)); }
 ${P} .die.kept { box-shadow: none; transform: scale(1.08); background: ${D20("#8a2a1e")} center / 100% 100% no-repeat; filter: drop-shadow(0 0 6px rgba(184,134,11,.85)); }
@@ -228,7 +230,7 @@ ${P} .fact-card.used::after { content: "Used"; position: absolute; right: 10px; 
   font: 800 11px/1.3 ${CINZ}; letter-spacing: .16em; text-transform: uppercase; color: rgba(139,26,26,.85); }
 /* A very wide window has room for the facts beside the deal rather than above it. */
 @container (min-aspect-ratio: 2/1) {
-  ${P}:not(.sbp-phone) .hand { right: calc(var(--sx) + var(--rw) + 28px); top: 16cqh; bottom: calc(var(--db) + var(--dh) + 34px); }
+  ${P}:not(.pl-phone) .hand { right: calc(var(--sx) + var(--rw) + 28px); top: 16cqh; bottom: calc(var(--db) + var(--dh) + 34px); }
 }
 
 /* ---------- The speaker's nameplate astride the page's rim ---------- */
@@ -318,54 +320,118 @@ ${P} .moment { z-index: 30; }
 ${P} .moment::before { background: linear-gradient(transparent 58%, rgba(30,10,2,.85)); box-shadow: inset 0 0 0 10px #2a1205, inset 0 0 0 13px ${GILT}, inset 0 0 0 14px #fff1c2, inset 0 0 120px rgba(0,0,0,.6); }
 ${P} .moment .cap { font: italic 400 clamp(22px, 3.4cqh, 34px)/1.25 ${FELL}; color: #fbe8bf; left: 6cqw; right: 6cqw; bottom: 6cqh; }
 
-/* ---------- Phone: the person above, the page below holding the talk, the deal and your pen ---------- */
-${P}.sbp-phone { --hh: 52px; --hx: 10px; --bw: 76px; --br: 8px; --rh: 40px; --fs: 16px; --cw: 104px; }
-${P}.sbp-phone .figure { left: -8cqw; right: 8cqw; bottom: calc(var(--db) + var(--dh) - 60px); height: 46cqh; }
-${P}.sbp-phone .fig.framed { height: 36cqh; margin-bottom: 30px; }
-${P}.sbp-phone .sbp-corners .bl, ${P}.sbp-phone .sbp-corners .br { display: none; }
-${P}.sbp-phone .log { left: calc(var(--dx) + 18px); width: calc(var(--dw) - 36px); top: calc(100cqh - var(--db) - var(--dh) + 26px); bottom: calc(var(--db) + 132px); padding-top: 18px; }
-${P}.sbp-phone .composer { left: calc(var(--dx) + 14px); width: calc(var(--dw) - 28px); bottom: calc(var(--db) + 12px); height: 48px; grid-template-columns: 1fr auto; gap: 8px; }
-${P}.sbp-phone .composer::before { display: none; }
-${P}.sbp-phone .composer textarea { height: 42px; padding: 11px 10px 0; font-size: 15px; white-space: nowrap; }
-${P}.sbp-phone .status { left: calc(var(--dx) + 28px); bottom: calc(var(--db) + 12px); height: 48px; font-size: 14px; }
-${P}.sbp-phone .say { min-width: 86px; height: 42px; padding: 0 14px 0 46px; font-size: 16px; }
-${P}.sbp-phone .say::before { width: 46px; }
-${P}.sbp-phone .say::after { left: 18px; }
-${P}.sbp-phone .end.show { left: calc(var(--dx) + 14px); width: calc(var(--dw) - 28px); bottom: calc(var(--db) + 10px); gap: 4px 12px; }
-${P}.sbp-phone .actions { left: calc(var(--dx) + 14px); right: auto; width: calc(var(--dw) - 28px); bottom: calc(var(--db) + 76px); flex-direction: row; gap: 6px; }
-${P}.sbp-phone .actions::before { display: none; }
-${P}.sbp-phone .actions button { flex: 1 1 0; min-width: 0; font-size: 14px; padding: 0 16px 0 calc(var(--rh) + 2px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-${P}.sbp-phone .actions button:hover, ${P}.sbp-phone .actions button:focus-visible { translate: 0 -3px; }
-${P}.sbp-phone .plaque { left: calc(var(--dx) + 12px); height: 38px; padding: 0 32px; max-width: calc(var(--dw) - 170px); }
-${P}.sbp-phone .plaque .who { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
-${P}.sbp-phone .plaque .role { display: none; }
-${P}.sbp-phone .sbp-band { inset: 0 30px; } ${P}.sbp-phone .sbp-cap { width: 34px; }
-${P}.sbp-phone .sbp-head .scroll { width: 40cqw; }
-${P}.sbp-phone .kind { width: calc(40cqw - 46px); font-size: 13px; left: calc(var(--hx) + var(--hh) * .96 + 14px); }
-${P}.sbp-phone .meter-label, ${P}.sbp-phone .patience .pl-label { font-size: 8.5px; letter-spacing: .12em; }
-${P}.sbp-phone .sbp-num { font-size: 19px; }
-${P}.sbp-phone .sbp-unit { font-size: 11px; }
-${P}.sbp-phone .bar { height: 7px; }
-${P}.sbp-phone .patience { padding: 0 10px; gap: 3px; }
-${P}.sbp-phone .pip { width: 13px; height: 13px; }
-/* The clasp bar on the page's rim: what you know (a drawer of slips), and the view mode as one small toggle. */
-${P}.sbp-phone .mode { right: calc(var(--dx) + 10px); bottom: calc(var(--db) + var(--dh) - 14px); gap: 0; }
-${P}.sbp-phone .mode button.on { display: none; }
-${P}.sbp-phone .mode button { width: 34px; padding: 0; height: 28px; font-size: 0; letter-spacing: 0; }
-${P}.sbp-phone .mode button::before { font: 400 17px/28px ${FELL}; color: #f3d791; }
-${P}.sbp-phone .mode button[data-m="transparent"]::before { content: "¶"; }
-${P}.sbp-phone .mode button[data-m="immersive"]::before { content: "❦"; }
-${P}.sbp-phone .journal-btn { display: block; right: calc(var(--dx) + 50px); bottom: calc(var(--db) + var(--dh) - 14px); height: 28px; padding: 0 12px; font-size: 9px; letter-spacing: .08em; }
-${P}.sbp-phone .journal-btn:hover, ${P}.sbp-phone .journal-btn:focus-visible { translate: 0 -3px; }
-${P}.sbp-phone .hand { display: none; }
-${P}.sbp-phone:has(.journal.open) .hand { display: flex; left: 10px; right: 10px; width: auto; top: auto; bottom: calc(var(--db) + var(--dh) + 24px); max-height: 46cqh; padding: 14px 14px 12px; gap: 6px;
-  background: url(${folio}) center / cover; box-shadow: 0 0 0 2px #8a5a2a, 0 0 0 6px #2a1205, 0 0 0 8px ${GILT}; filter: drop-shadow(0 14px 20px rgba(0,0,0,.7)); }
-${P}.sbp-phone:has(.journal.open) .hand::before { margin: 0 0 4px; text-align: left; color: #5a2a10; text-shadow: none; font-size: 19px; }
-${P}.sbp-phone .journal.open:not(:has(.empty)) { display: none; }
-${P}.sbp-phone .journal.open:has(.empty) { display: block; position: absolute; z-index: 7; left: 10px; right: 10px; bottom: calc(var(--db) + var(--dh) + 24px); padding: 16px 18px; font: italic 400 16px/1.4 ${FELL}; color: #2b170a;
-  background: url(${folio}) center / cover; box-shadow: 0 0 0 2px #8a5a2a, 0 0 0 6px #2a1205, 0 0 0 8px ${GILT}; }
-${P}.sbp-phone .tell { top: 20cqh; left: 50cqw; font-size: 16px; }
-${P}.sbp-phone .moments { display: none; }
+/* ---------- Phone: a leather bar (who, the stake, the fare, patience), the person's head in a strip of the painting, then the page: the talk fills it, the deal and your pen at its foot. The book's art goes: reading comes first. ---------- */
+${Ph} { --bar: 52px; --fig: clamp(0px, calc(100cqh - 470px), 116px); --top: calc(var(--bar) + var(--fig)); --ribh: 44px; --pen: 52px; --fs: 17px; --dfoot: 60px; }
+${Ph}:has(.moments button) { --dfoot: 132px; }
+${Ph} .sbp-corners, ${Ph} .sbp-light, ${Ph} .sbp-head, ${Ph} .sbp-marks, ${Ph} .sbp-book .skirt, ${Ph} .sbp-book .back, ${Ph} .sbp-book .front, ${Ph} .sbp-band, ${Ph} .sbp-cap, ${Ph} .plaque .role, ${Ph} .tell, ${Ph} .bar, ${Ph} .mode, ${Ph} .moments, ${Ph} .hand, ${Ph} .actions::before, ${Ph} .composer::before, ${Ph} .composer::after { display: none; }
+${Ph} .plate { inset: 0 0 auto 0; height: calc(var(--top) + 8px); translate: none; transition: none; animation: none; }
+${Ph} .vignette { inset: var(--bar) 0 auto 0; height: var(--fig); box-shadow: none; background: linear-gradient(rgba(10,5,2,.4), transparent 30%, transparent 72%, rgba(10,5,2,.6)); }
+${Ph} .figure { inset: var(--bar) 0 auto 0; height: var(--fig); overflow: hidden; translate: none; transition: none; justify-content: center; align-items: flex-start; }
+${Ph} .fig { flex: none; height: calc(var(--fig) * 3); margin-top: calc(var(--fig) * -.14); }
+${Ph} .face { object-position: 50% 0; }
+${Ph} .fig.framed { height: var(--fig); width: min(70cqw, calc(var(--fig) * 2.2)); aspect-ratio: auto; margin: 0; box-shadow: -2px 0 0 #d9ad62, 2px 0 0 #d9ad62; }
+${Ph} .fig.framed::before, ${Ph} .fig.framed .sbp-arch { display: none; }
+${Ph} .fig.framed .face, ${Ph} .fig.framed::after { clip-path: none; object-position: 50% 18%; }
+/* The bar. */
+${Ph} .sbp-book::before { content: ""; position: absolute; inset: 0 0 auto 0; height: var(--bar); background: url(${hide}) center / 160px; box-shadow: inset 0 -2px 0 ${GILT}, inset 0 -3px 0 #2a1205, 0 2px 4px rgba(0,0,0,.5); }
+${Ph} .plaque { left: 10px; right: auto; top: 5px; bottom: auto; height: 22px; width: calc(100cqw - 196px); max-width: none; padding: 0; display: block; filter: none; z-index: 6; }
+${Ph} .plaque .who { display: block; font: 700 16px/22px ${GARA}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+${Ph} .kind { display: block; left: 10px; top: 27px; width: calc(100cqw - 196px); height: 20px; padding: 0; font: italic 400 13.5px/20px ${FELL}; color: #e9c57a; text-shadow: 0 1px 2px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+${Ph} .meter { position: absolute; z-index: 6; right: 62px; top: 4px; margin: 0; display: grid; grid-template-columns: auto auto; justify-content: end; align-items: baseline; gap: 1px 5px; }
+${Ph} .meter-label, ${Ph} .meter-value, ${Ph} .patience { position: static; width: auto; text-align: right; padding: 0; }
+${Ph} .meter-label { font: italic 600 13px/22px ${GARA}; letter-spacing: 0; text-transform: none; color: #e9c57a; }
+${Ph} .meter-label::first-letter { text-transform: uppercase; }
+${Ph} .meter-value { grid-column: auto; flex-direction: row; align-items: baseline; gap: 3px; font-size: 15px; line-height: 22px; }
+${Ph} .sbp-num { font-size: 16px; } ${Ph} .sbp-unit { font-size: 13px; }
+${Ph} .patience { grid-column: 1 / -1; grid-row: auto; display: flex; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: 2px; }
+${Ph} .patience .pl-label { flex: none; margin: 0 4px 0 0; font: italic 600 13px/20px ${GARA}; letter-spacing: 0; text-transform: none; color: #e9c57a; }
+${Ph} .pip { width: 13px; height: 13px; }
+/* The one compact control: what you know, the moments and the view mode open from it. */
+${Ph} .journal-btn { display: block; left: auto; right: 6px; top: 4px; bottom: auto; width: 52px; height: 44px; padding: 0; font-size: 0; letter-spacing: 0; filter: none; }
+${Ph} .journal-btn::before { content: "Facts\\A" attr(data-n); display: block; white-space: pre; font: 800 12px/1.2 ${CINZ}; letter-spacing: .02em; color: #f3d791; }
+${Ph}:has(.journal.open) .journal-btn::before { content: "Close"; }
+${Ph} .journal-btn:hover, ${Ph} .journal-btn:focus-visible { translate: none; }
+/* The page. */
+${Ph} .sbp-book .dlg { left: 0; right: 0; top: var(--top); bottom: 0; width: auto; height: auto; box-shadow: inset 0 2px 0 ${GILT}; }
+${Ph} .log { left: 12px; right: 12px; width: auto; top: var(--top); bottom: calc(var(--ribh) + var(--pen) + 8px); height: auto; padding: 16px 4px 12px 2px; scroll-padding-bottom: 12px; font-size: var(--fs); }
+${Ph} .speaker { font-size: 12px; letter-spacing: .12em; }
+${Ph} .setting { font-size: 15px; }
+${Ph} .you .prose { font-size: 15.5px; }
+${Ph} .read { font-size: 15px; }
+${Ph} .die { width: 34px; height: 34px; font-size: 14px; }
+${Ph} .trn { font-size: 14px; }
+${Ph} .tier { font-size: 12px; letter-spacing: .04em; }
+${Ph} .why summary { padding: 6px 0; }
+${Ph} .actions { left: 8px; right: 8px; width: auto; top: auto; bottom: calc(var(--pen) + 4px); height: var(--ribh); flex-direction: row; gap: 6px; --rh: var(--ribh); }
+${Ph} .actions button { flex: 1 1 0; min-width: 0; height: 100%; padding: 0 14px 0 calc(var(--rh) + 2px); font: 600 14.5px/1.05 ${GARA}; white-space: normal; filter: none; }
+${Ph} .actions .deal { flex-grow: 1.4; }
+${Ph} .actions button::before { width: var(--rh); left: 0; }
+${Ph} .actions button:hover, ${Ph} .actions button:focus-visible { translate: none; }
+${Ph} .composer { left: 8px; right: 8px; width: auto; bottom: 3px; height: 48px; grid-template-columns: 1fr auto; gap: 6px; }
+${Ph} .composer textarea { box-sizing: border-box; height: 46px; padding: 4px 10px; line-height: 1.2; white-space: normal; }
+${Ph} .status { left: 18px; right: 110px; bottom: 3px; height: 48px; font-size: 15px; line-height: 1.1; }
+${Ph} .say { min-width: 88px; height: 46px; padding: 0 14px 0 46px; font-size: 16px; filter: none; }
+${Ph} .say::before { width: 44px; left: 0; }
+${Ph} .say::after { left: 18px; }
+/* The end card takes the foot of the page; the log stops above it (./storybook/decor.ts measures it). */
+${Ph} .end.show { left: 0; right: 0; width: auto; bottom: 0; max-height: 62cqh; overflow-y: auto; padding: 14px 14px 8px; gap: 4px 12px; background: linear-gradient(rgba(239,224,189,.2), #e9d8b0 12px); box-shadow: inset 0 2px 0 ${GILT}; }
+${Ph}:has(.end.show) .log { bottom: var(--endh, 130px); }
+${Ph} .end-title { font-size: 22px; flex: 1 0 100%; }
+${Ph} .end-sub { font-size: 15px; flex: 1 0 100%; }
+${Ph} .leave { --rh: 44px; flex: 1 0 100%; min-width: 0; height: 44px; font-size: 16px; filter: none; }
+${Ph} .leave::before { width: 44px; left: 0; }
+${Ph} .leave:hover, ${Ph} .leave:focus-visible { translate: none; }
+/* The drawer, over the talk, leaving your pen in view: the facts (a tap cites one and closes it), the moments, the view mode. */
+${Ph} .journal.open { display: block; position: absolute; z-index: 20; left: 6px; right: 6px; top: calc(var(--bar) + 4px); bottom: calc(var(--pen) + 6px); margin: 0; padding: 48px 18px 12px; overflow: auto; list-style: none; border: 0; border-radius: 0; font: italic 400 16px/1.4 ${FELL}; color: #2b170a;
+  background: url(${folio}) center / cover; box-shadow: 0 0 0 2px #8a5a2a, 0 0 0 4px #2a1205, 0 8px 18px rgba(0,0,0,.7); }
+${Ph} .journal.open li:not(.empty) { display: none; }
+${Ph}:has(.journal.open) .hand { display: flex; left: 14px; right: 14px; width: auto; top: calc(var(--bar) + 12px); bottom: calc(var(--pen) + 6px + var(--dfoot)); z-index: 21; padding: 0; gap: 6px; filter: none; }
+${Ph}:has(.journal.open) .hand::before { margin: 0 0 4px; text-align: left; padding: 0; color: #5a2a10; text-shadow: none; font-size: 18px; }
+${Ph} .fact-card { min-height: 46px; padding: 6px 12px 6px 44px; font: 600 15px/1.2 ${GARA}; }
+${Ph} .fact-card::before { width: 32px; }
+${Ph} .fact-card.used { padding-right: 74px; }
+${Ph} .fact-card.used::after { font-size: 12px; letter-spacing: .08em; }
+${Ph} .fact-card:hover, ${Ph} .fact-card:focus-visible { translate: none; }
+${Ph}:has(.journal.open) .mode { display: flex; position: absolute; z-index: 21; left: 14px; right: 14px; top: auto; bottom: calc(var(--pen) + 12px); gap: 6px; }
+${Ph}:has(.journal.open) .mode button { flex: 1 1 0; height: 44px; padding: 0 6px; font-size: 12px; letter-spacing: .04em; }
+${Ph} .mode button:hover, ${Ph} .mode button:focus-visible, ${Ph} .mode button.on { translate: none; }
+${Ph} .mode button:not(.on) { filter: brightness(.72); }
+${Ph}:has(.journal.open) .moments:has(button) { display: flex; position: absolute; z-index: 21; left: 14px; right: 14px; top: auto; bottom: calc(var(--pen) + 64px); height: 68px; flex-direction: row; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+${Ph} .moments button { flex: none; width: 92px; height: 64px; aspect-ratio: auto; padding: 3px; rotate: none; box-shadow: 0 0 0 1px #6a4a22; }
+${Ph} .moments button:nth-child(even) { rotate: none; }
+${Ph} .moments button::before, ${Ph} .moments button::after { display: none; }
+${Ph} .moments button:hover, ${Ph} .moments button:focus-visible { scale: 1; }
+${Ph} .moment .cap { left: 18px; right: 18px; bottom: 20px; font-size: 19px; }
+/* The keyboard is open, or the screen is short: one thin line for the stakes, the talk, your pen. */
+${S} { --bar: 30px; --fig: 0px; --ribh: 36px; --pen: 50px; --fs: 16px; }
+${S} .kind, ${S} .figure, ${S} .plate, ${S} .vignette, ${S} .patience .pl-label, ${S} .meter-label { display: none; }
+${S} .plaque { top: 4px; width: calc(100cqw - 190px); }
+${S} .plaque .who { font-size: 14px; }
+${S} .meter { right: 8px; top: 3px; gap: 0 8px; align-items: center; }
+${S} .patience { grid-column: auto; }
+${S} .pip { width: 12px; height: 12px; }
+${S} .log { padding-top: 14px; padding-bottom: 8px; }
+${S} .actions { right: 62px; --rh: 34px; }
+${S} .actions button { font-size: 13.5px; padding-left: 36px; padding-right: 12px; }
+${S} .journal-btn { top: auto; right: 6px; bottom: calc(var(--pen) + 4px); width: 50px; height: 36px; }
+${S} .journal-btn::before { content: "Facts"; font-size: 12px; letter-spacing: 0; }
+${S}:has(textarea:focus) .journal.open, ${S}:has(textarea:focus) .hand, ${S}:has(textarea:focus) .mode, ${S}:has(textarea:focus) .moments { display: none !important; }
+/* A narrow short screen with the keyboard really open gets only the talk and your pen (without it, the deal must stay in reach). */
+@container (max-width: 599.98px) {
+  ${S}:has(textarea:focus) > * { --ribh: 0px; }
+  ${S}:has(textarea:focus) .actions, ${S}:has(textarea:focus) .journal-btn { display: none; }
+}
+/* Landscape: the row of ribbons goes up into the bar, beside the stakes. */
+@container (min-width: 600px) {
+  ${S} > * { --bar: 40px; --ribh: 0px; --top: 40px; --dfoot: 60px; }
+  ${S} .plaque { top: 9px; width: calc(100cqw - 600px); }
+  ${S} .meter { right: 416px; top: 7px; }
+  ${S} .actions { left: auto; right: 62px; top: 3px; bottom: auto; width: 346px; height: 34px; }
+  ${S} .journal-btn { top: 3px; bottom: auto; height: 34px; }
+  ${S}:has(.journal.open) .mode { right: 50%; }
+  ${S}:has(.journal.open) .moments:has(button) { left: calc(50% + 8px); bottom: calc(var(--pen) + 12px); height: 44px; }
+  ${S} .moments button { width: 62px; height: 44px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   ${P} .plate, ${P} .figure, ${P} .sbp-corners { translate: none !important; transition: none; }

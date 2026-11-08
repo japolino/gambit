@@ -183,6 +183,7 @@ export function decorateLobby(stage: BattleStage): StageDecor {
   const place = () => {
     const g = geom;
     root.classList.toggle("ph", g.portrait);
+    root.classList.toggle("side", g.portrait && g.w / g.h >= 0.95);
     root.style.setProperty("--u", `${g.u}px`);
     ttl.style.left = `${g.title.x}px`;
     ttl.style.top = `${g.title.y}px`;
@@ -235,10 +236,10 @@ export function decorateLobby(stage: BattleStage): StageDecor {
         // Plate on the floor under the figure (the stock plate's spot), kept on screen.
         let pw = Math.max(g.portrait ? 200 : 260, u.name.length * 15 + 96);
         // On a phone the plates share the width: each keeps to its share of the screen.
-        if (g.portrait) pw = Math.min(pw, Math.round((g.w / Math.max(1, alive) - 6) / (0.62 * g.u)));
+        if (g.portrait) pw = Math.min(pw, Math.round((g.enemyArea.w / Math.max(1, alive) - 6) / (0.62 * g.u)));
         if (p.el.style.getPropertyValue("--pw") !== String(pw)) p.el.style.setProperty("--pw", String(pw));
         const half = (pw / 2) * g.u * (g.portrait ? 0.62 : 1);
-        const x = Math.max(half + 4, Math.min(g.w - half - 4, view.x - px));
+        const x = Math.max(half + 4, Math.min(g.enemyArea.x + g.enemyArea.w - half - 4, view.x - px));
         const y = view.y + view.plate.y - 4 * g.u;
         p.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
         const v = u.hp / Math.max(1, u.maxHp);

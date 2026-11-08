@@ -336,6 +336,19 @@ export function mountParley(
     status.textContent = `${npc.name} weighs your words…`;
     pendingYou = addYou(text);
     cb.say(text);
+    watchBusy();
+  }
+  /** Busy waits on the backend and the model. If nothing arrives for this long, hand the talk back rather than lock it. */
+  let quiet: ReturnType<typeof setTimeout> | undefined;
+  function watchBusy() {
+    clearTimeout(quiet);
+    if (!busy) return;
+    quiet = setTimeout(() => {
+      busy = false;
+      status.textContent = `${npc.name} has gone quiet. You can keep talking.`;
+      log.querySelectorAll(".prose.waiting").forEach((p) => p.classList.remove("waiting"));
+      paintFoot();
+    }, 180_000);
   }
 
   /* ---------------- figure and mood ---------------- */
@@ -417,10 +430,24 @@ export function mountParley(
     const you = el("div", "you");
     you.append(el("div", "speaker", "You"), el("div", "prose", text));
     log.append(you);
+    turnStart = you;
     scrollDown();
     return you;
   }
-  const scrollDown = () => requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
+  /** On a phone, a turn longer than the log opens at its start: the player reads down from there. */
+  let turnStart: HTMLElement | null = null;
+  const scrollDown = () =>
+    requestAnimationFrame(() => {
+      const start = wrap.classList.contains("pl-phone") && turnStart?.isConnected ? turnStart : null;
+      if (start) {
+        const top = start.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop;
+        if (log.scrollHeight - top > log.clientHeight) {
+          log.scrollTop = Math.max(0, top - 6);
+          return;
+        }
+      }
+      log.scrollTop = log.scrollHeight;
+    });
 
   function readBlock(ex: Exchange): HTMLElement {
     const box = el("div", "read");
@@ -507,7 +534,7 @@ export function mountParley(
     hint.classList.toggle("hidden", over);
     input.disabled = sayBtn.disabled = busy;
     dealBtn.textContent = `${finalOffer ? "Take the final offer" : "Take it"} at ${formatValue(scenario, state.value)}`;
-    dealBtn.disabled = busy;
+    dealBtn.disabled = walkBtn.disabled = busy;
     endBox.textContent = "";
     endBox.classList.toggle("show", over);
     if (over) {
@@ -583,6 +610,31 @@ export function mountParley(
   paintHead();
   paintFoot();
   rebuild();
+  // Phones: fit the area the browser's bars and the keyboard leave, and say which layout applies (pl-phone, pl-short).
+  const parent = wrap.parentElement;
+  const vv = window.visualViewport;
+  let lastFit = "";
+  const fit = () => {
+    const box = parent?.getBoundingClientRect();
+    const w = Math.round(box?.width || window.innerWidth);
+    const h = Math.round(Math.min(vv?.height ?? window.innerHeight, box?.height || Infinity));
+    const key = `${w}x${h}:${vv?.offsetTop ?? 0}`;
+    if (key === lastFit) return;
+    lastFit = key;
+    const phone = w <= 760 || h <= 480;
+    wrap.classList.toggle("pl-phone", phone);
+    wrap.classList.toggle("pl-short", phone && h < 480);
+    wrap.style.setProperty("--pl-h", `${h}px`);
+    wrap.style.height = phone ? `${h}px` : "";
+    wrap.style.transform = phone && vv?.offsetTop ? `translateY(${Math.round(vv.offsetTop)}px)` : "";
+    scrollDown();
+  };
+  fit();
+  vv?.addEventListener("resize", fit);
+  vv?.addEventListener("scroll", fit);
+  window.addEventListener("resize", fit);
+  const fitWatch = parent ? new ResizeObserver(fit) : null;
+  if (parent) fitWatch?.observe(parent);
   // The theme fonts can arrive after the first layout and reflow the log; land on the newest line again.
   void document.fonts?.ready.then(() => scrollDown());
 
@@ -594,6 +646,7 @@ export function mountParley(
       viewMode = m;
       known = new Set([...next.known, ...journalIds]);
       busy = false;
+      watchBusy();
       status.textContent = "";
       shownValue = state.value;
       paintHead();
@@ -605,6 +658,7 @@ export function mountParley(
       state = next;
       decor?.update?.(next, [...known]);
       lastExchangeAt = Date.now();
+      watchBusy();
       hideMoment();
       const from = shownValue;
       shownValue = next.value;
@@ -617,6 +671,8 @@ export function mountParley(
       status.textContent = narrated ? `${npc.name} answers…` : "";
       scrollDown();
       setTimeout(() => {
+        // The talk closed while the dice were landing.
+        if (!wrap.isConnected) return;
         log.append(nb);
         blocks.get(ex.index)!.ready = true;
         paintHead();
@@ -637,6 +693,7 @@ export function mountParley(
     },
     judging(text) {
       busy = true;
+      watchBusy();
       paintFoot();
       if (!pendingYou) pendingYou = addYou(text);
       status.textContent = `${npc.name} weighs your words…`;
@@ -644,6 +701,7 @@ export function mountParley(
     reply(index, text, final) {
       replies.set(index, { text, final });
       showReply(index);
+      watchBusy();
     },
     setArt(key, url, cutout) {
       if (key === placeArtKey(scenario.id)) {
@@ -689,6 +747,7 @@ export function mountParley(
     },
     error(text) {
       busy = false;
+      watchBusy();
       status.textContent = text;
       if (pendingYou) {
         pendingYou.remove();
@@ -697,12 +756,17 @@ export function mountParley(
       paintFoot();
     },
     destroy() {
+      vv?.removeEventListener("resize", fit);
+      vv?.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+      fitWatch?.disconnect();
       try {
         decor?.destroy?.();
       } catch {
         // The view goes regardless.
       }
       if (momentTimer) clearTimeout(momentTimer);
+      clearTimeout(quiet);
       puppets.destroy();
       objectUrls.forEach((u) => URL.revokeObjectURL(u));
       style.remove();

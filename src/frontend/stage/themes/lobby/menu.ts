@@ -76,6 +76,7 @@ export class LobbyMenu extends ActionMenu {
     const portrait = g?.portrait ?? false;
     el.style.setProperty("--u", `${u}px`);
     el.classList.toggle("ph", portrait);
+    el.classList.toggle("many", this.skills.length > 5);
     const m = this.mode;
     const { w, h } = this.rect;
     if (m.kind === "wait") {

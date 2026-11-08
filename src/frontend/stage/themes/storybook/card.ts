@@ -13,7 +13,7 @@ import type { FigureSource } from "../../puppet/source.js";
 import type { PuppetFigure } from "../../puppet/puppet-figure.js";
 import { STATUS_STYLE } from "../../theme.js";
 import { drawStatusGlyph } from "../../ui.js";
-import { CINZEL, FELL } from "../shared.js";
+import { CINZEL, FELL, GARAMOND } from "../shared.js";
 import { ARCH_VB, PHIAL_PATH, archBack, archFront, diamond, halo, phialGlass, phialShadow, pip, scroll, seal, vitalPlate } from "./art.js";
 import { GEO } from "./layout.js";
 import { ArtSprite } from "./sprite.js";
@@ -89,6 +89,9 @@ export class BookCard extends PartyCard {
   private archH = 100;
   private aw = 100;
   private top = 0;
+  /** The arch's picture scale; a phone's arch is squat (wide for its height), so the two differ. */
+  private kx = 1;
+  private ky = 1;
   private hot = false;
   private haloA = 0;
   private sig = "";
@@ -124,22 +127,26 @@ export class BookCard extends PartyCard {
     this.position.set(rect.x, rect.y);
     const aw = rect.w;
     const archH = GEO.archH;
-    const ah = (aw * ARCH_VB.h) / ARCH_VB.w;
+    const compact = GEO.compact;
+    const ah = compact ? archH / 0.9 : (aw * ARCH_VB.h) / ARCH_VB.w;
     this.aw = aw;
     this.archH = archH;
     this.top = archH - ah * 0.9;
-    const k = aw / ARCH_VB.w;
+    const kx = aw / ARCH_VB.w;
+    const ky = ah / ARCH_VB.h;
+    this.kx = kx;
+    this.ky = ky;
     for (const s of [this.back, this.front]) {
       s.draw(aw, ah);
       s.position.set(0, this.top);
     }
-    const hs = aw * 1.9;
+    const hs = aw * (compact ? 1.45 : 1.9);
     this.haloArt.draw(hs, hs);
     this.haloArt.position.set(aw / 2 - hs / 2, this.top + ah * 0.36 - hs * 0.533);
     for (const m of [this.winMask, this.flashMask]) {
       m.clear().svg(`<svg><path d="${WIN}" fill="#fff"/></svg>`);
-      m.scale.set(k);
-      m.position.set(-ARCH_VB.x * k, this.top - ARCH_VB.y * k);
+      m.scale.set(kx, ky);
+      m.position.set(-ARCH_VB.x * kx, this.top - ARCH_VB.y * ky);
     }
     // The rim: the arch is cut at the page's top edge (it stands behind the page).
     this.rim.clear().rect(-aw, -rect.h * 2, aw * 3, archH + rect.h * 2 + 2).fill({ color: 0xffffff });
@@ -152,18 +159,29 @@ export class BookCard extends PartyCard {
     const ribbonMid = archH + Math.max(2, 4 * ui);
     this.scrollArt.position.set(aw / 2 - sw / 2, ribbonMid - sH * (55 / 72));
     const fs = Math.max(10, Math.round((sw / 200) * 14.5));
-    this.nameText.style = style({ fontFamily: CINZEL, fontWeight: "800", fontSize: fs, fill: 0xfff0cc, letterSpacing: Math.max(1, fs * 0.14), stroke: { color: 0x2a0606, width: Math.max(1.5, fs * 0.16) } });
-    this.nameText.text = this.unit.name.toUpperCase();
     this.nameText.scale.set(1);
-    if (this.nameText.width > sw * 0.7) this.nameText.scale.set((sw * 0.7) / this.nameText.width);
+    if (compact) {
+      // Never smaller than this: a long name loses its end, not its legibility.
+      this.nameText.style = style({ fontFamily: GARAMOND, fontWeight: "700", fontSize: 14, fill: 0xfff0cc, stroke: { color: 0x2a0606, width: 3 } });
+      let name = this.unit.name;
+      this.nameText.text = name;
+      while (this.nameText.width > sw * 0.8 && name.length > 3) {
+        name = name.slice(0, -1).trimEnd();
+        this.nameText.text = `${name}…`;
+      }
+    } else {
+      this.nameText.style = style({ fontFamily: CINZEL, fontWeight: "800", fontSize: fs, fill: 0xfff0cc, letterSpacing: Math.max(1, fs * 0.14), stroke: { color: 0x2a0606, width: Math.max(1.5, fs * 0.16) } });
+      this.nameText.text = this.unit.name.toUpperCase();
+      if (this.nameText.width > sw * 0.7) this.nameText.scale.set((sw * 0.7) / this.nameText.width);
+    }
     this.nameText.position.set(aw / 2, ribbonMid - sH * 0.02);
-    const bw = Math.min(aw * 0.62, 110 * ui);
+    const bw = compact ? Math.min(aw, 112) : Math.min(aw * 0.62, 110 * ui);
     this.badgeArt.draw(bw, (bw * 38) / 100);
-    this.badgeText.style = style({ fontFamily: CINZEL, fontWeight: "800", fontSize: Math.max(9, Math.round(bw * 0.1)), fill: 0xffd27a, letterSpacing: 1.6 });
+    this.badgeText.style = style({ fontFamily: CINZEL, fontWeight: "800", fontSize: compact ? 12 : Math.max(9, Math.round(bw * 0.1)), fill: 0xffd27a, letterSpacing: compact ? 0.6 : 1.6 });
     this.badge.position.set(aw / 2 - bw / 2, this.scrollArt.y - (bw * 38) / 100 * 0.35);
     this.badgeText.position.set(bw / 2, (bw * 38) / 100 / 2);
     // Vitals: a brass plate across the arch's foot, above the name scroll (it rises with the arch).
-    const pw = Math.round(aw * 0.86), pH = Math.round(pw * 0.22);
+    const pw = Math.round(compact ? aw - 6 : aw * 0.86), pH = compact ? 24 : Math.round(pw * 0.22);
     const px = (aw - pw) / 2, py = Math.round(ribbonMid - sH * 0.34 - pH - Math.max(2, aw * 0.02));
     this.plateArt.draw(pw, pH);
     this.plateArt.position.set(px, py);
@@ -172,23 +190,28 @@ export class BookCard extends PartyCard {
     this.fo.size(ph);
     this.hp.position.set(px + pw * 0.04 + ph * 0.4, py + pH * 0.52);
     this.fo.position.set(px + pw * 0.52 + ph * 0.4, py + pH * 0.52);
-    const big = Math.max(11, Math.round(pH * 0.56));
+    const big = compact ? 13 : Math.max(11, Math.round(pH * 0.56));
     const ink = { color: 0x120604, width: Math.max(2, big * 0.14) };
     this.hpText.style = style({ fontFamily: CINZEL, fontWeight: "800", fontSize: big, fill: 0xffefc7, stroke: ink });
     this.hpMax.style = style({ fontFamily: CINZEL, fontWeight: "700", fontSize: Math.max(8, Math.round(big * 0.5)), fill: 0xf1b8a0, stroke: ink });
     this.foText.style = style({ fontFamily: CINZEL, fontWeight: "800", fontSize: big, fill: 0xd8e8ff, stroke: ink });
     // The numbers clear of their phials.
     const gapX = ph * 0.52 + Math.max(3, pw * 0.035);
-    this.hpText.position.set(this.hp.x + gapX, py + (pH - big * 1.25) / 2);
-    this.foText.position.set(this.fo.x + gapX, py + (pH - big * 1.25) / 2);
+    // Four to a phone: no room for the phials beside the numbers, and the numbers matter more.
+    const phials = !compact || pw >= 96;
+    this.hp.visible = this.fo.visible = phials;
+    this.hpText.position.set(phials ? this.hp.x + gapX : px + 8, py + (pH - big * 1.25) / 2);
+    this.foText.position.set(phials ? this.fo.x + gapX : px + pw / 2 + 8, py + (pH - big * 1.25) / 2);
     this.vitalsH = { py, pH, pw, px };
     // Under the scroll, on the vellum: the class resource as rosettes, centred.
-    const rs = Math.max(10, Math.round(Math.min(18, aw * 0.07)));
-    this.resText.style = style({ fontFamily: FELL, fontStyle: "italic", fontSize: Math.max(11, Math.round(rs * 0.95)), fill: 0xe9c57a });
+    const rs = compact ? 11 : Math.max(10, Math.round(Math.min(18, aw * 0.07)));
+    this.resText.style = style({ fontFamily: FELL, fontStyle: "italic", fontSize: compact ? 13 : Math.max(11, Math.round(rs * 0.95)), fill: compact ? 0xf3d791 : 0xe9c57a });
     this.resText.position.set(0, ribbonMid + sH * 0.2 + Math.max(2, 3 * ui));
     this.pipSize = rs;
     this.hitArea = { contains: (x: number, y: number) => x >= 0 && x <= aw && y >= this.top && y <= rect.h };
     void sh;
+    // The rosettes, their plate and the seals are placed in redraw: a new size must lay them out again.
+    this.sig = "";
     this.redraw();
   }
 
@@ -197,9 +220,8 @@ export class BookCard extends PartyCard {
   }
 
   private fitOne(bust: PuppetFigure): void {
-    const k = this.aw / ARCH_VB.w;
-    const wx0 = (36 - ARCH_VB.x) * k, wx1 = (204 - ARCH_VB.x) * k;
-    const wy0 = this.top + (32 - ARCH_VB.y) * k;
+    const wx0 = (36 - ARCH_VB.x) * this.kx, wx1 = (204 - ARCH_VB.x) * this.kx;
+    const wy0 = this.top + (32 - ARCH_VB.y) * this.ky;
     const wy1 = this.archH;
     const ww = wx1 - wx0, wh = wy1 - wy0;
     if (bust.framed) {
@@ -211,9 +233,10 @@ export class BookCard extends PartyCard {
     // A cut-out: head and shoulders down to the waist, the face a sixth of the window, in its upper third.
     const face = bust.faceLocal;
     const faceH = Math.max(1, bust.faceHeightLocal);
-    const s = Math.min(wh / (bust.imageH * 0.42), Math.max(wh / (bust.imageH * 1.3), (wh * 0.2) / faceH));
+    // A phone's window is short: a closer crop, or the face is lost behind the vitals.
+    const s = GEO.compact ? Math.max(ww / bust.imageW, (wh * 0.34) / faceH) : Math.min(wh / (bust.imageH * 0.42), Math.max(wh / (bust.imageH * 1.3), (wh * 0.2) / faceH));
     bust.scale.set(s);
-    bust.position.set(this.aw / 2 - face.x * s, wy0 + wh * 0.3 - face.y * s);
+    bust.position.set(this.aw / 2 - face.x * s, wy0 + wh * (GEO.compact ? 0.26 : 0.3) - face.y * s);
   }
 
   override replaceBust(source: FigureSource, strength: number, cutout: boolean): { fresh: PuppetFigure; old: PuppetFigure } {
@@ -242,16 +265,23 @@ export class BookCard extends PartyCard {
       if (u.resource) {
         const r = u.resource;
         this.resText.text = r.name;
-        const n = Math.min(r.max, 10);
-        const size = Math.max(9, Math.min(this.pipSize, (this.aw * 0.96 - this.resText.width - 6) / Math.max(1, n) - 1));
+        let n = Math.min(r.max, 10);
+        let size = Math.max(9, Math.min(this.pipSize, (this.aw * 0.96 - this.resText.width - 6) / Math.max(1, n) - 1));
+        // Rosettes that won't fit under a phone's arch become the plain count.
+        if (GEO.compact && this.resText.width + 5 + n * (size + 1) > this.aw - 6) {
+          this.resText.text = `${r.name} ${r.value}/${r.max}`;
+          n = 0;
+          size = 0;
+        }
         const total = this.resText.width + 5 + n * (size + 1);
         this.resText.x = (this.aw - total) / 2;
         const x0 = this.resText.x + this.resText.width + 5;
         // A dark bronze plate under the label and rosettes, hanging from the name scroll.
         const ph = Math.max(size, this.resText.height) + 6;
         const py = this.resText.y + this.resText.height / 2 - ph / 2;
-        this.resPlate.clear().roundRect(this.resText.x - 9, py, total + 18, ph, ph * 0.3).fill({ color: 0x1a110b, alpha: 0.92 }).stroke({ width: 1, color: 0xd4af37 })
-          .roundRect(this.resText.x - 6, py + 3, total + 12, ph - 6, ph * 0.22).stroke({ width: 0.6, color: 0x8a6a2a, alpha: 0.8 });
+        const pad = GEO.compact ? 5 : 9;
+        this.resPlate.clear().roundRect(this.resText.x - pad, py, total + pad * 2, ph, ph * 0.3).fill({ color: 0x1a110b, alpha: 0.92 }).stroke({ width: 1, color: 0xd4af37 })
+          .roundRect(this.resText.x - pad + 3, py + 3, total + pad * 2 - 6, ph - 6, ph * 0.22).stroke({ width: 0.6, color: 0x8a6a2a, alpha: 0.8 });
         // Two gilt hangers tie the plate to the name scroll above it.
         for (const hx of [this.resText.x + 4, this.resText.x + total - 6]) this.resPlate.rect(hx, py - 7, 2.2, 8).fill({ color: 0xd4af37 }).stroke({ width: 0.5, color: 0x3a1a08 });
         for (let i = 0; i < n; i += 1) {
@@ -266,7 +296,7 @@ export class BookCard extends PartyCard {
       }
       // Statuses: wax seals down the arch's right shoulder.
       for (const c of this.seals.removeChildren()) c.destroy({ children: true });
-      const ss = Math.max(22, Math.round(this.aw * 0.17));
+      const ss = GEO.compact ? 20 : Math.max(22, Math.round(this.aw * 0.17));
       u.statuses.slice(0, 5).forEach((st, i) => {
         const sty = STATUS_STYLE[st.id];
         const c = new Container();
@@ -274,7 +304,7 @@ export class BookCard extends PartyCard {
         const g = new Graphics();
         drawStatusGlyph(g, sty.glyph, ss * 0.3, ss * 0.3, ss * 0.4, sty.harmful ? 0xffe2c8 : 0x4a2a0e);
         c.addChild(g);
-        c.position.set(this.aw - ss * 0.72, this.top + this.aw * 0.36 + i * (ss * 0.86));
+        c.position.set(this.aw - ss * (GEO.compact ? 1.05 : 0.72), this.top + (GEO.compact ? 12 : this.aw * 0.36) + i * (ss * 0.86));
         this.seals.addChild(c);
       });
     }
@@ -297,8 +327,9 @@ export class BookCard extends PartyCard {
     this.lift += (want - this.lift) * a;
     // The one acting steps forward: the arch rises and grows a little, embers drift up from its halo.
     this.arch.pivot.set(this.aw / 2, this.archH);
-    this.arch.position.set(this.aw / 2, this.archH - this.lift * 16 * this.ui);
-    this.arch.scale.set(1 + this.lift * 0.08);
+    // On a phone the arches stand shoulder to shoulder: the one acting barely steps out of line.
+    this.arch.position.set(this.aw / 2, this.archH - this.lift * (GEO.compact ? 3 : 16 * this.ui));
+    this.arch.scale.set(1 + this.lift * (GEO.compact ? 0.015 : 0.08));
     const e = this.embers;
     e.clear();
     if (this.lift > 0.05 && !this.still) {
@@ -310,9 +341,11 @@ export class BookCard extends PartyCard {
       }
     }
     this.haloA += ((this.active ? 1 : this.targetable ? 0.45 : 0) - this.haloA) * a;
-    this.haloArt.alpha = this.haloA * (this.still ? 1 : 0.85 + 0.15 * Math.sin(now * 2.2));
+    // On a phone the halo reaches the foes' plates just above the arches: fainter, so they stay legible.
+    this.haloArt.alpha = this.haloA * (GEO.compact ? 0.5 : 1) * (this.still ? 1 : 0.85 + 0.15 * Math.sin(now * 2.2));
     this.haloArt.visible = this.haloA > 0.01;
-    if (this.targetable) this.badge.y = this.scrollArt.y - this.badgeArt.height * 0.35 - (this.still ? 0 : (1 + Math.sin(now * 5)) * 2 * this.ui);
+    // On a phone it wears the badge at the arch's crown: at its foot it would hide the numbers you are choosing by.
+    if (this.targetable) this.badge.y = GEO.compact ? this.top + 6 : this.scrollArt.y - this.badgeArt.height * 0.35 - (this.still ? 0 : (1 + Math.sin(now * 5)) * 2 * this.ui);
     if (now > this.ghostHoldUntil && this.ghost > this.shownHp) {
       this.ghost = Math.max(this.shownHp, this.ghost - dt * 0.9);
       this.redraw();
@@ -320,7 +353,6 @@ export class BookCard extends PartyCard {
   }
 
   override get portraitCentre(): { x: number; y: number } {
-    const k = this.aw / ARCH_VB.w;
-    return { x: this.x + this.aw / 2, y: this.y + this.arch.y - this.archH + this.top + (150 - ARCH_VB.y) * k };
+    return { x: this.x + this.aw / 2, y: this.y + this.arch.y - this.archH + this.top + (150 - ARCH_VB.y) * this.ky };
   }
 }

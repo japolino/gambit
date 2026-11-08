@@ -81,6 +81,8 @@ interface Layout {
   W: number;
   H: number;
   port: boolean;
+  /** A phone, either way up: the actions are a row of readable cards along the bottom, the narration just above them. */
+  row: boolean;
   SW: number;
   SL: number;
   /** Canvas margin around the root so the tabletop can slide with parallax. */
@@ -133,7 +135,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       <button class="prop deck" aria-label="Classes (the deck case)">${deckCase()}</button>
       <button class="prop gavel" aria-label="Change the table (theme)" aria-haspopup="true">${gavel()}<span class="lab">Theme</span></button>
     </div>
-    <div class="st hl"><div class="fan"><div class="rail"></div></div>
+    <div class="st hl"><div class="fan"><div class="rail"></div></div><div class="more" aria-hidden="true">›</div>
       <div class="plaque" aria-live="polite">${plaque(stone, 11)}<div class="rib"></div><div class="ptx"></div><button class="tab" aria-expanded="false" aria-label="Show the whole log">LOG</button></div>
     </div>
     <div class="st fl"><div class="fgh">${handBack()}<div class="facts"></div>${handFront()}<div class="empty"></div></div></div>
@@ -164,6 +166,8 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const coinEl = $(".coins");
   const fan = $(".fan");
   const rail = $(".rail");
+  const more = $(".more");
+  fan.addEventListener("scroll", () => paintMore(), { passive: true });
   const plq = $(".plaque");
   const rib = $(".rib");
   const ptx = $(".ptx");
@@ -221,7 +225,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const yH = port ? H * 0.24 : H * 0.185;
     const yT = port ? H * 0.5 : H * 0.56;
     const geo: TableGeom = { w: cw, h: ch, yH, yT, cx: m + W / 2, backW: port ? W * 1.12 : SW * 0.96, lights: [] };
-    return { W, H, port, SW, SL, m, geo };
+    return { W, H, port, row: port || H <= 480, SW, SL, m, geo };
   }
 
   /** Px rect of a prop in stage coordinates. */
@@ -238,6 +242,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const same = L && L.W === next.W && L.H === next.H;
     L = next;
     tb.classList.toggle("port", L.port);
+    tb.classList.toggle("row", L.row);
     tb.style.setProperty("--sw", `${L.SW}px`);
     for (const st of root.querySelectorAll<HTMLElement>(".st")) {
       st.style.left = `${L.SL}px`;
@@ -302,8 +307,14 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     if (!L) return;
     let box: { x: number; y: number; w: number; h: number };
     const cardsTop = L.H * 0.69;
-    if (L.port) box = { x: L.W * 0.03, y: L.H * (logOpen ? 0.3 : 0.615), w: L.W * 0.94, h: L.H * (logOpen ? 0.46 : 0.145) };
-    else {
+    if (L.row) {
+      // Right above the cards, with room for four lines; the whole log opens upward from there.
+      const top = L.H - rowCardH(L) - 14;
+      const w = L.port ? L.W * 0.96 : Math.min(L.SW * 0.92, 600);
+      const h = L.port ? Math.max(L.H * 0.2, 118) : Math.max(L.H * 0.28, 96);
+      const y = logOpen ? Math.round(L.H * (L.port ? 0.08 : 0.03)) : top - h;
+      box = { x: (L.SW - w) / 2, y, w, h: logOpen ? top - y : h };
+    } else {
       let x0: number, x1: number, y0: number;
       if (x3 && t3) {
         const r = t3.matRect(L.W, L.H);
@@ -329,32 +340,50 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     Object.assign(plq.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` });
   }
 
-  /** Lay the action cards out as a fan (wide) or a scrolling row (portrait). */
+  /** How tall the action cards are on a phone: their labels are real px, so the card must hold them. */
+  function rowCardH(l: Layout): number {
+    return Math.round(l.port ? Math.max(118, Math.min(176, l.H * 0.215)) : Math.max(92, Math.min(120, l.H * 0.3)));
+  }
+
+  /** The row runs off the screen: say so. */
+  function paintMore(): void {
+    more.classList.toggle("on", !!L?.row && fan.scrollLeft + fan.clientWidth < fan.scrollWidth - 8);
+  }
+
+  /** Lay the action cards out as a fan (wide) or a scrolling row (phone): whole cards side by side, none on top of another. */
   function layoutHand(): void {
     if (!L) return;
     const all = cards;
     const n = all.length;
-    fan.classList.toggle("scroll", L.port);
-    if (L.port) {
-      const ch = L.H * 0.215;
-      const cw = ch * 0.68;
-      const step = cw * 0.76;
-      Object.assign(fan.style, { top: `${L.H * 0.765}px`, height: `${L.H * 0.235}px`, left: "0px", width: `${L.W}px` });
-      rail.style.width = `${cw + step * Math.max(0, n - 1) + L.W * 0.08}px`;
+    fan.classList.toggle("scroll", L.row);
+    if (L.row) {
+      const ch = rowCardH(L);
+      const cw = Math.max(100, Math.round(ch * 0.76));
+      const fw = Math.max(172, Math.round(cw * 1.5));
+      Object.assign(fan.style, { top: `${L.H - ch - 10}px`, height: `${ch + 10}px`, left: `${-L.SL}px`, width: `${L.W}px` });
+      Object.assign(more.style, { top: `${L.H - ch - 10}px`, height: `${ch + 10}px`, left: `${L.W - L.SL - 30}px` });
       fan.style.setProperty("--cw", `${cw}px`);
       fan.style.setProperty("--ch", `${ch}px`);
+      let x = 8;
       all.forEach((c, i) => {
         const s = c.el.style;
-        s.setProperty("--x", `${L!.W * 0.03 + i * step}px`);
-        s.setProperty("--y", `${L!.H * 0.022 + (i % 2 ? 3 : 0)}px`);
-        s.setProperty("--r", `${i % 2 ? 1.5 : -1.5}deg`);
+        const w = c.fact ? fw : cw;
+        s.setProperty("--cw", `${w}px`);
+        s.setProperty("--x", `${x}px`);
+        s.setProperty("--y", "4px");
+        s.setProperty("--r", "0deg");
         s.setProperty("--z", String(i + 1));
-        s.setProperty("--lift", `${L!.H * 0.02}px`);
-        s.setProperty("--hw", i === n - 1 ? "100%" : `${step * 1.1}px`);
-        s.setProperty("--tw", "86%");
+        s.setProperty("--lift", "0px");
+        s.setProperty("--hw", "100%");
+        s.setProperty("--tw", "92%");
+        x += w + 6;
       });
+      rail.style.width = `${x + 2}px`;
+      paintMore();
       return;
     }
+    more.classList.remove("on");
+    for (const c of all) c.el.style.removeProperty("--cw");
     Object.assign(fan.style, { top: "0px", height: "100%", left: "0px", width: "100%" });
     rail.style.width = "100%";
     const ch = L.H * 0.3;
@@ -382,7 +411,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   /** The facts held in your other hand, fanned from the thumb. */
   function layoutFacts(): void {
-    if (!L || L.port) return;
+    if (!L || L.row) return;
     const bw = L.H * 0.56;
     const ch = L.H * 0.33;
     const cw = ch * 0.68;
@@ -448,7 +477,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function setPeek(label: string | null): void {
     peek = label;
     if (view) paintRibbon(view);
-    if (L && !L.port && !facts.length) emptySlip.textContent = label ?? (view?.busy ? `${view.busy}…` : "Choose your move");
+    if (L && !L.row && !facts.length) emptySlip.textContent = label ?? (view?.busy ? `${view.busy}…` : "Choose your move");
   }
 
   function wire(el: HTMLButtonElement, label: string, run: (() => void) | null, fly = true): void {
@@ -486,7 +515,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const hand = ctx.hand(v);
     const lead = ctx.people(v)[0]?.name ?? null;
     const people = new Map(ctx.people(v).map((p) => [p.id, p]));
-    const port = !!L?.port;
+    const port = !!L?.row;
     // Talk cards carry the person's likeness, posterised; exits carry the place they go to.
     const artOf = (m: MenuItem): string | null => (m.group === "talk" && m.target ? ctx.personArt(v, m.target)?.url ?? null : m.art ?? null);
     // Two or more ways out fold into one Roads card that deals them as a second hand.
@@ -955,6 +984,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const b = document.createElement("button");
       b.className = `tag3 ${cls}`;
       b.dataset.pick = id;
+      b.dataset.short = label;
       // No labels hang in the air: the tag only shows (as what clicking will do) while you point at it.
       b.textContent = act3d(id, v).label || label;
       b.setAttribute("aria-label", act3d(id, v).label || label);

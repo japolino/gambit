@@ -6,17 +6,21 @@
  * woodcut drop cap, the hint while you choose a target, and the last blows while the fight plays out. The
  * acting member's name rides the page's rim on the brass nameplate.
  * Keyboard: number keys pick, arrows move, Enter takes, Escape goes back (wired by ./decor.ts).
+ * On a phone (GEO.compact) all of that is a plain page: flat ribbons drawn at once (no picture to wait for), each
+ * a full tap target with its cost or its reason written on it; choosing a skill tells its lore and lists the targets.
  */
 import { CanvasTextMetrics, Container, Graphics, Text, TextStyle } from "pixi.js";
 import { ActionMenu, type MenuSkill } from "../../battle/action-menu.js";
 import type { Rect } from "../../battle/layout.js";
 import { CINZEL, FELL, GARAMOND } from "../shared.js";
 import { capTile, medal, nameplate, nib, ribbonArt } from "./art.js";
-import { GEO } from "./layout.js";
+import { GEO, RIB_GAP, RIB_H } from "./layout.js";
 import { ArtSprite } from "./sprite.js";
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 const INK = 0x261409;
+/** The flat ribbons' cloth on a phone (the same silks as the pictures). */
+const CLOTH: Record<string, number> = { "sb-pat-do": 0x1c3560, "sb-pat-fight": 0x6e1919, "sb-pat-iron": 0x463c34, "sb-pat-deal": 0x1f4a30 };
 
 type Rib = { c: Container; art: ArtSprite; base: number; enabled: boolean; take: () => void; lore: () => void; x: number };
 
@@ -63,6 +67,11 @@ export class BookMenu extends ActionMenu {
   private taleWho = "";
   private k = 1;
   private t = 0;
+  /** The skills last offered, to tell a chosen one's lore on a phone. */
+  private offered: MenuSkill[] = [];
+  /** Who may be chosen right now, and choosing them (from ./decor.ts). */
+  targetsOf: () => { id: string; name: string }[] = () => [];
+  tapTarget: (id: string) => void = () => {};
 
   constructor() {
     super();
@@ -74,7 +83,7 @@ export class BookMenu extends ActionMenu {
   override place(rect: Rect, ui: number): void {
     this.rect = rect;
     this.ui = ui;
-    this.k = GEO.portrait ? Math.max(0.85, ui * 0.9) : Math.max(0.8, GEO.s);
+    this.k = GEO.compact ? 1 : Math.max(0.8, GEO.s);
     this.position.set(rect.x, rect.y);
     this.render();
   }
@@ -90,12 +99,12 @@ export class BookMenu extends ActionMenu {
 
   private setPlate(name: string): void {
     const k = this.k;
-    this.plate.visible = !!name;
-    if (!name) return;
-    const fs = Math.round((GEO.portrait ? 17 : 23) * k);
+    this.plate.visible = !!name && !GEO.compact;
+    if (!this.plate.visible) return;
+    const fs = Math.round(23 * k);
     this.plateName.style = st({ fontFamily: GARAMOND, fontWeight: "700", fontSize: fs, fill: 0xffefc7, letterSpacing: 0.4, dropShadow: { color: 0x000000, alpha: 0.9, blur: 2, distance: 2, angle: Math.PI / 2 } });
     this.plateName.text = name;
-    const h = Math.round((GEO.portrait ? 38 : 50) * k);
+    const h = Math.round(50 * k);
     const w = Math.round(this.plateName.width + h * 2.1);
     const vw = Math.round((w / h) * 52);
     this.plateArt.draw(w + (16 * h) / 52, h, `plate-${vw}`, () => nameplate(vw));
@@ -154,16 +163,7 @@ export class BookMenu extends ActionMenu {
   /** The page's text block for the current mode. */
   private tell(kind: "lore" | "target" | "tale", skill?: MenuSkill, hint?: string): void {
     for (const c of this.textBox.removeChildren()) c.destroy({ children: true });
-    if (GEO.portrait) {
-      // On a phone the page has no room for lore: one line of hint under the plate.
-      const k = this.k;
-      const txt = kind === "target" ? hint ?? "" : kind === "tale" ? this.tale.at(-1) ?? "" : skill ? (skill.usable ? skill.flavor ?? skill.cost : skill.reason ?? "") : "";
-      if (txt) {
-        const t = this.line(txt, GEO.page.x + 16, Math.round(GEO.plate.y + 22 * k), Math.round(13.5 * k), 0x4a2511, { italic: true, maxW: GEO.page.w - 32 });
-        if (t.height > 36 * k) t.scale.set((36 * k) / t.height);
-      }
-      return;
-    }
+    if (GEO.compact) return this.tellCompact(kind, skill, hint);
     const r = GEO.text;
     const k = this.k;
     const size = Math.round(Math.max(17, 24 * k));
@@ -213,6 +213,140 @@ export class BookMenu extends ActionMenu {
       }
       my += t.height + 2;
     }
+  }
+
+  /** One line that fits `w`: it loses its end rather than shrinking out of reach. */
+  private oneLine(text: string, x: number, y: number, w: number, size: number, color: number, opts: { italic?: boolean; font?: string; weight?: string } = {}): Text {
+    const t = this.line(text, x, y, size, color, opts);
+    let cut = text;
+    while (t.width > w && cut.length > 4) {
+      cut = cut.slice(0, -1).trimEnd();
+      t.text = `${cut}…`;
+    }
+    return t;
+  }
+
+  /** The phone's page. */
+  private tellCompact(kind: "lore" | "target" | "tale", skill?: MenuSkill, hint?: string): void {
+    const w = this.rect.w;
+    if (kind === "tale") {
+      // The fight as it plays: as many of the latest lines as the page holds, the newest last and darkest.
+      const room = this.rect.h - 4;
+      const lines = this.tale.length ? this.tale : [this.mode.kind === "wait" && this.mode.text ? this.mode.text : "The page turns…"];
+      const shown: Text[] = [];
+      let used = 0;
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const newest = i === lines.length - 1;
+        const t = this.line(lines[i]!, 2, 0, newest ? 17 : 15, newest ? INK : 0x5a3a20, { italic: !newest, maxW: w - 4 });
+        if (used + t.height > room && shown.length) {
+          t.destroy();
+          break;
+        }
+        used += t.height + 3;
+        shown.unshift(t);
+      }
+      let y = 2;
+      for (const t of shown) {
+        t.y = y;
+        y += t.height + 3;
+      }
+      return;
+    }
+    if (kind === "lore" && skill) {
+      // Under a finger or the arrow keys: what it is, or why not.
+      const text = skill.usable ? `${skill.name}: ${skill.flavor || skill.cost}` : `${skill.name}: ${skill.reason ?? "Not now"}.`;
+      this.oneLine(text, 2, 3, w - 4, 15, skill.usable ? INK : 0x8b1a1a, { italic: true });
+      return;
+    }
+    if (kind === "target" && skill) {
+      // The chosen skill's lore takes the room the ribbons leave.
+      const known = this.offered.find((o) => o.name === skill.name);
+      const head = this.oneLine(skill.name, 2, 1, w - 4, 18, 0x7a1c1c);
+      if (known?.cost) {
+        const cost = this.line(known.cost, 0, 5, 13, 0x7a4c1c, { font: GARAMOND, weight: "600" });
+        cost.x = Math.max(head.x + head.width + 10, w - cost.width - 4);
+      }
+      const body = [known?.flavor, hint].filter(Boolean).join(" ");
+      const t = this.line(body, 2, 26, 15, INK, { italic: true, maxW: w - 4 });
+      const room = this.compactRibTop() - 28;
+      if (t.height > room) t.text = hint ?? "";
+      return;
+    }
+    this.oneLine(this.mode.kind === "skills" ? `What will ${this.mode.actor} do?` : "", 2, 2, w - 4, 17, 0x5a2a10, { italic: true });
+  }
+
+  /** Where the ribbons start in the target step: at the foot of the page, with the lore above them. */
+  private compactRibTop(rows = 2): number {
+    return this.rect.h - rows * RIB_H - (rows - 1) * RIB_GAP;
+  }
+
+  /** A flat ribbon: drawn at once, a full tap target, its text at a size that can be read. */
+  private flat(x: number, y: number, w: number, h: number, label: string, sub: string, pat: string, icon: string, enabled: boolean, take: () => void, lore: () => void, reason = false): void {
+    const c = new Container();
+    c.position.set(x, y);
+    const md = Math.min(h - 6, 40);
+    const x0 = md * 0.5;
+    const g = new Graphics();
+    const body = [x0, 1, w - 1, 1, w - 13, h / 2, w - 1, h - 1, x0, h - 1];
+    g.poly(body).fill({ color: CLOTH[pat] ?? CLOTH["sb-pat-do"]! }).stroke({ width: 1.5, color: enabled ? 0xe0b36a : 0x9a8468 });
+    g.rect(x0 + 1, 2, w - x0 - 6, (h - 4) * 0.42).fill({ color: 0xffffff, alpha: 0.06 });
+    // The medallion's brass, there before its picture is.
+    g.circle(md / 2 + 1, h / 2, md / 2).fill({ color: enabled ? 0xc99a52 : 0x8a7a64 }).stroke({ width: 1, color: 0x3a1a08 });
+    g.circle(md / 2 + 1, h / 2, md / 2 - 4).fill({ color: 0x241006 });
+    const med = new ArtSprite(`med-${icon}`, () => medal(icon)).draw(md + 4, md + 4);
+    med.position.set(-1, (h - md - 4) / 2);
+    if (!enabled) med.alpha = 0.6;
+    const left = md + 7;
+    // Clear of the swallowtail's notch.
+    const room = w - left - 18;
+    /** Down to `min` of its size, then it loses its end: the text never gets too small to read. */
+    const fit = (t: Text, min: number): void => {
+      if (t.width <= room) return;
+      t.scale.set(Math.max(min, room / t.width));
+      let cut = t.text;
+      while (t.width > room && cut.length > 3) {
+        cut = cut.slice(0, -1).trimEnd();
+        t.text = `${cut}…`;
+      }
+    };
+    // Alone on its ribbon a long name (a target's) takes two lines; over a cost it keeps to one.
+    const name = new Text({ text: label, style: st({ fontFamily: GARAMOND, fontWeight: "600", fontSize: 16, lineHeight: 17, fill: enabled ? 0xfff4dc : 0xe8dcc6, wordWrap: !sub, wordWrapWidth: room }) });
+    if (sub) fit(name, 14 / 16);
+    // The highlight for a keyboard, or a finger on a locked skill.
+    const ptr = new Graphics().poly(body).stroke({ width: 2.5, color: 0xffd27a });
+    ptr.visible = false;
+    ptr.label = "ptr";
+    c.addChild(g, ptr, med, name);
+    if (sub) {
+      const t = new Text({ text: sub, style: st({ fontFamily: GARAMOND, fontWeight: "600", fontStyle: reason ? "italic" : "normal", fontSize: 13, fill: reason ? 0xffd9b8 : 0xf3d791 }) });
+      fit(t, 12 / 13);
+      name.position.set(left, h / 2 - name.height + 2);
+      t.position.set(left, h / 2 + 1);
+      c.addChild(t);
+    } else name.position.set(left, (h - name.height) / 2);
+    c.eventMode = "static";
+    c.cursor = enabled ? "pointer" : "default";
+    c.hitArea = { contains: (px: number, py: number) => px >= 0 && py >= -2 && px <= w && py <= h + 2 };
+    const rib: Rib = { c, art: med, base: x, enabled, take, lore, x };
+    const idx = this.ribs.length;
+    c.on("pointerover", () => this.focus(idx));
+    c.on("pointertap", (e) => {
+      e.stopPropagation();
+      if (enabled) take();
+      else this.focus(idx);
+    });
+    this.ribs.push(rib);
+    this.content.addChild(c);
+  }
+
+  /** Lay `n` ribbons out in two columns at the foot of a box; returns each one's rectangle. */
+  private grid(n: number, r: Rect, fromTop: boolean): Rect[] {
+    const rows = Math.ceil(n / 2);
+    const gap = RIB_GAP;
+    const rh = Math.round(Math.max(44, Math.min(50, (r.h - gap * (rows - 1)) / Math.max(1, rows))));
+    const cw = (r.w - gap) / 2;
+    const y0 = fromTop ? r.y : r.y + r.h - rows * rh - (rows - 1) * gap;
+    return Array.from({ length: n }, (_, i) => ({ x: r.x + (i % 2) * (cw + gap), y: y0 + Math.floor(i / 2) * (rh + gap), w: cw, h: rh }));
   }
 
   private rubric(text: string, x: number, y: number, w: number): number {
@@ -330,10 +464,10 @@ export class BookMenu extends ActionMenu {
     const k = this.k;
     const m = this.mode;
     const r = GEO.rib;
-    const phone = GEO.portrait;
+    const phone = GEO.compact;
     this.nibArt.visible = false;
     if (m.kind === "wait") {
-      this.setPlate(phone ? this.taleWho || "" : this.taleWho);
+      this.setPlate(this.taleWho);
       this.tell("tale");
       if (!phone) {
         const ns = Math.round(30 * k);
@@ -345,17 +479,30 @@ export class BookMenu extends ActionMenu {
     }
     if (m.kind === "target") {
       this.setPlate(m.skill);
-      const rh = Math.round(Math.max(38, Math.min(54, 52 * k)));
-      let y = r.y;
-      if (!phone) y += this.rubric("Upon whom?", r.x, y, r.w);
       const skill: MenuSkill = { id: "", name: m.skill, cost: "", usable: true, signature: false };
       const back = () => this.onBack();
       const conf = () => this.onConfirm();
       if (phone) {
-        const bw = (r.w - 10) / (m.confirm ? 2 : 1);
-        this.ribbon(-1, r.x + 6, y, bw - 6, rh, "Back", "", "sb-pat-iron", "back", true, back, () => {});
-        if (m.confirm) this.ribbon(-1, r.x + bw + 10, y, bw - 6, rh, "Confirm", "", "sb-pat-fight", "check", true, conf, () => {});
+        // Every target as a ribbon too (a foe in the picture still takes a tap), and the way back.
+        const targets = m.confirm ? [] : this.targetsOf();
+        const n = (m.confirm ? 1 : targets.length) + 1;
+        const cells = this.grid(n, { x: 0, y: 0, w: r.w, h: this.rect.h }, false);
+        let i = 0;
+        const cell = () => cells[i++]!;
+        if (m.confirm) {
+          const b = cell();
+          this.flat(b.x, b.y, b.w, b.h, "Confirm", "", "sb-pat-deal", "check", true, conf, () => {});
+        }
+        for (const t of targets) {
+          const b = cell();
+          this.flat(b.x, b.y, b.w, b.h, t.name, "", "sb-pat-fight", "sword", true, () => this.tapTarget(t.id), () => {});
+        }
+        const b = cell();
+        this.flat(b.x, b.y, b.w, b.h, "Choose again", "", "sb-pat-iron", "back", true, back, () => {});
       } else {
+        const rh = Math.round(Math.max(38, Math.min(54, 52 * k)));
+        let y = r.y;
+        y += this.rubric("Upon whom?", r.x, y, r.w);
         if (m.confirm) {
           this.ribbon(0, r.x + 24 * k, y, r.w - 24 * k, rh, "Confirm", "", "sb-pat-fight", "check", true, conf, () => {});
           y += rh + 8 * k;
@@ -369,18 +516,13 @@ export class BookMenu extends ActionMenu {
     this.setPlate(m.actor);
     const skills = m.skills;
     if (phone) {
-      const cols = 2;
-      const rows = Math.ceil(skills.length / cols);
-      const gap = Math.round(6 * k);
-      const top = r.y + Math.round(30 * k);
-      const rh = Math.round(Math.max(34, Math.min(42, (r.h - (top - r.y) - gap * (rows - 1)) / rows)));
-      const cw = (r.w - gap) / cols;
+      this.offered = skills;
+      const cells = this.grid(skills.length, r, true);
       skills.forEach((s, i) => {
-        const x = r.x + (i % cols) * (cw + gap) + 8;
-        const y = top + Math.floor(i / cols) * (rh + gap);
-        this.ribbon(-1, x, y, cw - 8, rh, s.name, s.usable ? s.cost : s.reason ?? "", s.signature ? "sb-pat-fight" : s.usable ? "sb-pat-do" : "sb-pat-iron", iconOf(s), s.usable, () => this.onPick(s.id), () => this.tell("lore", s), !s.usable);
+        const b = cells[i]!;
+        this.flat(b.x, b.y, b.w, b.h, s.name, s.usable ? s.cost : s.reason ?? "", s.signature ? "sb-pat-fight" : s.usable ? "sb-pat-do" : "sb-pat-iron", iconOf(s), s.usable, () => this.onPick(s.id), () => this.tell("lore", s), !s.usable);
       });
-      this.tell("lore", skills.find((s) => s.usable) ?? skills[0]);
+      this.tell("lore");
       return;
     }
     let y = r.y;
@@ -403,7 +545,7 @@ export class BookMenu extends ActionMenu {
     this.t = now;
     const a = 1 - Math.exp(-dt / 0.08);
     this.ribs.forEach((r, j) => {
-      const want = r.x - (j === this.focusI && r.enabled ? 12 * this.k : 0);
+      const want = r.x - (j === this.focusI && r.enabled && !GEO.compact ? 12 * this.k : 0);
       r.c.x += (want - r.c.x) * a;
     });
     if (this.nibArt.visible) this.nibArt.y = GEO.text.y + GEO.text.h - this.nibArt.height * 0.9 + Math.sin(now * 5) * 2;

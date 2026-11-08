@@ -12,20 +12,12 @@ import type { ParleyDecor, ParleyThemeCtx } from "../types.js";
 export const svgUrl = (svg: string): string =>
   `url("data:image/svg+xml,${encodeURIComponent(svg.replace(/^<svg /, '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ').replace(/ aria-hidden="true"| class="cardart"/g, ""))}")`;
 
-/** Brass corner filigree for the reply plaque (stretched over it). */
-const CORNERS = `<svg viewBox="0 0 400 300" preserveAspectRatio="none">${(
-  [
-    [0, 0, 1, 1],
-    [400, 0, -1, 1],
-    [0, 300, 1, -1],
-    [400, 300, -1, -1],
-  ] as const
-)
-  .map(
-    ([x, y, sx, sy]) =>
-      `<g transform="translate(${x} ${y}) scale(${sx} ${sy})" fill="none" stroke="#d8a040" stroke-width="2.4" stroke-linecap="round"><path d="M6,40 L6,6 L40,6"/><path d="M12,58 C12,26 26,12 58,12"/><path d="M16,16 C26,22 30,30 26,40 C22,30 14,28 16,16Z" fill="#d8a040"/><circle cx="6" cy="6" r="4" fill="#ffe6a0" stroke="#5a3608"/></g>`,
-  )
-  .join("")}</svg>`;
+/**
+ * One brass corner of the reply plaque, set in the plaque's border band (room.ts): the band is 40 of these 96 units.
+ * The rails run along the band and the leaf stays in its corner square, so none of it reaches the text.
+ */
+const corner = (x: number, y: number, sx: number, sy: number): string =>
+  `<svg viewBox="0 0 96 96"><g transform="translate(${x} ${y}) scale(${sx} ${sy})" fill="none" stroke="#d8a040" stroke-linecap="round"><path d="M5,92 L5,5 L92,5" stroke-width="2.6"/><path d="M12,64 L12,12 L64,12" stroke-width="1.3"/><path d="M17,17 C27,20 34,28 33,37 C25,34 18,27 17,17Z" fill="#d8a040" stroke-width="1"/><circle cx="5" cy="5" r="4" fill="#ffe6a0" stroke="#5a3608" stroke-width="1.6"/></g></svg>`;
 
 /** A little brass service bell (the deal is struck by ringing it). */
 const BELL = `<svg viewBox="0 0 40 40"><ellipse cx="20" cy="34" rx="17" ry="4" fill="#3a2008"/><path d="M5,32 C5,18 11,11 20,11 C29,11 35,18 35,32Z" fill="#d8a040" stroke="#1a0e02" stroke-width="2"/><path d="M10,28 C10,20 14,15 20,14" stroke="#fff2c0" stroke-width="2.4" fill="none" stroke-linecap="round"/><rect x="18" y="5" width="4" height="7" rx="1" fill="#8a5a18" stroke="#1a0e02" stroke-width="1.5"/><ellipse cx="20" cy="5" rx="5" ry="2" fill="#d8a040" stroke="#1a0e02" stroke-width="1.5"/></svg>`;
@@ -64,6 +56,73 @@ function chalk(g: CanvasRenderingContext2D, draw: (l: CanvasRenderingContext2D) 
   g.drawImage(c, 0, 0);
 }
 
+/**
+ * On a phone (.pl-phone, set by the view) the name joins the stakes bar, and what you know, the moments and the
+ * Immersive/Transparent switch move into a sheet the bar's "What you know" button opens (the view's own journal
+ * toggle: `.journal.open`). They are the view's real controls, moved, and go back where they were on a wider screen.
+ */
+function phoneSheet(ctx: ParleyThemeCtx): { destroy(): void } {
+  const root = ctx.root;
+  root.style.setProperty("--paper", `url("${paperUrl()}")`);
+  root.style.setProperty("--slate", `url("${slateUrl()}")`);
+  const find = (s: string) => root.querySelector<HTMLElement>(s);
+  const [head, journal, btn] = [find(".head"), find(".journal"), find(".journal-btn")];
+  const sheet = document.createElement("div");
+  sheet.className = "tb-sheet";
+  sheet.innerHTML = `<div class="tb-sh-top"><h3>What you know</h3><button type="button" class="tb-sh-close">Close</button></div><p class="tb-sh-note">Tap a card to cite it in what you say.</p><div class="tb-sh-facts"></div><div class="tb-sh-sec tb-sh-mom"><h3>Moments</h3></div><div class="tb-sh-sec tb-sh-told"><h3>How the talk is told</h3></div>`;
+  ctx.side.append(sheet);
+  const in_ = (s: string) => sheet.querySelector<HTMLElement>(s)!;
+  const moves: [HTMLElement | null, HTMLElement | null, boolean][] = [
+    [find(".plaque"), head, true],
+    [find(".hand"), in_(".tb-sh-facts"), false],
+    [journal, in_(".tb-sh-facts"), false],
+    [find(".moments"), in_(".tb-sh-mom"), false],
+    [find(".mode"), in_(".tb-sh-told"), false],
+  ];
+  const homes = moves.map(([n]) => {
+    const mark = document.createComment("");
+    n?.before(mark);
+    return mark;
+  });
+  let docked = false;
+  const dock = (): void => {
+    const on = root.classList.contains("pl-phone");
+    if (on === docked) return;
+    docked = on;
+    moves.forEach(([n, to, first], i) => {
+      if (!n) return;
+      if (!on) homes[i]!.after(n);
+      else if (first) to?.prepend(n);
+      else to?.append(n);
+    });
+  };
+  const sync = (): void => btn?.setAttribute("aria-expanded", String(!!journal?.classList.contains("open")));
+  // Playing a card or a moment closes the sheet: the view then focuses the input, or plays the moment.
+  const onSheet = (e: Event): void => {
+    if (!(e.target as HTMLElement).closest?.(".tb-sh-close, .fact-card, .moments button")) return;
+    journal?.classList.remove("open");
+    sync();
+  };
+  sheet.addEventListener("click", onSheet);
+  btn?.addEventListener("click", sync);
+  sync();
+  const watch = new MutationObserver(dock);
+  watch.observe(root, { attributes: true, attributeFilter: ["class"] });
+  dock();
+  return {
+    destroy() {
+      watch.disconnect();
+      btn?.removeEventListener("click", sync);
+      root.classList.remove("pl-phone");
+      dock();
+      sheet.remove();
+    },
+  };
+}
+
+/** No room behind the talk (no WebGL): the flat version, which a phone still reads through the same sheet. */
+export const decorateFlat = (ctx: ParleyThemeCtx): ParleyDecor => phoneSheet(ctx);
+
 export function decorateRoom(ctx: ParleyThemeCtx): ParleyDecor {
   const root = ctx.root;
   root.style.setProperty("--paper", `url("${paperUrl()}")`);
@@ -71,7 +130,10 @@ export function decorateRoom(ctx: ParleyThemeCtx): ParleyDecor {
   // The fact card without the scene's pen stroke across its foot (it ran through the text).
   root.style.setProperty("--fact", svgUrl(factCard(7, paperUrl()).replace(/<path d="M150,258[^>]*\/>/, "")));
   root.style.setProperty("--back", svgUrl(backSvg()));
-  root.style.setProperty("--corners", svgUrl(CORNERS));
+  root.style.setProperty("--cnr-tl", svgUrl(corner(0, 0, 1, 1)));
+  root.style.setProperty("--cnr-tr", svgUrl(corner(96, 0, -1, 1)));
+  root.style.setProperty("--cnr-bl", svgUrl(corner(0, 96, 1, -1)));
+  root.style.setProperty("--cnr-br", svgUrl(corner(96, 96, -1, -1)));
   root.style.setProperty("--bell", svgUrl(BELL));
   const hb = document.createElement("div");
   hb.className = "tb-hb";
@@ -98,6 +160,7 @@ export function decorateRoom(ctx: ParleyThemeCtx): ParleyDecor {
   });
   paintTx();
   ctx.side.append(hb, hf, tx);
+  const phone = phoneSheet(ctx);
   // Striking the deal rings the room's bell.
   const deal = ctx.side.querySelector(".actions .deal");
   const ring = (): void => {
@@ -228,6 +291,7 @@ export function decorateRoom(ctx: ParleyThemeCtx): ParleyDecor {
     destroy() {
       ro.disconnect();
       mo?.disconnect();
+      phone.destroy();
       deal?.removeEventListener("click", ring);
       hb.remove();
       hf.remove();

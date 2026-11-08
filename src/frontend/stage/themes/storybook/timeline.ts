@@ -9,6 +9,7 @@ import type { Rect } from "../../battle/layout.js";
 import { TimelineStrip } from "../../battle/timeline-strip.js";
 import { CINZEL } from "../shared.js";
 import { CREST, bezel, crest, scrollBand, scrollEnd } from "./art.js";
+import { GEO } from "./layout.js";
 import { ArtSprite } from "./sprite.js";
 
 type Coin = { key: string; c: Container; face: Sprite; mask: Graphics; ring: ArtSprite; x: number; target: number; size: number };
@@ -36,7 +37,8 @@ export class BookTimeline extends TimelineStrip {
     const ks = Math.max(8, Math.round(bh * 0.14));
     this.kicker.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "700", fontSize: ks, fill: 0x7a3b16, letterSpacing: ks * 0.22 });
     this.kicker.position.set(h * 0.7 + h * 0.42, (h - bh) / 2 + bh * 0.2);
-    this.kicker.visible = rect.w > 300;
+    // On a phone the strip is for the faces: no title over them.
+    this.kicker.visible = rect.w > 300 && !GEO.compact;
     this.fit(rect.w);
   }
 
@@ -57,7 +59,7 @@ export class BookTimeline extends TimelineStrip {
     const h = this.rect.h;
     const big = h;
     const bh = h * 0.8;
-    const small = Math.round(bh * (this.kicker.visible ? 0.64 : 0.78));
+    const small = Math.round(bh * (GEO.compact ? 0.86 : this.kicker.visible ? 0.64 : 0.78));
     const gap = Math.round(small * 0.12);
     const start = h * 0.7 + h * 0.42;
     const room = this.rect.w - start - (bh * 1.2 * 40) / 110;
@@ -67,7 +69,7 @@ export class BookTimeline extends TimelineStrip {
     let x = start;
     order.forEach((o, i) => {
       const now = i === 0;
-      const size = now ? big : Math.max(8, Math.round(small * k * (i === 1 ? 1.15 : 1)));
+      const size = now ? big : Math.max(8, Math.round(small * k * (i === 1 && !GEO.compact ? 1.15 : 1)));
       const key = `${o.id}#${order.slice(0, i).filter((p) => p.id === o.id).length}`;
       let coin = old.find((c) => c.key === key);
       if (coin) old.splice(old.indexOf(coin), 1);
@@ -129,7 +131,7 @@ export class BookTimeline extends TimelineStrip {
         if (i === 1) glow.ellipse(cw / 2, size / 2, cw * 0.75, size * 0.66).fill({ color: 0xffc860, alpha: 0.28 }).ellipse(cw / 2, size / 2, cw * 0.55, size * 0.5).fill({ color: 0xffe0a0, alpha: 0.25 });
       }
       coin.target = now ? 0 : x;
-      coin.c.y = now ? 0 : h / 2 + (this.kicker.visible ? bh * 0.13 : 0) - size / 2 + (i === 1 ? 6 * this.ui : 0);
+      coin.c.y = now ? 0 : GEO.compact ? h / 2 - size * 0.56 : h / 2 + (this.kicker.visible ? bh * 0.13 : 0) - size / 2 + (i === 1 ? 6 * this.ui : 0);
       next.push(coin);
       if (!now) x += cw + gap;
     });

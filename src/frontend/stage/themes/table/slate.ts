@@ -235,35 +235,56 @@ export class TableSlate extends TimelineStrip {
   }
 
   /** The phone's strip (1400 x 110): NOW, then the queue. */
+  /**
+   * The strip, drawn at its size on screen (three canvas pixels to one) so its text is real px: whoever's up, ringed,
+   * then as many of the next as fit whole at a readable size. Names are never squeezed; the rest wait their turn.
+   */
   private drawStrip(units: Map<string, DisplayUnit>): void {
     const c = this.strip;
+    const S = 3;
+    const pxW = Math.max(120, Math.round(this.rect.w));
+    const pxH = Math.max(24, Math.round(this.rect.h));
+    if (c.width !== pxW * S || c.height !== pxH * S) {
+      c.width = pxW * S;
+      c.height = pxH * S;
+      this.stripTex.source.resize(c.width, c.height, 1);
+    }
     const g = c.getContext("2d")!;
     this.paintSlate(g, c.width, c.height);
     chalk(
       g,
       (l) => {
         l.textAlign = "left";
-        let x = 26;
-        this.order.slice(0, 6).forEach((o, i) => {
+        l.textBaseline = "middle";
+        const mid = c.height / 2;
+        let x = 10 * S;
+        const right = c.width - 6 * S;
+        for (let i = 0; i < Math.min(6, this.order.length); i++) {
+          const o = this.order[i]!;
           const nm = this.nameOf(o.id, units);
+          l.font = `${i ? 600 : 800} ${(i ? 14 : 15) * S}px "Gambit Fell", serif`;
+          const w = l.measureText(nm).width;
+          const arrow = i ? 16 * S : 0;
+          if (i && x + arrow + w > right) break;
+          if (i) {
+            l.fillStyle = CHALK;
+            l.fillText("›", x + 4 * S, mid);
+            x += arrow;
+            l.font = `600 ${14 * S}px "Gambit Fell", serif`;
+          }
           l.fillStyle = l.strokeStyle = o.enemy ? RED_CHALK : CHALK;
-          l.font = `${i ? 600 : 800} ${i ? 44 : 58}px "Gambit Fell", serif`;
-          const w = Math.min(l.measureText(nm).width, i ? 260 : 360);
           l.globalAlpha = o.alive ? 1 : 0.45;
-          l.fillText(nm, x, 76, w);
+          l.fillText(nm, x, mid, right - x);
           l.globalAlpha = 1;
           if (i === 0) {
-            l.lineWidth = 5;
+            l.lineWidth = 1.5 * S;
             l.beginPath();
-            l.ellipse(x + w / 2, 58, w / 2 + 18, 42, 0, 0, Math.PI * 2);
+            l.ellipse(x + w / 2, mid, w / 2 + 6 * S, pxH * S * 0.42, 0, 0, Math.PI * 2);
             l.stroke();
+            x += 6 * S;
           }
-          x += w + 44;
-          if (x > c.width - 80) return;
-          l.fillStyle = CHALK;
-          l.font = `600 40px "Gambit Fell", serif`;
-          if (i < 5) l.fillText("›", x - 34, 72);
-        });
+          x += w;
+        }
       },
       912,
     );

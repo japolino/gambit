@@ -287,9 +287,9 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 .tb.zoomed .tag3 { opacity: 0 !important; pointer-events: none; }
 .tb.zoomed .plaque { opacity: 0; pointer-events: none; }
 /* The narration lies on the mat: tilted back into the table's perspective, pinned with two brass tacks. */
-.tb.x3:not(.port) .plaque:not(.open) { transform: perspective(1100px) rotateX(24deg); transform-origin: 50% 100%; filter: drop-shadow(0 14px 12px rgba(0,0,0,.9)); }
+.tb.x3:not(.port):not(.row) .plaque:not(.open) { transform: perspective(1100px) rotateX(24deg); transform-origin: 50% 100%; filter: drop-shadow(0 14px 12px rgba(0,0,0,.9)); }
 .tb.x3 .plaque .ptx { color: #ece6d8; }
-.tb.x3:not(.port) .plaque .ptx { font-size: max(15px, 2.1cqh); }
+.tb.x3:not(.port):not(.row) .plaque .ptx { font-size: max(15px, 2.1cqh); }
 .tb.x3 .plaque::before, .tb.x3 .plaque::after { content: ""; position: absolute; z-index: 2; top: 5.5%; width: max(9px, 1.1cqh); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff2c0, #d8a040 45%, #5a3608 80%); box-shadow: 0 2px 3px rgba(0,0,0,.8); }
 .tb.x3 .plaque::before { left: 21%; }
 .tb.x3 .plaque::after { right: 21%; }
@@ -305,6 +305,33 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 .tb .peek button.pkx { color: #e8c070; background: #1a1c20; }
 .tb .peek button:hover, .tb .peek button:focus-visible { filter: brightness(1.2) drop-shadow(0 0 6px #ff8a24); }
 .tb.port .peek { left: 4%; width: 92%; top: 6%; }
+
+/* A phone, either way up: labels in real px (the cards are sized to hold them), whole cards in a row that scrolls. */
+.tb .more { display: none; }
+.tb.row .more.on { display: grid; position: absolute; z-index: 69; width: 30px; place-items: center; font: 800 28px/1 "Gambit Fell", serif; color: #ffe6a0; text-shadow: 0 0 6px #000; background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.8)); pointer-events: none; }
+.tb.row .fgh { display: none; }
+.tb.row .fan.scroll { touch-action: pan-x; overscroll-behavior: contain; }
+.tb.row .card { filter: drop-shadow(0 3px 4px rgba(0,0,0,.75)); }
+.tb.row .card .ttl { left: 4%; right: 4%; width: auto; top: 3%; height: auto; min-height: 30%; padding: 3px 3px 4px; gap: 1px; overflow: visible; text-align: center; background: #e8dcc4; box-shadow: 0 1px 0 ${INK}; line-height: 1.05; }
+.tb.row .card .ttl small { font-size: 12px; line-height: 1.05; letter-spacing: 0; }
+.tb.row .card .ttl b, .tb.row .card .ttl.m b, .tb.row .card .ttl.s b { font-size: 13px; line-height: 1.08; letter-spacing: 0; }
+.tb.row .card .ttl.s b { font-size: 12px; }
+.tb.row .card .idx { display: none; }
+.tb.row .card.fact .ttl { left: 4%; right: 4%; width: auto; min-height: 0; padding: 3px 6px; background: #efe6d2; box-shadow: none; text-align: left; }
+.tb.row .card.fact .ttl b { font-size: 13px; }
+.tb.row .card.fact .ftx { left: 8%; right: 5%; top: 32%; bottom: auto; font: italic 13px/1.22 "Gambit Fell", serif; text-align: left; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+.tb.row .plaque .rib { left: 14%; right: 14%; font-size: 13px; letter-spacing: .08em; }
+.tb.row .plaque .ptx { left: 4.5%; right: 48px; top: 21%; bottom: 7%; font-size: 15px; line-height: 1.3; justify-content: flex-start; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+.tb.row .plaque .desc { white-space: normal; overflow: visible; }
+.tb.row .plaque .tab { right: 1.5%; top: 21%; bottom: 7%; width: 40px; height: auto; font-size: 12px; letter-spacing: .1em; }
+/* No pointer to hover with: the room's working props say what they are, and are big enough to hit. */
+.tb.row .tag3:not(.dim):not(.who3) { opacity: 1; font-size: 0; padding: 8px 9px 7px; letter-spacing: 0; margin-top: -6px; }
+.tb.row .tag3:not(.dim):not(.who3)::before { content: attr(data-short); font: 800 12px/1 "Gambit Cinzel", serif; letter-spacing: .04em; }
+.tb.row .tag3:not(.who3)::after { content: ""; position: absolute; inset: -9px -2px; }
+.tb.row:has(.plaque.open) .tag3 { display: none; }
+.tb.row .tag3.who3 { min-width: 96px; height: 44px; margin-top: -22px; }
+.tb.row .book .shut { font-size: 12px; letter-spacing: .08em; }
+.tb.row .tags button > span { font-size: 12px; letter-spacing: .08em; }
 
 @media (prefers-reduced-motion: reduce) {
   .tb .skull .fl, .tb .mote, .tb.busy .bell, .tb .tags button, .tb .book, .tb .plaque .busy::after { animation: none !important; }

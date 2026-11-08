@@ -9,6 +9,7 @@ import { requestBattleArt } from "./backend/battle-art.js";
 import { createBattles } from "./backend/battles.js";
 import { createCards } from "./backend/cards.js";
 import { createFxAssets } from "./backend/fx-assets.js";
+import { createGate } from "./backend/gate.js";
 import { createInlayPictures } from "./backend/inlay-pictures.js";
 import { modelsFor } from "./backend/models.js";
 import { createParleys } from "./backend/parleys.js";
@@ -46,6 +47,8 @@ cards.setPlaceHook({
 // Memory (4.6): Parley outcomes become deeds; the narrator hears what people here remember.
 parleys.setEndHook((u, scenario, state) => void play!.onParleyEnd(u, scenario, state).catch((e) => spindle.log.error(`gambit deeds: ${String(e)}`)));
 spindle.registerInterceptor((messages, ctx) => play!.intercept(messages, ctx), 60);
+/** World-changing actions run one at a time per chat. */
+const acting = createGate();
 const CAMPAIGN = "default"; // one campaign until the World Bible exists (M4)
 
 // Prompt pipeline: Parley outcomes are decided before the narrator writes (docs/DESIGN.md 8.3).
@@ -56,10 +59,14 @@ spindle.on("STREAM_TOKEN_RECEIVED", (p, userId) => parleys.onStreamToken(p.chatI
 spindle.on("GENERATION_ENDED", (p, userId) => {
   // Order matters: the contest detector must see whether this reply was a Parley narration.
   const wasParley = parleys.awaitingIn(p.chatId);
-  parleys.onGenerationEnded(p.chatId, p.content, userId);
+  void parleys.onGenerationEnded(p.chatId, p.content, userId).catch((e) => spindle.log.error(`gambit narration: ${String(e)}`));
   if (userId && !wasParley && !p.error) {
     void cards.afterReply(userId, p.chatId, p.messageId, p.generationType).catch((e) => spindle.log.error(`gambit chip: ${String(e)}`));
   }
+});
+// The player pressed stop: an ending too, or a Parley waiting on this reply never gets its input back.
+spindle.on("GENERATION_STOPPED", (p, userId) => {
+  void parleys.onGenerationEnded(p.chatId, p.content, userId).catch((e) => spindle.log.error(`gambit narration: ${String(e)}`));
 });
 spindle.on("MESSAGE_DELETED", (p, userId) => {
   const x = p as { chatId?: string; messageId?: string };
@@ -140,28 +147,28 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         await play!.open(userId, msg.chatId);
         break;
       case "scene.act":
-        await play!.act(userId, msg.chatId, msg.hotspot);
+        await acting.run(`${userId}:${msg.chatId}`, () => play!.act(userId, msg.chatId, msg.hotspot));
         break;
       case "scene.theme":
         await play!.setTheme(userId, msg.chatId, msg.theme);
         break;
       case "delve.step":
-        await play!.step(userId, msg.chatId, msg.move);
+        await acting.run(`${userId}:${msg.chatId}`, () => play!.step(userId, msg.chatId, msg.move));
         break;
       case "delve.leave":
-        await play!.leave(userId, msg.chatId);
+        await acting.run(`${userId}:${msg.chatId}`, () => play!.leave(userId, msg.chatId));
         break;
       case "hex.step":
-        await play!.hexStep(userId, msg.chatId, msg.q, msg.r);
+        await acting.run(`${userId}:${msg.chatId}`, () => play!.hexStep(userId, msg.chatId, msg.q, msg.r));
         break;
       case "board.act":
-        await play!.boardAct(userId, msg.chatId, msg.op, msg.cell, msg.tier);
+        await acting.run(`${userId}:${msg.chatId}`, () => play!.boardAct(userId, msg.chatId, msg.op, msg.cell, msg.tier));
         break;
       case "forge.act":
         await play!.forgeAct(userId, msg.chatId, msg.op, msg.arg, msg.arg2, msg.text);
         break;
       case "play.fight":
-        await play!.fight(userId, msg.chatId, { ...(msg.lead ? { lead: msg.lead } : {}), ...(msg.boss ? { boss: true } : {}) });
+        await acting.run(`${userId}:${msg.chatId}`, () => play!.fight(userId, msg.chatId, { ...(msg.lead ? { lead: msg.lead } : {}), ...(msg.boss ? { boss: true } : {}) }));
         break;
       case "look.match": {
         send({ type: "notice", level: "info", text: "Reading the card for a matching look…" }, userId);

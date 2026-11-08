@@ -8,7 +8,7 @@
 import type { ParleyTheme } from "./types.js";
 import { FELL, GARA } from "../style.js";
 import { ROOM_CSS } from "./table/room.js";
-import { decorateRoom } from "./table/stakes.js";
+import { decorateFlat, decorateRoom } from "./table/stakes.js";
 
 /* ------------------------------------------------------------------ */
 /* Table: candle-lit walnut, green baize, a chalk slate and woodcut    */
@@ -122,5 +122,5 @@ const TABLE = `
 export const theme: ParleyTheme = {
   css: TABLE + ROOM_CSS,
   inRoom: true,
-  decorate: (ctx) => (ctx.root.classList.contains("in-room") ? decorateRoom(ctx) : {}),
+  decorate: (ctx) => (ctx.root.classList.contains("in-room") ? decorateRoom(ctx) : decorateFlat(ctx)),
 };

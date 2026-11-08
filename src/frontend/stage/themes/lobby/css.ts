@@ -196,6 +196,81 @@ export const HUD_CSS = `
 .bb-tg { transition: opacity .15s; }
 .marks:has(.bb-tg:hover, .bb-tg:focus-visible) .bb-tg:not(:hover):not(:focus-visible) { opacity: .55; }
 
+/* ---------- Phones: real text in real rows. Nothing under 12px, nothing to tap under 44 ---------- */
+.lbb.ph .warm, .lbb.ph .sh { opacity: .75; }
+.lbb.ph .ttl { max-width: calc(100% - 16px); }
+.lbb.side .ttl { display: none; }
+.lbb.ph .ttl .cr { width: ${U(26)}; height: ${U(26)}; }
+.lbb.ph .ttl .rib { display: flex; align-items: baseline; gap: ${U(8)}; margin-left: ${U(-8)}; padding: ${U(3)} ${U(16)} ${U(3)} ${U(14)}; }
+.lbb.ph .ttl .rib b { font-size: max(15px, ${U(16)}); }
+.lbb.ph .ttl .rib span { margin: 0; font-size: max(12px, ${U(13)}); letter-spacing: .02em; text-transform: none; color: #cdb88f; }
+.lbb.ph .sub p { max-width: 100%; box-sizing: border-box; padding: ${U(2)} ${U(16)}; font-size: max(13px, ${U(15)}); line-height: 1.2; text-align: center; white-space: normal; }
+.lbb.ph .sub p em { font-size: max(12px, .85em); }
+.lbb.ph .sub p::before, .lbb.ph .sub p::after { margin-left: 0; margin-right: 0; }
+.lbb.ph .sub p::before { margin-bottom: 2px; } .lbb.ph .sub p::after { margin-top: 2px; }
+
+/* A party member: a window on their face, their name across its foot, then HP, focus and the class resource as a panel. */
+.lbb.ph .bb-card { --pn: ${U(48)}; box-shadow: inset 0 0 0 1px #8c6d36, 0 2px 6px rgba(0,0,0,.6); }
+.lbb.ph .bb-card::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--pn); background: linear-gradient(180deg, #17120c, #0c0a07); box-shadow: 0 -1px 0 #8c6d36; }
+.lbb.ph .bb-card.on { box-shadow: inset 0 0 0 2px #FFE2A8, 0 0 12px rgba(255,214,140,.65); }
+.lbb.ph .bb-card .fr, .lbb.ph .bb-card .ws, .lbb.ph .bb-card .glow { display: none; }
+.lbb.ph .bb-card.dead { box-shadow: inset 0 0 0 1px #4a3c28; }
+.lbb.ph .bb-card .nm { left: 2px !important; width: auto !important; right: 2px; top: auto !important; bottom: var(--pn); height: auto !important; padding: 1px 2px; justify-content: center; font-size: max(12px, ${U(12)}); letter-spacing: 0; line-height: 1.1; overflow: hidden; background: linear-gradient(0deg, rgba(10,8,6,.92), rgba(10,8,6,.55) 75%, rgba(10,8,6,0)); }
+.lbb.ph .bb-card .hp { left: 4px !important; right: 4px; width: auto !important; top: auto !important; bottom: calc(var(--pn) - ${U(20)}); height: ${U(17)} !important; border-radius: 2px; background: #2a0f0a; box-shadow: inset 0 0 0 1px rgba(200,170,110,.5); }
+.lbb.ph .bb-card .hp .num { right: 4px; font-size: max(12px, ${U(13)}); }
+.lbb.ph .bb-card .hp .num small { font-size: max(12px, ${U(12)}); color: #f0e0bc; }
+.lbb.ph .bb-card .fo { left: 4px !important; right: 4px; width: auto !important; top: auto !important; bottom: calc(var(--pn) - ${U(25)}); height: ${U(3)} !important; background: #0b0907; }
+.lbb.ph .bb-card .res { left: 4px !important; right: 4px; width: auto !important; top: auto !important; bottom: 3px; height: ${U(16)} !important; gap: 3px; }
+.lbb.ph .bb-card .res > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: max(12px, ${U(13)}); letter-spacing: 0; text-transform: none; color: #cdb88f; }
+.lbb.ph .bb-card .res .studs { flex: 0 1 auto; min-width: 0; gap: 1px; }
+.lbb.ph .bb-card .res .studs > i { flex: 0 1 ${U(11)}; width: ${U(11)}; min-width: 4px; height: ${U(11)}; }
+.lbb.ph .bb-card .res em { width: ${U(44)}; height: 5px; }
+.lbb.ph .bb-card .sts { left: auto !important; right: 3px; top: 3px !important; width: auto !important; height: auto !important; flex-direction: row; gap: 1px; }
+.lbb.ph .bb-card .bb-st { width: ${U(20)}; height: ${U(20)}; }
+.lbb.ph .bb-card .bb-st b { font-size: max(12px, ${U(12)}); }
+.lbb.ph .bb-st small { font-size: 12px; }
+.lbb.ph .bb-card .brk { inset: -2px; }
+.lbb.ph .bb-card .fallen { top: 12%; }
+.lbb.ph .bb-card .fallen span { padding: 2px 8px; font-size: max(13px, ${U(14)}); letter-spacing: .04em; transform: none; }
+
+/* Skills: a heading, then rows of two, the signature across both. The medallion stays as the row's icon. */
+.bb-menu.ph .col { inset: 0; gap: ${U(4)}; align-items: stretch; }
+.bb-menu.ph .hd { flex: none; margin: 0; justify-content: flex-start; align-items: baseline; gap: ${U(8)}; white-space: nowrap; }
+.bb-menu.ph .hd b { font-size: max(15px, ${U(16)}); text-shadow: none; }
+.bb-menu.ph .hd span { font-size: max(12px, ${U(13)}); letter-spacing: .02em; text-transform: none; text-shadow: none; }
+.bb-menu.ph .row { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: minmax(${U(50)}, auto); align-content: start; align-items: stretch; gap: ${U(4)}; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; pointer-events: auto; }
+.bb-menu.ph .bb-sk, .bb-menu.ph .bb-sk.sig { width: auto; display: grid; grid-template-columns: ${U(38)} minmax(0, 1fr); grid-template-rows: auto auto; column-gap: ${U(5)}; align-content: center; align-items: start; padding: ${U(3)} ${U(5)} ${U(3)} ${U(3)}; text-align: left; background: linear-gradient(180deg, rgba(34,26,16,.96), rgba(16,12,8,.96)); box-shadow: inset 0 0 0 1px rgba(200,170,110,.6); }
+.bb-menu.ph .bb-sk.sig { grid-column: 1 / -1; box-shadow: inset 0 0 0 1.5px #DFC183; }
+.bb-menu.ph:not(.many) .bb-sk.off { background: rgba(14,11,8,.92); box-shadow: inset 0 0 0 1px rgba(120,100,70,.5); }
+.bb-menu.ph .bb-sk .md, .bb-menu.ph .bb-sk.sig .md, .bb-menu.ph .bb-sk.sel .md, .bb-menu.ph .bb-sk:not(.off):hover .md, .bb-menu.ph .bb-sk:not(.off):focus-visible .md { grid-column: 1; grid-row: 1 / span 2; align-self: center; width: ${U(38)}; height: ${U(38)}; transform: none; }
+.bb-menu.ph .bb-sk .lock, .bb-menu.ph .bb-sk.sig .lock { left: ${U(14)}; top: 50%; width: ${U(14)}; height: ${U(16)}; transform: translateY(-50%); z-index: 2; }
+.bb-menu.ph .bb-sk .key, .bb-menu.ph .bb-sk .halo { display: none; }
+.bb-menu.ph .bb-sk .pl { grid-column: 2; grid-row: 1; width: auto; min-height: 0; margin: 0; padding: 0; display: block; }
+.bb-menu.ph .bb-sk .pl .pa { display: none; }
+.bb-menu.ph .bb-sk .pl b, .bb-menu.ph .bb-sk.sig .pl b, .bb-menu.ph .bb-sk .pl.two b { display: block; width: 100%; max-width: none; margin: 0; text-align: left; font-size: max(13px, ${U(14)}); line-height: 1.08; letter-spacing: 0; text-transform: none; text-shadow: none; }
+.bb-menu.ph .bb-sk .cost, .bb-menu.ph .bb-sk .why { grid-column: 2; grid-row: 2; margin: 1px 0 0; min-height: 0; font-size: max(13px, ${U(14)}); line-height: 1.1; letter-spacing: 0; text-transform: none; text-shadow: none; }
+.bb-menu.ph .bb-sk.off .pl b { color: #b8a68a; }
+.bb-menu.ph .bb-sk.sel { box-shadow: inset 0 0 0 2px #FFE2A8, 0 0 10px rgba(255,214,140,.55); }
+/* Choosing a target: what you're aiming and what to do, Back and Confirm at thumb size; the others stay in the list below. */
+.bb-menu.ph .hd.aim { flex-wrap: nowrap; justify-content: flex-start; align-items: stretch; gap: ${U(4)}; white-space: normal; }
+.bb-menu.ph .hd.aim .rb { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1px; padding: 0 ${U(6)}; background: rgba(14,11,8,.92); box-shadow: inset 0 0 0 1px rgba(200,170,110,.6); }
+.bb-menu.ph .hd.aim .rb .bgp { display: none; }
+.bb-menu.ph .hd.aim .rb b { font-size: max(13px, ${U(14)}); line-height: 1.1; }
+.bb-menu.ph .hd.aim .rb i { font-size: max(13px, ${U(13)}); line-height: 1.1; text-shadow: none; }
+.bb-menu.ph .hd.aim button { flex: none; height: 46px; min-width: 66px; padding: 0 ${U(10)}; background: linear-gradient(180deg, #2c2214, #17110a); box-shadow: inset 0 0 0 1.5px #DFC183; }
+.bb-menu.ph .hd.aim button .pa { display: none; }
+.bb-menu.ph .hd.aim button b { font-size: 13px; letter-spacing: .03em; }
+.bb-menu.ph[data-mode="target"] .bb-sk:not(.sel):not(.off) .md { filter: none; }
+.bb-menu.ph[data-mode="target"] .bb-sk.off { display: none; }
+
+/* Foes: their names in the readable face, with room for them on the plate. */
+.lbb.ph .bb-ep b { left: 9%; right: 9%; font: 700 max(13px, ${U(14)})/${U(27)} ${SERIF}; letter-spacing: 0; text-transform: none; }
+.lbb.ph .bb-ep .bk { font-size: max(12px, ${U(12)}); letter-spacing: .06em; }
+.lbb.ph .bb-ep .sts { left: auto; right: 0; top: 100%; margin: ${U(2)} 0 0; }
+.lbb.ph .bb-ep .bb-st b { font-size: 12px; }
+.lbb.ph .bb-ep .bb-st { width: ${U(20)}; height: ${U(20)}; }
+.lbb.ph .bb-tg span { font-size: 13px; letter-spacing: .03em; opacity: 1; }
+
 @keyframes bbSpin { to { transform: rotate(360deg); } }
 @keyframes bbPulse { from { opacity: .55; } to { opacity: 1; } }
 @keyframes bbGlint { 0%, 100% { opacity: .2; transform: scale(.6); } 50% { opacity: 1; transform: scale(1.1); } }

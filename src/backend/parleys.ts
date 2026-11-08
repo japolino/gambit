@@ -359,6 +359,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       return true;
     } catch (err) {
       awaiting.delete(state.chatId);
+      narrating.delete(state.chatId);
       log(`could not post to chat ${state.chatId}: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
@@ -435,12 +436,27 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
     },
 
     async close(userId: string, parleyId: string, how: "deal" | "walk") {
-      const state = await load(userId, parleyId);
-      const scenario = state && (await scenarioOf(userId, state.scenarioId));
-      if (!state || !scenario) return;
-      const closed = closeParley(scenario, state, how);
-      await save(userId, closed);
-      await pushState(userId, closed);
+      // A line still being judged would save over this ending; a second tap would end it twice.
+      const bk = k(userId, parleyId);
+      if (busy.has(bk)) return send({ type: "parley.error", error: "Still judging the last line." }, userId);
+      busy.add(bk);
+      try {
+        const state = await load(userId, parleyId);
+        const scenario = state && (await scenarioOf(userId, state.scenarioId));
+        if (!state || !scenario) return;
+        const closed = closeParley(scenario, state, how);
+        await save(userId, closed);
+        if (closed !== state && scenario.card && closed.chatId) {
+          try {
+            endHook?.(userId, scenario, closed);
+          } catch {
+            /* the ledger never breaks a Parley */
+          }
+        }
+        await pushState(userId, closed);
+      } finally {
+        busy.delete(bk);
+      }
     },
 
     async setNarrator(userId: string, mode: ParleyNarrator) {
@@ -551,16 +567,31 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi) {
       return inject(sceneBlock(scenario, state));
     },
 
-    /** The narrator finished: hand the reply to the Parley view. */
-    onGenerationEnded(chatId: string, content: string | undefined, userId?: string) {
+    /**
+     * The narrator finished, failed or was stopped: the Parley view gets a final reply either way, or its input
+     * stays locked. This generation was the exchange's; a swipe briefs a new one through the interceptor, and any
+     * other reply in this chat must not be taken for it.
+     */
+    async onGenerationEnded(chatId: string, content: string | undefined, userId?: string) {
       narrating.delete(chatId);
       const s = streams.get(chatId);
       if (s?.timer) clearTimeout(s.timer);
       streams.delete(chatId);
       const w = awaiting.get(chatId);
-      if (!w || !content || (userId && w.userId !== userId)) return;
-      send({ type: "parley.reply", parleyId: w.parleyId, index: w.index, text: content, final: true }, w.userId);
-      void remember(w.userId, w.parleyId, w.index, { reply: cleanReply(content, 400) }).catch(() => {});
+      if (!w || (userId && w.userId !== userId)) return;
+      awaiting.delete(chatId);
+      if (content) {
+        send({ type: "parley.reply", parleyId: w.parleyId, index: w.index, text: content, final: true }, w.userId);
+        await remember(w.userId, w.parleyId, w.index, { reply: cleanReply(content, 400) }).catch(() => {});
+        return;
+      }
+      const state = await load(w.userId, w.parleyId);
+      const scenario = state && (await scenarioOf(w.userId, state.scenarioId));
+      const ex = state?.exchanges[w.index];
+      if (!state || !scenario || !ex) return send({ type: "parley.error", error: "The narrator stopped before answering." }, w.userId);
+      const text = ex.reply || fallbackReply(scenario, state, ex);
+      send({ type: "parley.reply", parleyId: w.parleyId, index: w.index, text, final: true }, w.userId);
+      if (!ex.reply) await remember(w.userId, w.parleyId, w.index, { reply: text }).catch(() => {});
     },
 
     onGenerationStarted(chatId: string) {

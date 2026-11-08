@@ -323,41 +323,147 @@ export function css(): string {
 .gs.storybook .mw-dots i { background: rgba(243,215,145,.3); transform: none; border-radius: 50%; } .gs.storybook .mw-dots i.on { background: #f3d791; box-shadow: 0 0 8px #f3d791; }
 .gs.storybook .mw-hint { font: 600 12px/1 "Gambit Cinzel", serif; color: #d9ad62; letter-spacing: .24em; }
 
-/* ---------- Phone: the stage stacks (scene, page, choices) ---------- */
+/* ---------- Phone: the stage stacks: the header, the cast, the page, the choices. The page and the list always show in full; the book's frame, corners, skirt and light go, because they cost reading room. ---------- */
 @container stage (max-width: 760px) {
-  .sb-st > * { --dw: calc(100cqw - 44px); --dh: 25cqh; --db: 31cqh; --fs: 17.5px; --fb: 50cqh; --fh: 43cqh; }
-  .sb-head { top: 1.2cqh; left: 8px; height: 62px; }
-  .sb-head .scroll { min-width: 0; padding: 0 22px 0 26px; max-width: 54cqw; }
-  .sb-head .ttl { font-size: 19px; max-width: 46cqw; }
-  .sb-head .kick { font-size: 9.5px; letter-spacing: .12em; }
-  .sb-marks { right: 6px; gap: 4px; }
-  .sb-marks .bm { width: 40px; }
-  .sb-dlg .page { inset: 24px 18px 14px 18px; }
-  .sb-dlg .plate { left: 14px; top: -22px; height: 40px; }
-  .sb-dlg .plate .nm { font-size: 17px; }
-  .sb-dlg .tabs { right: 10px; top: -48px; }
-  .sb-dlg .tab { width: 58px; height: 36px; }
+  /* --rows is how many rows of ribbons there are (../storybook.ts), up to 3.5: the half row says that the list scrolls. */
+  .sb-st > * { --ribh: 46px; --dw: calc(100cqw - 12px); --ch: calc(min(var(--rows, 3), 3.5) * (var(--ribh) + 4px) + 8px); --dh: clamp(148px, 30cqh, 230px); --db: var(--ch); --fs: 16.5px; --fb: calc(var(--db) + var(--dh) - 40px); --fh: calc(100cqh - var(--db) - var(--dh) + 20px); }
+  .sb-head { top: 4px; left: 4px; height: 50px; filter: none; }
+  .sb-head .astro { height: 100%; }
+  .sb-head .scroll { min-width: 0; height: 88%; padding: 0 12px 0 18px; max-width: calc(100cqw - 196px); box-sizing: border-box; }
+  .sb:has(.sb-marks .bm:nth-child(4)) .sb-head .scroll { max-width: calc(100cqw - 238px); }
+  .sb-head .scroll > .end { display: none; }
+  .sb-head .ttl { font-size: 18px; max-width: 100%; }
+  .sb-head .kick { font-size: 12px; line-height: 1; padding-top: 3px; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; }
+  .sb-head .kick i { padding: 0 .15em; }
+  .sb-marks { right: 4px; gap: 2px; }
+  .sb-marks .bm { width: 41px; }
+  /* The emblem says what it is (the full words are its label): a word small enough to fit could not be read. */
+  .sb-marks .bm svg text:nth-of-type(1) { font-size: 21px; }
+  .sb-marks .bm svg text:nth-of-type(2) { display: none; }
+  .sb-dlg { left: 6px; }
+  .sb-dlg > .frame { display: none; }
+  .sb-dlg > .vellum { clip-path: none !important; box-shadow: 0 0 0 2px #d9ad62, 0 0 0 4px #2a1205, 0 4px 10px rgba(0,0,0,.6); }
+  .sb-dlg .page { inset: 30px 12px 0 12px; touch-action: pan-y; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); }
+  .sb-dlg .txt { padding: 4px 0 14px; }
+  .sb-dlg .desc .dc { width: 2.1em; height: 2.1em; }
+  .sb-dlg .plate { left: 4px; top: -12px; height: 38px; filter: none; max-width: calc(100cqw - 170px); }
+  .sb-dlg .plate .cap { width: 26px; }
+  .sb-dlg .plate .band { padding: 0 6px; min-width: 0; }
+  .sb-dlg .plate .nm { font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
+  .sb-dlg .plate .seal { width: 40px; margin: 0 0 0 -6px; }
+  .sb-dlg .tabs { right: 2px; top: -18px; gap: 2px; }
+  .sb-dlg .tab { width: 48px; height: 44px; filter: none; }
   .sb-dlg .tab .tl { display: none; }
-  .sb-dlg .tab:hover, .sb-dlg .tab:focus-visible, .sb-dlg .tab[aria-pressed="true"], .sb-dlg .tab[aria-expanded="true"] { transform: translateY(-3px); }
-  .sb-choices { left: 10px; right: 10px; width: auto; top: auto; bottom: 1cqh; height: 26cqh; padding: 4px 4px 4px 30px; margin: 0; justify-content: flex-start; }
-  .sb-choices .rib { translate: none; }
+  .sb-dlg .tab:hover, .sb-dlg .tab:focus-visible, .sb-dlg .tab[aria-pressed="true"], .sb-dlg .tab[aria-expanded="true"] { transform: none; }
+  .sb-dlg .nib { display: none; }
+  .sb-choices { left: 6px; right: 6px; width: auto; top: auto; bottom: 0; height: var(--ch); padding: 4px 0 4px; margin: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: var(--ribh); gap: 4px; align-content: start; touch-action: pan-y; overscroll-behavior: contain; }
+  .sb-choices > :first-child, .sb-choices > :last-child { margin: 0; }
   .sb-choices .rubric { display: none; }
-  .sb-choices .rib { height: 42px; }
-  .sb-choices .rib:hover, .sb-choices .rib:focus-visible { transform: none; }
-  .sb-choices .rose { width: min(70cqw, 27cqh); margin: 0 auto; }
-  .sb-cast .fig.cameo { bottom: calc(var(--db) + var(--dh) - 4cqh); height: calc(var(--s) * 40cqh); }
-  .sb-tags .tag { width: 120px; bottom: calc(var(--db) + var(--dh) + 58px); }
+  .sb-choices .rib { translate: none; height: var(--ribh); gap: 4px; padding: 0 16px 0 0; min-width: 0; }
+  .sb-choices .rib.enter { animation: none; }
+  .sb-choices .rib .rib-art { inset: 0 0 0 18px; width: calc(100% - 18px); filter: none; }
+  .sb-choices .rib .rib-art path:first-child { display: none; }
+  .sb-choices .rib .med { width: 42px; height: 42px; margin-left: 0; }
+  .sb-choices .rib .lb { font-size: 15px; line-height: 1.08; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .sb-choices .rib .n, .sb-choices .rib .ptr, .sb-choices .rib .sheen { display: none; }
+  .sb-choices .rib:hover, .sb-choices .rib:focus-visible, .sb-choices .rib:active { transform: none; }
+  /* A delve: the compass beside its ribbons, every point of it a full tap target. */
+  .sb-choices:has(.rose) { grid-template-columns: 150px 1fr; grid-auto-rows: 46px; }
+  .sb-choices .rose { grid-column: 1; grid-row: 1 / span 3; width: 150px; height: 150px; margin: 0; filter: none; }
+  .sb-choices .rose > svg text { display: none; }
+  .sb-choices .rose .mv { width: 44px; height: 44px; }
+  .sb-choices .rose .mv.c { width: 44px; }
+  .sb-choices .rose .mv:hover, .sb-choices .rose .mv:focus-visible { transform: translate(-50%,-50%); }
+  .sb-choices:has(.rose) .rib { grid-column: 2; }
+  .sb[data-mode="delve"] .sb-st > * { --ch: 158px; --dh: clamp(120px, 22cqh, 170px); }
+  .sb-folio .pin { display: none; }
+  .sb-cast .fig.cameo { bottom: calc(var(--db) + var(--dh) - 8px); height: calc(var(--s) * (100cqh - var(--db) - var(--dh) - 66px)); }
+  .sb-tags .tag { width: 150px; min-height: 46px; bottom: calc(var(--db) + var(--dh) + 26px); }
+  .sb-tags .tag svg text { font-size: 16.5px; letter-spacing: .5px; }
+  /* Three people share the width: narrower scrolls, larger type in them, so it lands at the same size. */
+  .sb-tags:has(.tag:nth-child(3)) .tag { width: 31cqw; }
+  .sb-tags:has(.tag:nth-child(3)) .tag svg text { font-size: 22px; letter-spacing: 0; }
   .sb-skirt { display: none; }
-  .sb-dlg .txt.two { display: block; }
-  .sb-dlg .margin { display: none; }
-  .sb-folio { top: 10cqh; left: 3cqw; width: 70cqw; height: 26cqh; }
-  .sb-folio.delve { width: 30cqw; height: 16cqh; top: 9cqh; }
+  .sb-dlg .txt.two { display: flex; flex-direction: column; gap: 6px; }
+  /* What came before reads above the narration: scroll up for it (the page opens on the narration's first line). */
+  .sb-dlg .margin { order: -1; max-height: none; overflow: visible; padding: 0 0 6px; font-size: 14.5px; border-bottom: 1px dashed rgba(122,76,28,.45); }
+  .sb-dlg .margin .dv, .sb-dlg .margin .dvk { display: none; }
+  .sb-dlg .margin .mh { font-size: 12px; letter-spacing: .12em; }
+  .sb-folio { top: 60px; left: 3cqw; width: 60cqw; height: min(26cqh, calc(100cqh - var(--db) - var(--dh) - 90px)); transform: none; }
+  .sb-folio.delve { width: 30cqw; height: 16cqh; top: 60px; }
+  .sb-folio .fl-t { font-size: 14px; }
+  .sb-folio .hexmap text { font-size: 12px; }
+}
+/* A short window (landscape on a phone): the page and the choices side by side under a thin header, the cast dropped behind them. */
+@container stage (max-height: 480px) and (min-width: 480px) {
+  .sb-st > * { --ribh: 46px; --dw: 54cqw; --dh: calc(100cqh - 62px); --db: 4px; --fs: 16.5px; --fb: -6cqh; --fh: 94cqh; --ch: calc(100cqh - 56px); }
+  .sb-head { top: 3px; left: 4px; height: 44px; filter: none; }
+  .sb-head .astro { height: 100%; }
+  .sb-head .scroll { min-width: 0; height: 86%; padding: 0 16px 0 16px; }
+  .sb-head .scroll > .end { display: none; }
+  .sb-head .ttl { font-size: 17px; }
+  .sb-head .kick { font-size: 12px; line-height: 1; padding-top: 3px; letter-spacing: .02em; }
+  .sb-marks { right: 4px; gap: 2px; flex-direction: row; }
+  .sb-marks .bm { width: 41px; height: 56px; overflow: hidden; }
+  .sb-marks .bm svg text:nth-of-type(1) { font-size: 21px; }
+  .sb-marks .bm svg text:nth-of-type(2) { display: none; }
+  .sb-dlg { left: 6px; }
+  .sb-dlg > .frame { display: none; }
+  .sb-dlg > .vellum { clip-path: none !important; box-shadow: 0 0 0 2px #d9ad62, 0 0 0 4px #2a1205; }
+  .sb-dlg .page { inset: 28px 12px 0 12px; touch-action: pan-y; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); }
+  .sb-dlg .txt { padding: 4px 0 14px; }
+  .sb-dlg .txt.two { display: flex; flex-direction: column; gap: 6px; }
+  .sb-dlg .margin { order: -1; max-height: none; overflow: visible; padding: 0 0 6px; font-size: 14.5px; }
+  .sb-dlg .margin .dv, .sb-dlg .margin .dvk { display: none; }
+  .sb-dlg .margin .mh { font-size: 12px; letter-spacing: .12em; }
+  .sb-dlg .plate { left: 4px; top: -8px; height: 34px; filter: none; }
+  .sb-dlg .plate .cap { width: 24px; }
+  .sb-dlg .plate .nm { font-size: 16px; }
+  .sb-dlg .tabs { right: 2px; top: -14px; gap: 2px; }
+  .sb-dlg .tab { width: 48px; height: 44px; filter: none; }
+  .sb-dlg .tab .tl { display: none; }
+  .sb-dlg .tab:hover, .sb-dlg .tab:focus-visible, .sb-dlg .tab[aria-pressed="true"], .sb-dlg .tab[aria-expanded="true"] { transform: none; }
+  .sb-dlg .nib { display: none; }
+  .sb-skirt { display: none; }
+  .sb-choices { left: calc(54cqw + 16px); right: 6px; width: auto; top: 58px; bottom: 4px; height: auto; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; justify-content: flex-start; overscroll-behavior: contain; touch-action: pan-y; }
+  .sb-choices > :first-child, .sb-choices > :last-child { margin: 0; }
+  .sb-choices .rubric { display: none; }
+  .sb-choices .rib { translate: none; height: var(--ribh); gap: 4px; padding: 0 16px 0 0; }
+  .sb-choices .rib.enter { animation: none; }
+  .sb-choices .rib .rib-art { inset: 0 0 0 18px; width: calc(100% - 18px); filter: none; }
+  .sb-choices .rib .med { width: 42px; height: 42px; margin-left: 0; }
+  .sb-choices .rib .lb { font-size: 15px; }
+  .sb-choices .rib .n, .sb-choices .rib .ptr, .sb-choices .rib .sheen { display: none; }
+  .sb-choices .rib:hover, .sb-choices .rib:focus-visible, .sb-choices .rib:active { transform: none; }
+  .sb-choices .rose { flex: none; width: 150px; height: 150px; margin: 0 auto 2px; filter: none; }
+  .sb-choices .rose > svg text { display: none; }
+  .sb-choices .rose .mv, .sb-choices .rose .mv.c { width: 44px; height: 44px; }
+  .sb-choices .rose .mv:hover, .sb-choices .rose .mv:focus-visible { transform: translate(-50%,-50%); }
+  .sb-folio { display: none; }
+}
+/* The corners are outside the stage: a short window drops them too. */
+@container (max-height: 480px) {
+  .sb-corners, .sb-ap .fr { display: none; }
+}
+@container (max-width: 760px) or (max-height: 480px) {
+  .sb-rays, .sb-motes, .sb-grade { display: none; }
+  .sb-vig { box-shadow: none; }
+  .sb-slip { width: min(240px, calc(100cqw - 16px)); max-height: calc(100cqh - 16px); overflow-y: auto; box-sizing: border-box; }
+  .sb-slip button { min-height: 44px; }
+}
+/* The classes panel is the host's and sits outside the theme's containers, so this one goes by the window. */
+@media (max-width: 760px), (max-height: 480px) {
+  .gs.storybook > .fg { font-size: 16px; }
+  .gs.storybook > .fg header .x { min-width: 44px; min-height: 44px; }
+  .gs.storybook > .fg nav button { min-height: 44px; padding: 6px 12px 10px; font-size: 12px; letter-spacing: .06em; }
+  .gs.storybook > .fg button.go, .gs.storybook > .fg button.plain { min-height: 44px; min-width: 56px; font-size: 13px; }
+  .gs.storybook > .fg summary { padding: 10px 0; }
+  .gs.storybook > .fg .tag { font-size: 12px; }
 }
 /* Outside the stage (corners, journal, delve aperture) the window itself is the container. */
 @container (max-width: 760px) {
   .sb-ap, .sb[data-mode="delve"] .sb-bg { left: 4cqw; width: 92cqw; top: 8cqh; height: 34cqh; }
-  .sb-corner.tl, .sb-corner.tr { width: 130px; }
-  .sb-corner.bl, .sb-corner.br { display: none; }
+  .sb-corners { display: none; }
   .sb-jr .book { width: calc(100cqw - 36px); height: calc(100cqh - 40px); }
   .sb-jr .pages { grid-template-columns: 1fr; overflow: auto; background: url(${page}) center / cover; }
   .sb-jr .pg { overflow: visible; box-shadow: none !important; padding: 24px 22px; }

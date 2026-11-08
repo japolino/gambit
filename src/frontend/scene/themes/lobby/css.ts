@@ -55,6 +55,7 @@ export function lobbyCss(tx: { leather: string; parchment: string; chart: string
 .lb-badge .rib { margin-left: ${U(-30)}; padding: ${U(8)} ${U(90)} ${U(8)} ${U(46)}; background: linear-gradient(90deg, rgba(14,12,10,.92) 0%, rgba(14,12,10,.7) 55%, rgba(14,12,10,0) 100%); }
 .lb-badge .rib b { display: block; font: 800 ${U(31)}/1.05 ${CAPS}; letter-spacing: .04em; color: #F5E8C7; text-shadow: ${SHADOW}; white-space: nowrap; max-width: ${U(620)}; overflow: hidden; text-overflow: ellipsis; }
 .lb-badge .rib .rule { display: block; height: ${U(10)}; width: ${U(320)}; margin: ${U(5)} 0 ${U(4)}; }
+.lb-badge .rib .dy { display: none; }
 .lb-badge .rib span { display: block; font: 700 ${U(14)}/1 ${SERIF}; letter-spacing: .2em; text-transform: uppercase; color: #b8a27a; text-shadow: 0 1px 2px #000; white-space: nowrap; }
 
 /* ---------- Resource troughs (top-right) ---------- */
@@ -368,68 +369,151 @@ button.lb-talk:hover > .art { filter: drop-shadow(0 0 ${U(16)} rgba(230,185,90,.
 @container lbs (max-width: 760px) {
   .lb-stage > *, .lb-scene > * { --u: calc(100cqw / 560); --hc: 50%; }
 }
-.lb.phone .lb-stage { overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
-.lb.phone .lb-scene { position: relative; inset: auto; flex: none; height: max(${U(900)}, 74cqh); }
-.lb.phone .lb-hero { left: 52%; height: ${U(620)}; bottom: ${U(-6)}; }
-.lb.phone .lb-hero-in > .halo { left: ${U(-230)}; width: ${U(460)}; height: ${U(460)}; top: ${U(-30)}; } .lb.phone .lb-hero-in > .halo.bust { top: ${U(90)}; } .lb.phone .lb-hero-in > .brk { display: none; }
-.lb.phone .lb-hero .px::before { left: ${U(-200)}; width: ${U(400)}; }
-.lb.phone .lb-glowback { left: ${U(-200)}; }
-.lb.phone .lb-badge { left: ${U(12)}; top: ${U(14)}; }
-.lb.phone .lb-badge .rib { padding-right: ${U(20)}; }
-.lb.phone .lb-badge .rib b { max-width: ${U(380)}; font-size: ${U(30)}; }
-.lb.phone .lb-badge .rib .rule { width: ${U(240)}; }
-.lb.phone .lb-res { left: ${U(36)}; right: ${U(10)}; top: ${U(140)}; gap: ${U(34)} ${U(50)}; flex-wrap: wrap; justify-content: flex-start; }
-.lb.phone .lb-tr { width: ${U(220)}; height: ${U(50)}; }
-.lb.phone .lb-tr .ic { width: ${U(70)}; height: ${U(70)}; left: ${U(-28)}; }
-.lb.phone .lb-tr b { font-size: ${U(23)}; padding-top: ${U(11)}; }
-.lb.phone .lb-tr b small { font-size: ${U(15)}; }
-.lb.phone .lb-tr .cap { display: none; }
-.lb.phone .lb-rail { left: auto; right: ${U(4)}; top: ${U(300)}; gap: ${U(10)}; }
-.lb.phone .lb-rail > button { width: ${U(100)}; }
-.lb.phone .lb-rail .ri { width: ${U(70)}; height: ${U(70)}; }
-.lb.phone .lb-rail span { font-size: ${U(18)}; }
-.lb.phone .lb-themes { left: auto; right: ${U(110)}; top: ${U(300)}; }
-.lb.phone .lb-themes button { width: ${U(260)}; height: ${U(56)}; font-size: ${U(19)}; }
-.lb.phone .lb-lockets { left: ${U(8)}; top: ${U(300)}; gap: ${U(2)}; }
-.lb.phone .lb-lk { width: ${U(92)}; height: ${U(110)}; } .lb.phone .lb-lk.on { width: ${U(108)}; height: ${U(130)}; }
-.lb.phone .lb-lk .nm { font-size: ${U(18)}; }
-.lb.phone .lb-lk, .lb.phone .lb-lk.on { margin-bottom: ${U(26)}; }
-.lb.phone .lb-feed { order: 1; } .lb.phone .lb-cluster { order: 2; } .lb.phone .lb-dock { order: 3; }
-.lb.phone .lb-talk { left: calc(52% - ${U(210)}); width: ${U(420)}; height: ${U(74)}; bottom: ${U(30)}; }
-.lb.phone .lb-talk .nm { font-size: ${U(27)}; top: ${U(11)}; } .lb.phone .lb-talk .rl { font-size: ${U(13)}; top: ${U(44)}; } .lb.phone .lb-talk .q { right: ${U(-4)}; }
-.lb.phone .lb-chart { width: ${U(320)}; height: ${U(320)}; }
-.lb.phone .lb-cluster { position: relative; right: auto; top: auto; width: auto; height: auto; flex: none; padding: ${U(30)} ${U(10)} 0; display: flex; flex-direction: column; gap: ${U(40)}; }
-.lb.phone .lb-cluster::before { inset: 0; background: linear-gradient(rgba(10,8,6,0), rgba(10,8,6,.78) ${U(80)}); }
-.lb.phone .lb-instr { position: relative; height: auto; flex-wrap: wrap; justify-content: center; gap: ${U(40)} ${U(4)}; padding-top: ${U(30)}; }
-.lb.phone .lb-ins, .lb.phone .lb-instr.n4 .lb-ins { width: ${U(166)}; height: ${U(232)}; }
-.lb.phone .lb-ins > .art, .lb.phone .lb-instr.n4 .lb-ins > .art { top: 0; height: ${U(166)}; }
-.lb.phone .lb-ins.k-wait { transform: none; }
-.lb.phone .lb-ins.k-wait > .art, .lb.phone .lb-instr.n4 .lb-ins.k-wait > .art { top: ${U(-14)}; height: ${U(180)}; }
-.lb.phone .lb-ins .pl { top: ${U(158)}; height: ${U(66)}; left: ${U(-4)}; right: ${U(-4)}; }
-.lb.phone .lb-ins .pl b, .lb.phone .lb-instr.n4 .lb-ins .pl b { font-size: ${U(17)}; top: ${U(11)}; }
-.lb.phone .lb-ins .pl i, .lb.phone .lb-instr.n4 .lb-ins .pl i { top: ${U(38)}; height: ${U(18)}; font-size: ${U(11)}; left: 10%; right: 10%; letter-spacing: .1em; }
-.lb.phone .lb-cards { position: relative; top: auto; height: auto; flex-wrap: wrap; justify-content: center; gap: ${U(50)} ${U(20)}; }
-.lb.phone .lb-card.wide { width: ${U(540)}; height: ${U(357)}; }
-.lb.phone .lb-card .ttl b { font-size: ${U(21)}; }
-.lb.phone .lb-card.tall { width: ${U(340)}; height: ${U(460)}; }
-.lb.phone .lb-card .gauge, .lb.phone .lb-card .gauge2, .lb.phone .lb-card .pips { font-size: ${U(15)}; }
-.lb.phone .lb-card .cyc { width: ${U(48)}; height: ${U(62)}; }
-.lb.phone .lb-hex { width: ${U(540)}; height: ${U(456)}; }
-.lb.phone .lb-nav { width: ${U(330)}; height: ${U(330)}; margin: ${U(20)} auto ${U(50)}; }
+/* In real pixels, not design units: what lands on a phone has to be readable and tappable whatever the width. */
+.lb.phone .lb-stage > *, .lb.phone .lb-scene > * { --u: calc(100cqw / 560); --hc: 50%; }
+.lb.phone .lb-stage { overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; touch-action: pan-y; overscroll-behavior: contain; padding-bottom: calc(34px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+/* There is more below: a fade at the bottom edge says so. */
+.lb.phone::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 30px; z-index: 20; pointer-events: none; background: linear-gradient(rgba(10,8,6,0), rgba(10,8,6,.95)); }
+.lb.phone .lb-vf { display: none; }
+/* Everything of the hall stays under the panels that open over it (Classes). */
+.lb.phone { isolation: isolate; }
 
-.lb.phone .lb-dock { position: relative; right: auto; bottom: auto; height: auto; flex: none; flex-wrap: wrap; justify-content: center; padding: ${U(40)} ${U(10)} ${U(10)}; gap: ${U(10)} 0; }
-.lb.phone .lb-dk { height: ${U(76)}; } .lb.phone .lb-dk span { font-size: ${U(22)}; } .lb.phone .lb-dk .ic { width: ${U(46)}; height: ${U(46)}; }
-.lb.phone .lb-feed { position: relative; left: auto; bottom: auto; width: auto; flex: none; margin: ${U(30)} ${U(14)} ${U(30)}; }
-.lb.phone .lb-log p { font-size: ${U(19)}; }
-.lb.phone .lb-ticker { height: ${U(56)}; } .lb.phone .lb-ticker .txt { font-size: ${U(19)}; } .lb.phone .lb-ticker .bell { width: ${U(66)}; height: ${U(66)}; }
-.lb.phone .lb-ticker .tag, .lb.phone .lb-ticker .more { font-size: ${U(13)}; }
-.lb.phone .lb-banner { height: ${U(250)}; }
-.lb.phone .lb-banner .tx { left: 30%; }
-.lb.phone .lb-banner .ds { font-size: ${U(19)}; -webkit-line-clamp: 4; } .lb.phone .lb-banner .tt { font-size: ${U(24)}; } .lb.phone .lb-banner .sub { font-size: ${U(13)}; }
-.lb.phone .lb-book { width: 96cqw; height: 92cqh; padding: 10px; }
-.lb.phone .lb-pages { column-count: 1; padding: 22px 18px; }
+/* The top: where you are and what you have, then the person with the system rail and the others beside them. */
+.lb.phone .lb-scene { position: relative; inset: auto; flex: none; height: clamp(222px, 40cqh, 330px); }
+.lb.phone .lb-badge { left: 8px; top: 6px; right: 8px; height: 44px; }
+.lb.phone .lb-badge .md { width: 44px; height: 44px; }
+.lb.phone .lb-badge .sh, .lb.phone .lb-badge .new { display: none; }
+.lb.phone .lb-badge .rib { min-width: 0; margin-left: -10px; padding: 3px 16px 3px 16px; }
+.lb.phone .lb-badge .rib b { max-width: calc(100cqw - 90px); font-size: 18px; line-height: 1.15; }
+.lb.phone .lb-badge .rib .rule { display: none; }
+.lb.phone .lb-badge .rib span { max-width: calc(100cqw - 90px); overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.25; letter-spacing: .05em; }
+.lb.phone .lb-badge .rib .dy { display: inline; font-style: normal; }
+.lb.phone .lb-res { left: 8px; right: 8px; top: 54px; flex-wrap: wrap; justify-content: flex-start; gap: 4px 6px; }
+.lb.phone .lb-tr { flex: 1 1 100px; width: auto; height: 30px; }
+.lb.phone .lb-tr > .art { display: none; }
+.lb.phone .lb-tr { background: rgba(10,8,6,.86); box-shadow: inset 0 0 0 1px rgba(200,170,110,.55); }
+.lb.phone .lb-tr .ic { left: 1px; top: 1px; width: 28px; height: 28px; }
+.lb.phone .lb-tr b { left: 28px; right: 4px; padding-top: 0; align-items: center; justify-content: flex-start; gap: 3px; font-size: 14px; }
+.lb.phone .lb-tr b small { font-size: 12px; letter-spacing: 0; color: #cdb88f; }
+.lb.phone .lb-tr .cap { display: none; }
+.lb.phone .lb-rail { left: auto; right: 4px; top: auto; bottom: 2px; gap: 0; }
+.lb.phone .lb-rail > button { width: 62px; height: 46px; justify-content: center; }
+.lb.phone .lb-rail > button:hover, .lb.phone .lb-rail > button[aria-expanded="true"], .lb.phone .lb-rail > button[aria-pressed="true"] { transform: none; }
+.lb.phone .lb-rail .ri { width: 28px; height: 28px; }
+.lb.phone .lb-rail span:not(.ri) { margin-top: 1px; font-size: 12px; line-height: 1.1; }
+.lb.phone .lb-themes { left: auto; right: 68px; top: 54px; padding: 6px; gap: 4px; }
+.lb.phone .lb-themes button { width: 200px; height: 46px; font-size: 14px; }
+.lb.phone .lb-themes button:hover { transform: none; }
+.lb.phone .lb-lockets { left: 4px; top: auto; bottom: 2px; max-height: calc(100% - 92px); gap: 4px; overflow-y: auto; overscroll-behavior: contain; justify-content: flex-start; flex-wrap: nowrap; }
+.lb.phone .lb-lk, .lb.phone .lb-lk.on { flex: none; width: 50px; height: 58px; margin: 0 0 14px; }
+.lb.phone .lb-lk .nm, .lb.phone .lb-lk.on .nm { max-width: 62px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.lb.phone .lb-hero { left: 50%; top: 86px; bottom: auto; height: calc(100% - 86px); clip-path: inset(0 -100cqw 0 -100cqw); }
+.lb.phone .lb-hero .px::before, .lb.phone .lb-hero .px::after { display: none; }
+.lb.phone .lb-hero-in > img { top: 0; bottom: auto; height: 240%; }
+.lb.phone .lb-hero-in > img.bust { top: 0; bottom: auto; height: 135%; }
+.lb.phone .lb-hero-in > .halo, .lb.phone .lb-hero-in > .halo.bust, .lb.phone .lb-hero-in > .halo.empty, .lb.phone .lb-hero-in > .halo.arriving { left: -115px; top: -12px; width: 230px; height: 230px; }
+.lb.phone .lb-hero-in > .brk, .lb.phone .lb-hero-in > .ped { display: none; }
+.lb.phone .lb-glowback { left: -100px; width: 200px; }
+.lb.phone .lb-talk { left: 72px; right: 72px; width: auto; height: 50px; bottom: 2px; }
+button.lb-talk:hover { transform: none; }
+.lb.phone .lb-talk .nm { left: 26px; right: 26px; top: 8px; font-size: 16px; letter-spacing: .06em; }
+.lb.phone .lb-talk .rl { left: 26px; right: 26px; top: 28px; font-size: 12px; line-height: 1.1; letter-spacing: .02em; text-transform: none; }
+.lb.phone .lb-talk .q { right: -4px; top: -10px; width: 26px; height: 26px; }
+
+/* The narration, whole and in plain text; the newest news under it. Older lines wait behind the news line. */
+.lb.phone .lb-feed { position: relative; left: auto; bottom: auto; width: auto; flex: none; margin: 0; order: 1; }
+.lb.phone .lb-banner { order: -1; width: auto; height: auto; padding: 10px 12px 10px; background: rgba(12,10,7,.94); box-shadow: 0 -1px 0 rgba(200,170,110,.8), 0 1px 0 rgba(200,170,110,.35); }
+.lb.phone .lb-banner > .art { display: none; }
+.lb.phone .lb-banner .tx { position: static; display: block; }
+.lb.phone .lb-banner .sub { margin-bottom: 4px; font-size: 12px; letter-spacing: .08em; }
+.lb.phone .lb-banner .ds { display: block; overflow: visible; font-size: 17px; line-height: 1.36; text-shadow: none; }
+.lb.phone .lb-banner .hk { margin-top: 8px; padding-top: 6px; gap: 6px; font-size: 15px; }
+.lb.phone .lb-banner .hk > span:last-child { display: block; overflow: visible; }
+.lb.phone .lb-banner .hk b { font-size: 12px; letter-spacing: .03em; }
+.lb.phone .lb-banner .hk .sp { width: 24px; height: 24px; }
+.lb.phone .lb-banner .new { left: auto; right: 4px; top: 2px; width: 40px; height: 40px; }
+.lb.phone .lb-banner .new b { font-size: 12px; letter-spacing: 0; }
+.lb.phone .lb-ticker { min-height: 46px; height: auto; margin: 0; padding: 4px 10px 4px 42px; gap: 6px; background: rgba(10,8,6,.86); box-shadow: 0 1px 0 rgba(200,170,110,.35); }
+.lb.phone .lb-ticker > .art, .lb.phone .lb-ticker .tag { display: none; }
+.lb.phone .lb-ticker .bell { left: 4px; top: 7px; width: 32px; height: 32px; }
+.lb.phone .lb-ticker .txt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; font-size: 15px; line-height: 1.22; text-shadow: none; }
+.lb.phone .lb-ticker .more { font-size: 12px; letter-spacing: 0; color: #cdb88f; }
+.lb.phone .lb-ticker .gears { width: 24px; height: 24px; }
+.lb.phone .lb-log { display: none; }
+.lb.phone .lb-feed.open .lb-log:not(.none) { display: flex; order: 1; max-height: 40cqh; margin: 0; padding: 8px 12px; gap: 6px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; background: rgba(10,8,6,.92); }
+.lb.phone .lb-log .lc, .lb.phone .lb-log::after { display: none; }
+.lb.phone .lb-log p, .lb.phone .lb-feed.open .lb-log p { font-size: 15px; line-height: 1.3; opacity: 1; text-shadow: none; }
+
+/* The actions: instruments in two columns, everything else in full-width rows. Tall enough for a thumb, text in text. */
+.lb.phone .lb-cluster { position: relative; right: auto; top: auto; width: auto; height: auto; flex: none; order: 2; padding: 8px 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.lb.phone .lb-cluster::before { inset: 0 0 -8px; background: rgba(10,8,6,.8); }
+.lb.phone .lb-instr, .lb.delve.phone .lb-instr { position: relative; top: auto; height: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 0; align-items: stretch; }
+.lb.phone .lb-ins, .lb.phone .lb-instr.n4 .lb-ins { width: auto; height: auto; min-height: 58px; display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 6px; padding: 4px 6px 4px 4px; background: rgba(20,15,10,.94); box-shadow: inset 0 0 0 1px rgba(200,170,110,.5); text-align: left; }
+.lb.phone .lb-ins:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.lb.phone .lb-ins:hover, .lb.phone .lb-ins:focus-visible, .lb.phone .lb-ins.k-wait, .lb.phone .lb-ins.k-wait:hover, .lb.phone .lb-ins.k-wait:focus-visible { transform: none; }
+.lb.phone .lb-ins > .art, .lb.phone .lb-instr.n4 .lb-ins > .art, .lb.phone .lb-ins.k-wait > .art, .lb.phone .lb-instr.n4 .lb-ins.k-wait > .art { position: static; width: 42px; height: 48px; top: auto; }
+.lb.phone .lb-ins .pl { position: static; display: block; min-width: 0; height: auto; }
+.lb.phone .lb-ins .pl > .art { display: none; }
+.lb.phone .lb-ins .pl b, .lb.phone .lb-instr.n4 .lb-ins .pl b { position: static; display: block; text-align: left; white-space: normal; font-size: 14px; line-height: 1.15; letter-spacing: .01em; color: #F5E8C7; text-shadow: none; }
+.lb.phone .lb-ins .pl i, .lb.phone .lb-instr.n4 .lb-ins .pl i { position: static; display: block; height: auto; margin-top: 2px; font: 500 13px/1.1 ${SERIF}; text-transform: none; letter-spacing: 0; white-space: normal; overflow: visible; color: #cdb88f; }
+.lb.phone .lb-cards, .lb.delve.phone .lb-cards { position: relative; top: auto; height: auto; order: -1; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.lb.phone .lb-cards:empty { display: none; }
+.lb.phone .lb-hex { width: 100%; height: auto; aspect-ratio: 1.18; margin-top: 16px; }
+.lb.phone .lb-hex svg.map { left: 2%; width: 96%; top: 5%; height: 88%; }
+.lb.phone .lb-hex text { font-size: 13px; stroke-width: 3px; }
+.lb.phone .lb-hex .ttl { top: -16px; width: 220px; height: 36px; }
+.lb.phone .lb-hex .ttl b { font-size: 14px; }
+.lb.phone .lb-dock { position: relative; right: auto; bottom: auto; height: auto; flex: none; order: 3; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 8px 0; }
+.lb.phone .lb-dock:empty { display: none; }
+.lb.phone .lb-dock::before { inset: 0 0 -8px; background: rgba(10,8,6,.8); border: 0; }
+.lb.phone .lb-dock::after, .lb.phone .lb-dock .sep { display: none; }
+.lb.phone .lb-dk { height: auto; min-height: 52px; padding: 4px 10px 4px 6px; gap: 8px; background: rgba(20,15,10,.94); box-shadow: inset 0 0 0 1px rgba(200,170,110,.5); text-align: left; }
+.lb.phone .lb-dk:hover, .lb.phone .lb-dk:focus-visible { transform: none; }
+.lb.phone .lb-dk .ic, .lb.phone .lb-dk.talk .ic { width: 40px; height: 40px; }
+.lb.phone .lb-dk span:not(.ic) { font-size: 16px; line-height: 1.2; letter-spacing: 0; white-space: normal; text-shadow: none; }
+.lb.phone .lb-dk.feat { min-height: 56px; box-shadow: inset 0 0 0 1.5px #DFC183; background: linear-gradient(180deg, #2c2214, #17110a); }
+.lb.phone .lb-dk.feat span:not(.ic) { font: 800 15px/1.15 ${CAPS}; color: #F5E8C7; }
+.lb.phone .lb-dk.g-fight { box-shadow: inset 0 0 0 1.5px #c8463a; background: linear-gradient(180deg, #3a100a, #1c0705); }
+
+/* A delve: the paddles first, big enough for a thumb, then the chart. */
+.lb.delve.phone .lb-scene { height: 174px; }
+.lb.delve.phone .lb-rail { flex-direction: row; right: 4px; bottom: 0; }
+.lb.delve.phone .lb-instr { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 8px; }
+.lb.phone .lb-nav { order: -1; --u: .78px; width: calc(330 * var(--u)); height: calc(330 * var(--u)); margin: 4px auto 34px; }
+.lb.phone .lb-nav .lbl b { font-size: 14px; }
+.lb.phone .lb-chart { --u: .6px; width: calc(400 * var(--u)); height: calc(400 * var(--u)); margin-bottom: 14px; }
+.lb.phone .lb-chart .ttl b { font-size: 13px; letter-spacing: .04em; }
+
+/* Landscape: the place and the story on the left, the actions on the right. */
+.lb.phone.land .lb-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); align-content: start; column-gap: 6px; }
+.lb.phone.land .lb-stage > *, .lb.phone.land .lb-scene > * { --u: calc(50cqw / 560); }
+.lb.phone.land .lb-scene { grid-column: 1; grid-row: 1; height: 226px; }
+.lb.phone.land .lb-feed { grid-column: 1; grid-row: 2 / 4; }
+.lb.phone.land .lb-cluster { grid-column: 2; grid-row: 1 / 3; padding-top: 6px; }
+.lb.phone.land .lb-dock { grid-column: 2; grid-row: 3; }
+.lb.phone.land .lb-badge .rib b, .lb.phone.land .lb-badge .rib span { max-width: calc(50cqw - 80px); }
+.lb.phone.land .lb-feed:has(> .lb-banner) { align-self: start; }
+
+/* The journal: one page, one scroll, the close ribbon clear of the text. */
+.lb.phone .lb-journal { place-items: stretch; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
+.lb.phone .lb-book { width: auto; height: auto; min-height: 0; box-sizing: border-box; padding: 8px; }
+.lb.phone .lb-book .cn { display: none; }
+.lb.phone .lb-pages { display: block; height: 100%; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; font-size: 16px; line-height: 1.4; }
+.lb.phone .lb-pages .pg { display: block; overflow: visible; padding: 18px 14px; box-shadow: none; }
+.lb.phone .lb-pages .pg.l { padding-top: 12px; padding-right: 60px; }
+.lb.phone .lb-pages .pg .orn, .lb.phone .lb-pages .pg .wm { display: none; }
+.lb.phone .lb-pages h2 { font-size: 22px; text-align: left; letter-spacing: .03em; }
 .lb.phone .lb-gutter, .lb.phone .lb-ribbon { display: none; }
-@media (max-width: 720px) { .gs.lobby > .fg { left: 8px; right: 8px; width: auto; top: 8%; bottom: 8%; } }
+.lb.phone .lb-jx { right: 10px; top: 0; width: 48px; height: 90px; }
+.lb.phone .lb-jx:hover { transform: none; }
+@media (max-width: 720px), (max-height: 480px) {
+  .gs.lobby > .fg { left: 8px; right: 8px; width: auto; top: 8px; bottom: 8px; padding: 8px; }
+  .gs.lobby > .fg header .x { min-width: 44px; min-height: 44px; }
+  .gs.lobby > .fg nav button { min-height: 44px; padding: 4px 12px; font-size: 13px; letter-spacing: .03em; }
+  .gs.lobby > .fg button.go, .gs.lobby > .fg button.plain { min-height: 44px; padding: 4px 14px; font-size: 13px; }
+  .gs.lobby > .fg summary { padding: 12px 0; }
+  .gs.lobby > .fg .tag { font-size: 12px; }
+}
 
 /* ---------- Motion ---------- */
 @keyframes lbSpin { to { transform: rotate(360deg); } }

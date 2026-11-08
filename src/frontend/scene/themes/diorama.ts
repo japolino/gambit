@@ -23,10 +23,11 @@ import { room3d } from "./diorama/room3d.js";
 import { JOURNAL_CSS, MW_FRAME, tex } from "./diorama/shared.js";
 import { CSS } from "./diorama/style.js";
 import { CSS2, CSS3D } from "./diorama/style3d.js";
+import { CSS_PHONE } from "./diorama/phone.js";
 
 export const diorama: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const r = ctx.root;
-  r.innerHTML = `<style>${CSS}${CSS2}${JOURNAL_CSS}${CSS3D}</style><style class="dr-tex"></style>${A.DEFS}<div class="h2" hidden></div><div class="h3" hidden></div>`;
+  r.innerHTML = `<style>${CSS}${CSS2}${JOURNAL_CSS}${CSS3D}${CSS_PHONE}</style><style class="dr-tex"></style>${A.DEFS}<div class="h2" hidden></div><div class="h3" hidden></div>`;
   const texStyle = r.querySelector(".dr-tex") as HTMLStyleElement;
   texStyle.textContent = `.gs.diorama .mw-art { --dr-frame: ${MW_FRAME}; }
 .gs.diorama > .fg { --dr-leather: url("${tex.leather()}"); --dr-paper: url("${tex.paperTile()}"); }`;

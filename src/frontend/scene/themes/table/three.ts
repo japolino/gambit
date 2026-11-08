@@ -181,6 +181,9 @@ export class Table3D {
   private spread = 1;
   private port = false;
   private t = 0;
+  /** On a phone: the renderer's own pixel ratio, to give back (the layer outlives this theme); 0 elsewhere. */
+  private phoneRatio = 0;
+  private shadowAt = 0;
   private disposed = false;
   /** A fight or a talk staged at the table (duel.ts): fixed camera, nobody else seated, the slate given over to the fight. */
   private enc: "battle" | "parley" | null = null;
@@ -242,6 +245,14 @@ export class Table3D {
     const { renderer, scene } = this.st;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFSoftShadowMap;
+    // A phone's GPU pays for every pixel and every shadow, and the words on screen are DOM or Pixi, so they stay sharp:
+    // fewer pixels in the room, its shadows redrawn once a second rather than every frame.
+    if (innerWidth <= 760 || innerHeight <= 480) {
+      this.phoneRatio = renderer.getPixelRatio();
+      renderer.setPixelRatio(Math.min(1.25, this.phoneRatio));
+      renderer.shadowMap.autoUpdate = false;
+      renderer.shadowMap.needsUpdate = true;
+    }
     renderer.toneMapping = ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
     scene.background = new Color(0x040205);
@@ -1592,6 +1603,10 @@ export class Table3D {
 
   frame(t: number, dt: number, pointer: { x: number; y: number }): void {
     this.t = t;
+    if (this.phoneRatio && t - this.shadowAt > 1) {
+      this.shadowAt = t;
+      this.st.renderer.shadowMap.needsUpdate = true;
+    }
     this.puppetMeshes?.tick(t, Math.min(0.1, dt));
     const cam = this.st.camera;
     const z = this.zoom;
@@ -1719,6 +1734,10 @@ export class Table3D {
 
   dispose(): void {
     this.disposed = true;
+    if (this.phoneRatio) {
+      this.st.renderer.setPixelRatio(this.phoneRatio);
+      this.st.renderer.shadowMap.autoUpdate = true;
+    }
     this.puppetMeshes?.dispose();
     for (const t of this.textures) t.dispose();
     this.textures = [];

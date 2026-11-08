@@ -23,6 +23,7 @@ import * as P from "./props3d.js";
 import { cleanCutout, drawChart } from "./chart.js";
 import { paintCounter } from "./counter.js";
 import { journalHtml, narrationHtml, pickerHtml, tex } from "./shared.js";
+import { phoneActsHtml } from "./phone.js";
 import { bookcase, paper, stallStack, texUrl, walnut } from "./textures.js";
 
 export interface Mode {
@@ -60,6 +61,7 @@ export function flatDiorama(ctx: ThemeCtx, host: HTMLElement): Mode {
   <div class="lay L4"></div>
   <div class="pool np"></div><div class="vig np"></div>
   <div class="say" aria-live="polite"></div>
+  <div class="phacts" role="group" aria-label="What you can do here"></div>
   <div class="ovl"></div>
 </div>`;
   const dr = host.querySelector(".dr") as HTMLDivElement;
@@ -69,7 +71,8 @@ export function flatDiorama(ctx: ThemeCtx, host: HTMLElement): Mode {
   const desk = host.querySelector(".desk") as HTMLDivElement;
   const fore = L[4]!;
   const say = host.querySelector(".say") as HTMLDivElement;
-  const ovl = host.querySelector(".ovl") as HTMLDivElement;
+  const phacts = host.querySelector(".phacts") as HTMLDivElement;
+  const ovl =host.querySelector(".ovl") as HTMLDivElement;
   const ctrbox = host.querySelector(".ctrbox") as HTMLDivElement;
   const ctrCanvas = ctrbox.querySelector("canvas") as HTMLCanvasElement;
   let destroyed = false;
@@ -365,6 +368,7 @@ ${th ? `<button class="spools" data-act="journal" style="--sw:${(3 + Math.min(9,
     /* ---------------- Narration and overlays ---------------- */
     put(say, narrationHtml(box, logOpen));
     say.classList.toggle("open", logOpen);
+    put(phacts, phoneActsHtml(ctx, v, acts, null));
     const ov: string[] = [];
     if (ctx.journal.open) ov.push(journalHtml(ctx, v));
     if (pickOpen) ov.push(pickerHtml(ctx, v));

@@ -124,6 +124,7 @@ const css = (paper: string) => `
 .th-lobby .lp-ped { position: absolute; left: 0; right: 0; top: 186px; bottom: 0; z-index: -1; pointer-events: none; }
 .th-lobby .lp-scale .beam { transition: transform 1.2s cubic-bezier(.3,1.4,.5,1); }
 .th-lobby .lp-scale .pan-l, .th-lobby .lp-scale .pan-r { transition: transform 1.2s cubic-bezier(.3,1.4,.5,1); }
+.th-lobby .lp-phname { display: none; }
 .th-lobby .meter-label { font: 700 13px/1 ${GARA}; letter-spacing: .3em; text-transform: uppercase; color: #b8a27a; text-shadow: ${SHADOW}; }
 .th-lobby .meter-value { margin-top: 4px; font: 800 42px/1.05 ${CINZ}; color: #FFF6E5; text-shadow: ${SHADOW}, 0 0 18px rgba(255,200,120,.3); white-space: nowrap; }
 .th-lobby .delta { font: 800 16px ${CINZ}; letter-spacing: .06em; }
@@ -148,7 +149,7 @@ const css = (paper: string) => `
 .th-lobby .leave:hover, .th-lobby .leave:focus-visible { outline: none; background-image: ${choiceBg(false, true)}; color: #FFE7AE; }
 
 /* ---------- What you know: dossier slips fanned over the dialogue ---------- */
-.th-lobby .journal-btn, .th-lobby .journal { display: none !important; }
+.th-lobby:not(.pl-phone) .journal-btn, .th-lobby:not(.pl-phone) .journal { display: none !important; }
 .th-lobby .hand { position: absolute; z-index: 2; display: flex; justify-content: flex-end; align-items: flex-end; right: calc(var(--bxr) + 40px); bottom: calc(var(--bxb) + var(--bxh) - 16px); max-width: 52%; padding: 0 0 0 24px; }
 .th-lobby .fact-card { position: relative; flex: 0 0 auto; width: 216px; min-height: 104px; margin: 0 -5px; padding: 14px 16px 12px 20px; text-align: left; border: 0; border-radius: 0; cursor: pointer;
   font: 500 15px/1.3 ${GARA}; color: #2b1d0e; background: linear-gradient(180deg, rgba(242,232,213,.55), rgba(184,166,142,.35)), url("${paper}") center / 256px;
@@ -170,58 +171,148 @@ const css = (paper: string) => `
 .th-lobby .moment .cap { font: italic 500 30px/1.3 ${GARA}; color: #F5E8C7; left: 8%; right: 8%; bottom: 8%; text-align: center; }
 .th-lobby .moment::before { background: linear-gradient(transparent 58%, rgba(10,8,6,.92)); }
 
-/* ---------- Phones: the person clear in the middle, the box below ---------- */
 @media (min-aspect-ratio: 2/1) { .pl.th-lobby { --bxw: 72%; --hx: 23%; } }
 @media (min-width: 761px) and (max-height: 960px) { .pl.th-lobby { --bxh: 34%; } }
-@media (max-width: 760px) {
-  .pl.th-lobby { --bxr: 2%; --bxw: 96%; --bxb: 1%; --bxh: 40%; --hx: 50%; }
-  .th-lobby .figure { left: 0; width: 100%; height: 49%; bottom: auto; top: 13%; }
-  .th-lobby .lp-halo { top: 12%; height: 28%; }
-  .th-lobby .lp-glow { width: 120%; top: -4%; }
-  .th-lobby .lp-crest { left: 6px; top: 6px; width: 44px; height: 44px; }
-  .th-lobby .title-row { left: 36px; right: 8px; top: 10px; padding: 4px 8px 4px 18px; max-width: none; gap: 8px; justify-content: space-between; }
-  .th-lobby .kind { font-size: 12px; line-height: 1.15; }
-  .th-lobby .meter { right: 6px; top: 48px; width: auto; padding: 6px 84px 7px 14px; align-items: flex-end; background: rgba(14,11,8,.92); box-shadow: 0 0 0 1px #c89d54, 0 0 0 3px rgba(14,11,8,.9), inset 0 0 0 3px rgba(14,11,8,.92), inset 0 0 0 4px rgba(200,157,84,.4), 0 6px 14px rgba(0,0,0,.6); }
-  .th-lobby .lp-scale { left: auto; right: 4px; top: 2px; translate: none; width: 76px; height: 66px; }
-  .th-lobby .meter-label { font-size: 9px; letter-spacing: .2em; }
-  .th-lobby .meter-value { font-size: 20px; margin-top: 2px; }
-  .th-lobby .patience { margin-top: 2px; gap: 1px; }
-  .th-lobby .pl-label { display: none; }
-  .th-lobby .pip { width: 13px; height: 20px; }
-  .th-lobby .plaque { bottom: calc(var(--bxb) + var(--bxh) - 18px); min-width: 0; max-width: 92%; padding: 8px 34px 10px; }
-  .th-lobby .plaque .who { font-size: 15px; white-space: nowrap; }
-  .th-lobby .plaque .role { display: none; }
-  .th-lobby .tell { left: 50%; top: 40%; max-width: 86%; font-size: 17px; }
-  .th-lobby .log { left: calc(var(--bxl) + 18px); right: calc(var(--bxr) + 16px); top: calc(100% - var(--bxb) - var(--bxh) + 40px); bottom: calc(var(--bxb) + 72px); gap: 10px; }
-  .th-lobby .npc .prose { font-size: 17px; }
-  .th-lobby .you { padding-left: 32px; } .th-lobby .you::before { width: 22px; height: 22px; left: 2px; }
-  .th-lobby .you .prose { font-size: 16px; }
-  .th-lobby .read { padding-left: 32px; }
-  .th-lobby .imm { font-size: 15px; }
-  .th-lobby .composer { left: calc(var(--bxl) + 14px); right: calc(var(--bxr) + 12px); bottom: calc(var(--bxb) + 12px); height: 54px; grid-template-columns: 1fr 56px; gap: 10px; }
-  .th-lobby .composer textarea { height: 48px; padding: 10px 12px; font-size: 16px; }
-  .th-lobby .say { width: 56px; height: 56px; font-size: 11px; }
-  .th-lobby .status { right: calc(var(--bxr) + 16px); bottom: calc(var(--bxb) + 68px); font-size: 14px; }
-  .th-lobby .mode { gap: 4px; }
-  .th-lobby .mode button { width: 26px; height: 26px; }
-  .th-lobby .actions { left: 2%; right: 2%; top: auto; bottom: calc(var(--bxb) + var(--bxh) + 32px); flex-direction: row; justify-content: space-between; gap: 8px; }
-  .th-lobby .actions { width: auto; }
-  .th-lobby .actions button { width: auto; min-width: 0; flex: 1; height: 46px; padding: 0 20px; font-size: 11.5px; letter-spacing: .05em; }
-  .th-lobby .actions button::before, .th-lobby .actions button::after { display: none; }
-  .th-lobby .hand { z-index: 5; left: 2%; right: 2%; max-width: none; bottom: calc(var(--bxb) + var(--bxh) + 84px); justify-content: center; padding: 14px 0 4px 45px; gap: 0; }
-  .th-lobby .fact-card { width: 130px; min-height: 0; height: 64px; margin: 0 0 0 -45px; padding: 8px 10px; font-size: 11px; line-height: 1.2; overflow: hidden; transform: none; }
-  .th-lobby .fact-card.used { transform: translateY(6px); }
-  .th-lobby .fact-card:hover, .th-lobby .fact-card:focus-visible { margin: 0 0 0 -45px; transform: translateY(-8px); }
-  .th-lobby .fact-card::before { width: 16px; height: 16px; }
-  .th-lobby .lp-ped { display: none; }
-  .th-lobby .moments { padding-top: 0; }
-  .th-lobby .moments button::before { display: none; }
-  .th-lobby .moments { left: 8px; right: auto; top: 58px; flex-direction: column; gap: 10px; }
-  .th-lobby .moments button { width: 60px; height: 44px; padding: 4px; }
-  .th-lobby .moments button:nth-child(2n) { transform: rotate(3deg); }
-  .th-lobby .end { min-width: 0; width: 88%; padding: 22px 20px; }
-  .th-lobby .end-title { font-size: 22px; }
-  .th-lobby .leave { min-width: 0; width: 100%; }
+/* ---------- Phones (view.ts sets pl-phone, pl-short, --pl-h): the talk comes first ----------
+   Real rows instead of a stage: a compact bar (name, fare, patience, what you know), a band of the person, the deal,
+   the talk, the input. The brass box and its ornaments go, so no text runs under them; the balance, the crest, the
+   plaque and the fan of slips go too. What you know, the moments, the view mode and the deal all live behind the bar's
+   one button (a sheet over the talk), so nothing is out of reach at any height. Sized by the grid, so it follows
+   --pl-h when the keyboard opens. */
+.pl.th-lobby.pl-phone { --bar: 56px; --band: clamp(56px, calc(var(--pl-h, 664px) * .16), 108px); --hx: 50%; overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: var(--bar) var(--band) auto minmax(0, 1fr) auto auto auto; }
+.th-lobby.pl-phone .title-row { display: contents; }
+.th-lobby.pl-phone .lp-crest, .th-lobby.pl-phone .lp-rays, .th-lobby.pl-phone .lp-dust, .th-lobby.pl-phone .lp-scale, .th-lobby.pl-phone .lp-ped, .th-lobby.pl-phone .tell { display: none; }
+/* The person: head and shoulders in the band, the rest behind the talk's panel. */
+.th-lobby.pl-phone .figure { left: 0; width: 100%; top: calc(var(--bar) - 2px); bottom: auto; height: calc(var(--band) * 2.7); }
+/* An opaque picture (most real cards) has its face mid-frame: smaller, from the top, so the face lands in the band. */
+.th-lobby.pl-phone .figure:has(.fig.framed) { height: calc(var(--band) * 1.75); align-items: flex-start; }
+.th-lobby.pl-phone .fig.framed { height: 100%; }
+.th-lobby.pl-phone .lp-halo { top: calc(var(--bar) - var(--band) * .2); height: calc(var(--band) * 1.5); }
+.th-lobby.pl-phone .lp-glow { width: 110%; top: calc(var(--bar) - var(--band) * .4); }
+.th-lobby.pl-phone .plaque { ${SR} }
+/* The bar: their name, then the fare and patience on one line; the button on the right. */
+.th-lobby.pl-phone .meter { position: relative; z-index: 6; grid-column: 1 / -1; grid-row: 1; right: auto; top: auto; width: auto; min-width: 0; margin: 0; padding: 0 96px 0 12px; isolation: auto;
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-content: center; align-items: center; gap: 1px 8px;
+  background: linear-gradient(180deg, #17120c, #0c0a07); box-shadow: 0 1px 0 #c89d54, 0 3px 0 #0c0a07, 0 4px 0 rgba(200,157,84,.45), 0 8px 14px rgba(0,0,0,.6); }
+.th-lobby.pl-phone .lp-phname { display: block; grid-column: 1 / -1; font: 800 14px/1.2 ${CINZ}; letter-spacing: .05em; text-transform: uppercase; color: #F5E8C7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-lobby.pl-phone .meter-label { grid-column: 1; font: 700 12px/1 ${GARA}; letter-spacing: .1em; color: #b8a27a; text-shadow: none; }
+.th-lobby.pl-phone .meter-value { grid-column: 2; margin: 0; font: 800 17px/1.15 ${CINZ}; text-shadow: none; }
+.th-lobby.pl-phone .delta { font-size: 13px; }
+.th-lobby.pl-phone .patience { grid-column: 3; grid-row: auto; margin: 0; gap: 1px; align-items: center; min-width: 0; overflow: hidden; }
+.th-lobby.pl-phone .pl-label { ${SR} }
+.th-lobby.pl-phone .pip { flex: none; width: 11px; height: 17px; }
+.th-lobby.pl-phone .journal-btn { display: block; position: relative; z-index: 7; grid-column: 2; grid-row: 1; align-self: center; justify-self: end; box-sizing: border-box; width: 84px; height: 44px; margin: 0 6px 0 0; padding: 2px 6px; font: 700 13px/1.1 ${GARA}; color: #FFE2A8; background: linear-gradient(180deg, #2a2013, #15100a); border: 1px solid #c89d54; cursor: pointer; }
+.th-lobby.pl-phone:has(.journal.open) .journal-btn { font-size: 0; background: linear-gradient(180deg, #e7c98a, #a67d38); }
+.th-lobby.pl-phone:has(.journal.open) .journal-btn::after { content: "Close"; font: 800 14px/1 ${CINZ}; color: #1E160B; }
+/* The talk's panel: a plain dark ground with a brass rule on top, so the text meets nothing. */
+.th-lobby.pl-phone .lp-box { position: relative; z-index: 3; left: auto; right: auto; bottom: auto; height: auto; grid-column: 1 / -1; grid-row: 3 / -1; background: linear-gradient(180deg, #120e09, #090705); box-shadow: 0 -1px 0 #c89d54, 0 -3px 0 #0c0a07, 0 -4px 0 rgba(200,157,84,.45); }
+.th-lobby.pl-phone .lp-box > * { display: none; }
+.th-lobby.pl-phone .actions { position: relative; z-index: 6; grid-column: 1 / -1; grid-row: 3; right: auto; left: auto; top: auto; bottom: auto; width: auto; flex-direction: row; align-items: stretch; gap: 6px; padding: 8px 8px 2px; }
+.th-lobby.pl-phone .actions button { flex: 1 1 0; width: auto; min-width: 0; height: 46px; padding: 0 16px; font-size: 12.5px; line-height: 1.1; letter-spacing: .03em; transform: none; }
+.th-lobby.pl-phone .actions .deal { flex-grow: 1.5; }
+.th-lobby.pl-phone .actions button::before, .th-lobby.pl-phone .actions button::after { display: none; }
+.th-lobby.pl-phone .log { position: relative; z-index: 4; grid-column: 1 / -1; grid-row: 4; inset: auto; min-height: 0; gap: 10px; padding: 14px 14px 22px !important;
+  -webkit-mask-image: linear-gradient(transparent 0, #000 14px, #000 calc(100% - 18px), transparent 100%) !important; mask-image: linear-gradient(transparent 0, #000 14px, #000 calc(100% - 18px), transparent 100%) !important; }
+.th-lobby.pl-phone .setting { font-size: 16px; line-height: 1.35; }
+.th-lobby.pl-phone .speaker { font-size: 12px; letter-spacing: .14em; margin-bottom: 2px; }
+.th-lobby.pl-phone .npc .prose { font-size: 18px; line-height: 1.38; }
+.th-lobby.pl-phone .you { padding-left: 26px; }
+.th-lobby.pl-phone .you::before { left: 0; top: 0; width: 20px; height: 20px; }
+.th-lobby.pl-phone .you .prose { font-size: 17px; line-height: 1.36; }
+.th-lobby.pl-phone .read { padding: 0 0 0 26px; }
+.th-lobby.pl-phone .tray { gap: 6px; }
+.th-lobby.pl-phone .die { width: 34px; height: 34px; font-size: 13px; }
+.th-lobby.pl-phone .result { font-size: 13px; letter-spacing: .1em; }
+.th-lobby.pl-phone .imm { font-size: 16px; line-height: 1.36; }
+.th-lobby.pl-phone .trn { font-size: 15px; }
+.th-lobby.pl-phone .tier { font-size: 12px; letter-spacing: .06em; }
+.th-lobby.pl-phone .why summary { padding: 8px 0; }
+.th-lobby.pl-phone .status { position: relative; z-index: 5; grid-column: 1 / -1; grid-row: 5; right: auto; bottom: auto; max-width: none; min-height: 0; padding: 0 14px 4px; font-size: 15px; line-height: 1.25; }
+.th-lobby.pl-phone .status:empty { display: none; }
+.th-lobby.pl-phone .composer { position: relative; z-index: 5; grid-column: 1 / -1; grid-row: 6; left: auto; right: auto; bottom: auto; height: auto; grid-template-columns: minmax(0, 1fr) 52px; gap: 8px; padding: 0 8px calc(8px + env(safe-area-inset-bottom)); }
+.th-lobby.pl-phone .composer textarea { box-sizing: border-box; display: block; width: 100%; height: 52px; padding: 6px 10px; line-height: 1.25; background: #050403; box-shadow: inset 0 0 0 1px rgba(200,157,84,.55); }
+.th-lobby.pl-phone .composer textarea:focus { box-shadow: inset 0 0 0 1.5px #FFE2A8; }
+.th-lobby.pl-phone .composer textarea::placeholder { color: #a69272; }
+.th-lobby.pl-phone .say { width: 52px; height: 52px; font-size: 12px; letter-spacing: .08em; }
+/* The end: a card docked under the talk, so the last reply can still be read above it. */
+.th-lobby.pl-phone .end { position: relative; z-index: 8; grid-column: 1 / -1; grid-row: 7; left: auto; top: auto; translate: none; min-width: 0; max-width: none; margin: 4px 8px calc(8px + env(safe-area-inset-bottom)); padding: 12px 14px; }
+.th-lobby.pl-phone .end-title { font-size: 19px; }
+.th-lobby.pl-phone .end-sub { font-size: 16px; }
+.th-lobby.pl-phone .reveals { max-height: calc(var(--pl-h, 664px) * .28); overflow-y: auto; font-size: 15px; }
+.th-lobby.pl-phone .leave { box-sizing: border-box; min-width: 0; width: 100%; height: 50px; margin-top: 4px; padding: 0 20px; font-size: 16px; }
+.th-lobby.pl-phone .moment .cap { left: 16px; right: 16px; bottom: 16px; font-size: 20px; }
+
+/* ---------- The sheet behind the bar's button: moments, the view mode, what you know, the deal ---------- */
+.th-lobby.pl-phone .journal, .th-lobby.pl-phone .hand, .th-lobby.pl-phone .moments, .th-lobby.pl-phone .mode, .th-lobby.pl-phone .kind { display: none; }
+.pl.th-lobby.pl-phone:has(.journal.open) { --mo: 0px; grid-template-rows: var(--bar) var(--mo) auto auto minmax(0, 1fr) auto auto auto auto; }
+.pl.th-lobby.pl-phone:has(.journal.open):has(.moments button) { --mo: 64px; }
+.th-lobby.pl-phone .journal.open { display: flex; position: relative; z-index: 7; grid-column: 1 / -1; grid-row: 2 / 7; flex-direction: column; justify-content: center; margin: 0; padding: 0; list-style: none; background: #0e0b07; border: 0; border-radius: 0; }
+.th-lobby.pl-phone .journal.open li { display: none; }
+.th-lobby.pl-phone .journal.open li.empty { display: block; margin: 0; padding: 0 14px; text-align: center; font: italic 500 16px/1.35 ${GARA}; color: #cfc0a0; }
+.th-lobby.pl-phone:has(.journal.open) .moments { display: flex; position: absolute; z-index: 8; left: 0; right: 0; top: calc(var(--bar) + 6px); bottom: auto; flex-direction: row; gap: 6px; padding: 0 8px; overflow-x: auto; touch-action: pan-x; }
+.th-lobby.pl-phone .moments button, .th-lobby.pl-phone .moments button:nth-child(2n) { flex: none; width: 76px; height: 56px; padding: 3px; transform: none; }
+.th-lobby.pl-phone .moments button::before { display: none; }
+.th-lobby.pl-phone:has(.journal.open) .kind { display: block; position: relative; z-index: 8; grid-column: 1 / -1; grid-row: 3; padding: 10px 14px 6px; font: 700 13px/1.25 ${CINZ}; letter-spacing: .03em; color: #DFC183; text-shadow: none; }
+.th-lobby.pl-phone:has(.journal.open) .mode { display: flex; position: relative; z-index: 8; grid-column: 1 / -1; grid-row: 4; gap: 6px; margin: 0; padding: 0 8px 8px; }
+.th-lobby.pl-phone:has(.journal.open) .mode button { flex: 1 1 0; box-sizing: border-box; width: auto; height: 44px; padding: 0 4px 0 34px; font: 700 12.5px/1 ${CINZ}; color: #cfc0a0; background-position: 6px center; background-size: 24px; background-repeat: no-repeat; filter: none; box-shadow: inset 0 0 0 1px rgba(200,157,84,.4); transform: none; text-align: left; }
+.th-lobby.pl-phone:has(.journal.open) .mode button.on { color: #FFE7AE; box-shadow: inset 0 0 0 2px #DFC183; background-color: rgba(223,193,131,.14); }
+.th-lobby.pl-phone:has(.journal.open) .hand { display: flex; position: relative; z-index: 8; grid-column: 1 / -1; grid-row: 5; left: auto; right: auto; bottom: auto; max-width: none; min-height: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; padding: 2px 8px 8px; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+.th-lobby.pl-phone .hand:not(:empty)::before { content: "Tap one to cite it in what you say"; flex: none; font: italic 500 15px/1.2 ${GARA}; color: #b8a27a; }
+.th-lobby.pl-phone .fact-card, .th-lobby.pl-phone .fact-card:hover, .th-lobby.pl-phone .fact-card:focus-visible { flex: none; box-sizing: border-box; width: 100%; height: auto; min-height: 48px; margin: 0; padding: 12px 14px; font-size: 16px; line-height: 1.28; transform: none; }
+.th-lobby.pl-phone .fact-card::before { width: 14px; height: 14px; }
+.th-lobby.pl-phone .fact-card.used { color: rgba(43,29,14,.85); filter: sepia(.25) brightness(.8); transform: none; }
+/* "Played" floats at the top right, so the fact's text wraps round it instead of running under it. */
+.th-lobby.pl-phone .fact-card.used::after { display: none; }
+.th-lobby.pl-phone .fact-card.used::before { content: "Played"; position: static; float: right; width: auto; height: auto; margin: -4px -6px 2px 8px; padding: 4px 6px 4px 12px; font: 800 12px/1 ${CINZ}; letter-spacing: .04em; text-transform: uppercase; color: #ffe2c8; background: linear-gradient(180deg, #8f2219, #4a0d08); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 7px 50%); filter: none; }
+.th-lobby.pl-phone:has(.journal.open) .actions { z-index: 8; grid-row: 6; padding: 6px 8px; }
+.th-lobby.pl-phone:has(.journal.open) .status { grid-row: 7; }
+.th-lobby.pl-phone:has(.journal.open) .composer { grid-row: 8; padding-top: 6px; }
+.th-lobby.pl-phone:has(.journal.open) .end { grid-row: 9; }
+.th-lobby.pl-phone:has(.journal.open) .log { visibility: hidden; grid-row: 2 / 6; }
+
+/* ---------- Short (the keyboard is open, or a small screen): the talk, the input, one line for the stakes ---------- */
+.pl.th-lobby.pl-short { --bar: 44px; grid-template-rows: var(--bar) minmax(0, 1fr) auto auto auto; }
+.th-lobby.pl-short .figure, .th-lobby.pl-short .lp-halo, .th-lobby.pl-short .lp-glow, .th-lobby.pl-short .lp-phname, .th-lobby.pl-short .actions { display: none; }
+.th-lobby.pl-short .journal-btn { height: 40px; margin-right: 2px; padding: 0 4px; font-size: 12px; }
+.th-lobby.pl-short .lp-box { grid-row: 2 / -1; }
+.th-lobby.pl-short .log { grid-row: 2; padding-top: 10px !important; padding-bottom: 14px !important; }
+.th-lobby.pl-short .status { grid-row: 3; }
+.th-lobby.pl-short .composer { grid-row: 4; padding-bottom: 6px; }
+.th-lobby.pl-short .end { grid-row: 5; margin-bottom: 6px; padding: 8px 12px; }
+/* Open while short: everything but the input, which comes back with the slip you tap. */
+.pl.th-lobby.pl-short:has(.journal.open) { grid-template-rows: var(--bar) var(--mo) auto minmax(0, 1fr) auto; }
+.th-lobby.pl-short .journal.open { grid-row: 2 / -1; }
+.th-lobby.pl-short:has(.journal.open) .kind, .th-lobby.pl-short:has(.journal.open) .composer, .th-lobby.pl-short:has(.journal.open) .status { display: none; }
+.th-lobby.pl-short:has(.journal.open) .mode { grid-row: 3; padding-top: 6px; }
+.th-lobby.pl-short:has(.journal.open) .hand { grid-row: 4; }
+.th-lobby.pl-short:has(.journal.open) .actions { display: flex; grid-row: 5; }
+.th-lobby.pl-short:has(.journal.open) .end { grid-row: 5; }
+.th-lobby.pl-short:has(.journal.open) .log { grid-row: 2 / -1; }
+
+/* ---------- Landscape: the talk and the input left, the stakes and the deal in a column right ---------- */
+@media (min-width: 600px) {
+  .pl.th-lobby.pl-short { --side: 250px; grid-template-columns: minmax(0, 1fr) var(--side); grid-template-rows: minmax(0, 1fr) auto auto auto; }
+  .th-lobby.pl-short .lp-box { grid-row: 1 / -1; box-shadow: none; }
+  .th-lobby.pl-short .log, .th-lobby.pl-short .status, .th-lobby.pl-short .composer, .th-lobby.pl-short .end { grid-column: 1; }
+  .th-lobby.pl-short .log { grid-row: 1; }
+  .th-lobby.pl-short .status { grid-row: 2; }
+  .th-lobby.pl-short .composer { grid-row: 3; }
+  .th-lobby.pl-short .end { grid-row: 4; }
+  .th-lobby.pl-short .meter { position: absolute; left: auto; right: 0; top: 0; width: var(--side); height: 54px; box-sizing: border-box; padding: 0 8px 0 12px; }
+  .th-lobby.pl-short .lp-phname { display: block; }
+  .th-lobby.pl-short .journal-btn { position: absolute; right: 0; top: 60px; width: calc(var(--side) - 16px); height: 44px; margin: 0 8px; font-size: 14px; }
+  .th-lobby.pl-short .actions, .th-lobby.pl-short:has(.journal.open) .actions { display: flex; position: absolute; grid-area: auto; right: 0; top: 110px; width: var(--side); flex-direction: column; gap: 6px; padding: 0 8px; }
+  .th-lobby.pl-short .actions button { flex: none; width: 100%; height: 46px; }
+  /* The sheet takes the talk's side only; the right column stays as it is. */
+  .pl.th-lobby.pl-short:has(.journal.open) { grid-template-rows: var(--mo) auto minmax(0, 1fr); }
+  .th-lobby.pl-short .journal.open { grid-column: 1; grid-row: 1 / -1; }
+  .th-lobby.pl-short:has(.journal.open) .moments { top: 6px; right: var(--side); }
+  .th-lobby.pl-short:has(.journal.open) .mode { grid-column: 1; grid-row: 2; }
+  .th-lobby.pl-short:has(.journal.open) .hand { grid-column: 1; grid-row: 3; display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+  .th-lobby.pl-short .hand:not(:empty)::before { grid-column: 1 / -1; }
+  .th-lobby.pl-short:has(.journal.open) .log { grid-column: 1; grid-row: 1 / -1; }
+  .th-lobby.pl-short:has(.journal.open) .end { grid-column: 1; grid-row: 3; }
 }
 @media (prefers-reduced-motion: reduce) {
   .th-lobby .lp-rays, .th-lobby .lp-halo .hl1, .th-lobby .lp-halo .hl2, .th-lobby .lp-halo .flare { animation: none; }
@@ -299,6 +390,14 @@ export const theme: ParleyTheme = {
     const scale = mk("lp-scale", balanceRig());
     const meterEl = root.querySelector<HTMLElement>(".meter");
     meterEl?.prepend(scale, mk("lp-ped", pedestal()));
+    // Phones: the name rides in the compact bar. The plaque stays for screen readers, so this copy is hidden from them.
+    const phName = mk("lp-phname");
+    phName.textContent = scenario.npc.name;
+    meterEl?.querySelector(".meter-label")?.before(phName);
+    // Phones: playing a slip closes the sheet first, so the input it fills is there to take the focus.
+    root.querySelector(".hand")?.addEventListener("click", (e) => {
+      if (root.classList.contains("pl-phone") && (e.target as Element).closest(".fact-card")) root.querySelector(".journal")?.classList.remove("open");
+    }, true);
     // The deal hangs from the pedestal's rings, however tall the meter grows.
     const hang = () => {
       if (meterEl) root.style.setProperty("--mh", `${Math.round(meterEl.offsetTop + meterEl.offsetHeight)}px`);

@@ -22,7 +22,7 @@ import { seedOf } from "../../../scene/themes/contract.js";
 import { CINZEL, FELL } from "../shared.js";
 import { BLOOD, CARD_H, CARD_W, PAPER_INK, backTexture, motifOf, skillTexture } from "./cards.js";
 import type { TableHand } from "./hand.js";
-import { duelSlots, tentSpots, type DuelLayout } from "./layout.js";
+import { duelSlots, phoneTentW, spreadTents, tentSpots, type DuelLayout } from "./layout.js";
 import type { TableSlate } from "./slate.js";
 
 type Tent = { id: string; c: Container; g: Graphics; name: Text; hp: Text; sig: string; w: number; h: number };
@@ -55,7 +55,7 @@ export function decorate(stage: BattleStage): StageDecor {
   stage.hud.addChildAt(rack, 0);
   function drawRack(): void {
     rack.clear();
-    if (L.portrait || !L.cards.length) return;
+    if (L.tiles || !L.cards.length) return;
     const c0 = L.cards[0]!;
     const c1 = L.cards[L.cards.length - 1]!;
     const pad = Math.round(c0.h * 0.06);
@@ -85,14 +85,17 @@ export function decorate(stage: BattleStage): StageDecor {
     if (!staged) return;
     const ids = enemyIds();
     const spots = tentSpots(L.w, L.h, ids.length);
+    // A phone: the name decides the card's size, and the cards stand side by side.
+    const phoneW = phoneTentW(L.w, ids.length);
+    const xs = L.tiles ? spreadTents(spots.map((p) => p.x), phoneW, L.w) : null;
     ids.forEach((id, i) => {
       const s = spots[i]!;
-      const w = Math.min(s.k * 0.46, (L.w / Math.max(1, ids.length)) * 0.92);
-      const h = Math.max(L.portrait ? 54 : 50, s.k * 0.12);
+      const w = L.tiles ? phoneW : Math.min(s.k * 0.46, (L.w / Math.max(1, ids.length)) * 0.92);
+      const h = L.tiles ? 72 : Math.max(50, s.k * 0.12);
       const c = new Container();
-      c.position.set(s.x, s.y);
+      c.position.set(xs ? xs[i]! : s.x, s.y);
       const g = new Graphics();
-      const name = new Text({ text: "", style: new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(h * (L.portrait ? 0.34 : 0.3)), fill: PAPER_INK, letterSpacing: 1 }) });
+      const name = new Text({ text: "", style: new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: L.tiles ? 13 : Math.round(h * 0.3), fill: PAPER_INK, letterSpacing: L.tiles ? 0 : 1, ...(L.tiles ? { lineHeight: 15 } : {}) }) });
       name.anchor.set(0.5, 0.5);
       const hp = new Text({ text: "", style: new TextStyle({ fontFamily: FELL, fontWeight: "700", fontSize: Math.round(h * 0.4), fill: 0xfff2e0, stroke: { color: 0x2a0406, width: 3 } }) });
       hp.anchor.set(0.5, 0.5);
@@ -125,9 +128,9 @@ export function decorate(stage: BattleStage): StageDecor {
     g.poly(face.map((v, k) => (k % 2 ? v * 0.9 - 2 : v * 0.92))).stroke({ width: 2, color: BLOOD });
     // The HP ruled across the bottom; the number in a wax drop on the right.
     const frac = Math.max(0, u.hp) / Math.max(1, u.maxHp);
-    const bx = L.portrait ? -w * 0.4 : -w * 0.38;
-    const bw = L.portrait ? w * 0.8 : w * 0.56;
-    const by = -h * 0.3;
+    const bx = L.tiles ? -w * 0.4 : -w * 0.38;
+    const bw = L.tiles ? w * 0.8 : w * 0.56;
+    const by = L.tiles ? -h * 0.37 : -h * 0.3;
     const bh = Math.max(4, h * 0.13);
     g.rect(bx, by, bw, bh).fill({ color: 0xd8ccb0 }).rect(bx, by, bw * frac, bh).fill({ color: frac < 0.3 ? 0xe0302a : BLOOD }).rect(bx, by, bw, bh).stroke({ width: 1.5, color: PAPER_INK });
     if (u.shield > 0) g.rect(bx, by - 3, bw * Math.min(1, u.shield / Math.max(1, u.maxHp)), 3).fill({ color: 0xbfd8e8 });
@@ -139,9 +142,10 @@ export function decorate(stage: BattleStage): StageDecor {
       const cy = by + bh + ps * 0.9;
       g.poly([cx, cy - ps / 2, cx + ps / 2, cy, cx, cy + ps / 2, cx - ps / 2, cy]).fill({ color: u.broken ? 0xe0302a : i < u.poise ? PAPER_INK : 0xe2d6bd }).stroke({ width: 1, color: PAPER_INK });
     }
-    const R = h * 0.36;
-    const sx = L.portrait ? w * 0.42 : w * 0.33;
-    const sy = L.portrait ? -h * 1.02 : -h * 0.42;
+    // A phone: the drop rides above the card's corner, clear of the name and on the screen.
+    const R = L.tiles ? 22 : h * 0.36;
+    const sx = L.tiles ? w * 0.5 - R * 0.75 : w * 0.33;
+    const sy = L.tiles ? -h - R * 0.4 : -h * 0.42;
     g.circle(sx, sy, R).fill({ color: 0x9c1419 }).stroke({ width: 2.5, color: 0x2a0406 });
     t.hp.text = `${Math.max(0, Math.round(u.hp))}`;
     t.hp.scale.set(1);
@@ -149,13 +153,15 @@ export function decorate(stage: BattleStage): StageDecor {
     t.hp.position.set(sx, sy + 1);
     t.name.text = u.name.toUpperCase();
     t.name.scale.set(1);
-    if (L.portrait) {
+    if (L.tiles) {
       // Narrow: the name takes the card's whole width (two lines if it must), the HP drop rides the corner.
       t.name.style.wordWrap = true;
-      t.name.style.wordWrapWidth = w * 0.86;
+      const nameW = w * 0.92;
+      t.name.style.wordWrapWidth = nameW;
       t.name.style.align = "center";
-      if (t.name.height > h * 0.5) t.name.scale.set((h * 0.5) / t.name.height);
-      t.name.position.set(0, -h * 0.66);
+      const fit = Math.min(1, (h * 0.5) / t.name.height, nameW / t.name.width);
+      t.name.scale.set(fit);
+      t.name.position.set(0, -h * 0.68);
     } else {
       if (t.name.width > w * 0.62) t.name.scale.set((w * 0.62) / t.name.width);
       t.name.position.set(-w * 0.1, -h * 0.66);
@@ -198,7 +204,8 @@ export function decorate(stage: BattleStage): StageDecor {
         reticle.moveTo(x + dx * arm, y).lineTo(x, y).lineTo(x, y + dy * arm).stroke({ width: 11, color: 0x5a0a0d, alpha: 0.9 * pulse, cap: "round", join: "round" });
         reticle.moveTo(x + dx * arm, y).lineTo(x, y).lineTo(x, y + dy * arm).stroke({ width: 5, color: 0xf2cf7a, alpha: pulse, cap: "round", join: "round" });
       }
-      // The key to press, on a wax disc above the head.
+      // The key to press, on a wax disc above the head (a phone has no keys to press).
+      if (L.tiles) return;
       const nx = sl.x;
       const ny = top - 24;
       reticle.circle(nx, ny, 17).fill({ color: 0x9c1419, alpha: 0.95 }).stroke({ width: 2.5, color: 0xf2cf7a });
@@ -230,10 +237,10 @@ export function decorate(stage: BattleStage): StageDecor {
   function placeAll(): void {
     L = stage.layout as DuelLayout;
     hand.duel = L;
-    hand.mat = staged && !L.portrait;
+    hand.mat = staged && !L.tiles;
     hand.reduced = stage.reduced;
-    slate.local = !staged || L.portrait;
-    slate.portrait = L.portrait;
+    slate.local = !staged || L.tiles;
+    slate.portrait = L.tiles;
     slate.redraw(true);
     hand.place(L.menu, L.ui);
     drawRack();
@@ -283,7 +290,7 @@ export function decorate(stage: BattleStage): StageDecor {
     const old = mat[key];
     if (old) old.fade = -1;
     mat[key] = null;
-    if (!name || !staged || L.portrait) return;
+    if (!name || !staged || L.tiles) return;
     const { tex, own } = faceTexture(name, enemy);
     const mesh = new PerspectiveMesh({ texture: tex, verticesX: 8, verticesY: 8 });
     if (own) mesh.on("destroyed", () => tex.destroy(true));

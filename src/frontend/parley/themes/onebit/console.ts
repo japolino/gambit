@@ -10,7 +10,12 @@
  * Windows, as the scene lays them out: the VIEW over the CHRONICLE (the conversation), the TERMS (stake,
  * bar, patience as hearts) over COMMAND (prompt, the line you type, the deal as a numbered list), and the
  * function-key strip (F1 what you know, F2 the reading mode). Ultrawide: view | chronicle | terms over command.
- * Phone: one column.
+ *
+ * On a phone (the view's .pl-phone) the conversation is the screen: a bar (who, the stake, patience, MORE), the
+ * log, and the line you type with the deal under it, on plain boxes at one fixed pixel unit (about 2 CSS px, so the
+ * face is 16px). The picture, what you know, the reading mode and the moments wait behind MORE, in a sheet over the
+ * log. .pl-short (the keyboard is up, or the screen is short) leaves one thin stake line, the log and the input;
+ * a wide short screen (landscape) puts the input and the deal beside the log.
  */
 import type { ParleyDecor, ParleyThemeCtx } from "../types.js";
 import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "../../../scene/themes/onebit/fb.js";
@@ -22,6 +27,13 @@ const C_PAPER = 0xffe6eef0;
 
 type Mode = "wide" | "std" | "tall";
 interface Lay { mode: Mode; W: number; H: number; view: Rect; log: Rect; head: Rect; foot: Rect; keys: Rect; /** What you know: its own window (null: over the chronicle, when F1 opens it). */ know: Rect | null }
+/** The phone's layout: what is shown right now (the sheet and a playing moment change it). */
+interface PhoneLay { W: number; H: number; short: boolean; land: boolean; sheet: boolean; playing: boolean; head: Rect; foot: Rect; area: Rect; log: Rect; gut: Rect; view: Rect | null; modeRow: Rect | null; know: Rect | null; knowGut: Rect | null }
+
+/** The scrollbar gutter at the log's right (virtual px): the bitmap arrow fits and it costs about a letter. */
+const GUT = 9;
+/** Landscape with the keyboard up: under this many rows the deal gives way to the input. */
+const LOW_H = 110;
 
 const inner = (r: Rect): Rect => ({ x: r.x + 4, y: r.y + 14, w: r.w - 8, h: r.h - 17 });
 const clip = (t: string, n: number) => (t.length > n ? t.slice(0, Math.max(1, n - 1)) + "." : t);
@@ -56,6 +68,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   let time = 0;
   let destroyed = false;
   let knowOpened = false;
+  let P: PhoneLay | null = null;
   const reduced = ctx.reducedMotion;
 
   /* ---------------------------------- Layout ---------------------------------- */
@@ -102,7 +115,131 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     el.style.height = `${(r.h - top - bottom) * u}px`;
   };
 
+  const isPhone = () => root.classList.contains("pl-phone");
+  const sheetOpen = () => !!journalList?.classList.contains("open");
+  const moving = () => !!q(".moment.show");
+  const put = (el: HTMLElement | null, x: number, y: number, w: number, h: number) => {
+    if (!el) return;
+    el.style.left = `${x * u}px`;
+    el.style.top = `${y * u}px`;
+    el.style.width = `${w * u}px`;
+    el.style.height = `${h * u}px`;
+  };
+  const unput = (el: HTMLElement | null) => {
+    if (!el) return;
+    for (const k of ["left", "top", "width", "height", "bottom", "maxHeight"] as const) el.style[k] = "";
+  };
+
+  /** One rect per thing the phone shows, from what's open now. The foot is as tall as its content (the end card, a long draft). */
+  function phoneSize(): void {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    // One fixed unit: the 8-pixel face lands at about 16px on any phone, whatever its height (never below 14).
+    const sc = Math.max(2, Math.round(2 * dpr));
+    u = sc / dpr;
+    const W = Math.max(100, Math.floor((root.clientWidth * dpr) / sc)), H = Math.max(60, Math.floor((root.clientHeight * dpr) / sc));
+    root.style.setProperty("--u", `${u}px`);
+    const short = root.classList.contains("pl-short");
+    const land = W / H >= 1.6 && W >= 300;
+    const sheet = sheetOpen();
+    const m = 1, g = 2;
+    const fw = W - 2 * m;
+    root.classList.toggle("ob-land", land);
+    root.classList.toggle("ob-low", land && H < LOW_H);
+    root.classList.toggle("ob-more", sheet);
+    root.classList.remove("ob-tall", "ob-know");
+    const head: Rect = { x: m, y: m, w: fw, h: short ? 16 : 32 };
+    const footEl = q<HTMLElement>(".foot");
+    const below = head.y + head.h + g;
+    let foot: Rect, area: Rect;
+    if (land) {
+      const cw = Math.max(150, Math.round(W * 0.4));
+      foot = { x: W - m - cw, y: below, w: cw, h: H - m - below };
+      area = { x: m, y: below, w: foot.x - g - m, h: H - m - below };
+      if (footEl) { footEl.style.bottom = ""; footEl.style.maxHeight = ""; }
+      put(footEl, foot.x + 1, foot.y + 1, foot.w - 2, foot.h - 2);
+    } else {
+      // Bottom-anchored and auto-height, so its real height can be read (and a resize observer sees it change).
+      if (footEl) {
+        footEl.style.left = `${(m + 1) * u}px`;
+        footEl.style.width = `${(fw - 2) * u}px`;
+        footEl.style.top = "auto";
+        footEl.style.height = "auto";
+        footEl.style.bottom = `${root.clientHeight - (H - m - 1) * u}px`;
+        footEl.style.maxHeight = `${Math.round((H - below) * 0.7) * u}px`;
+      }
+      const fh = Math.ceil((footEl?.offsetHeight ?? 60) / u) + 2;
+      foot = { x: m, y: H - m - fh, w: fw, h: fh };
+      area = { x: m, y: below, w: fw, h: foot.y - g - below };
+    }
+    // Whoever was at the newest line stays there when the log's box changes (the keyboard, the end card).
+    const wasEnd = !!logEl && logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 4;
+    let view: Rect | null = null, modeRow: Rect | null = null, know: Rect | null = null, knowGut: Rect | null = null;
+    let body = area;
+    if (sheet) {
+      // The sheet over the log: what you know over the reading mode, the picture above them when there's room.
+      const rowH = 24;
+      const room = area.h - rowH - g;
+      const picH = short || room < 130 ? 0 : Math.max(70, Math.min(130, Math.round(room * 0.42)));
+      if (picH) view = { x: area.x, y: area.y, w: area.w, h: picH };
+      const ky = area.y + (picH ? picH + g : 0);
+      know = { x: area.x, y: ky, w: area.w, h: area.y + area.h - rowH - g - ky };
+      modeRow = { x: area.x, y: area.y + area.h - rowH, w: area.w, h: rowH };
+      knowGut = { x: know.x + know.w - GUT - 3, y: know.y + 14, w: GUT, h: know.h - 17 };
+    } else if (!short && !land && H >= 400) {
+      // A tall phone can afford a strip of the picture and still read a long scene.
+      view = { x: area.x, y: area.y, w: area.w, h: 74 };
+      body = { x: area.x, y: area.y + 76, w: area.w, h: area.h - 76 };
+    }
+    const log = { x: body.x, y: body.y, w: body.w, h: body.h };
+    const gut = { x: log.x + log.w - GUT - 1, y: log.y + 1, w: GUT, h: log.h - 2 };
+    const playing = moving();
+    P = { W, H, short, land, sheet, playing, head, foot, area, log, gut, view, modeRow, know, knowGut };
+    L = { mode: "tall", W, H, view: view ?? area, log, head, foot, keys: area, know };
+    root.classList.toggle("ob-playing", playing);
+    if (cv.width !== W || cv.height !== H) {
+      cv.width = W;
+      cv.height = H;
+      fb = new Frame(W, H);
+      img = null;
+    }
+    cv.style.width = `${W * u}px`;
+    cv.style.height = `${H * u}px`;
+    // The DOM on the boxes. The scene takes no room unless the picture is out; a playing moment takes the whole log.
+    put(q<HTMLElement>(".head"), head.x + 2, head.y + (short ? 1 : 11), head.w - 4, head.h - (short ? 2 : 12));
+    const btnW = 38;
+    put(journalBtn, head.x + head.w - btnW - 1, head.y + (short ? 0 : 1), btnW, short ? 16 : 22);
+    put(logEl, log.x + 1, log.y + 1, log.w - 2 - GUT - 1, log.h - 2);
+    if (wasEnd && logEl) logEl.scrollTop = logEl.scrollHeight;
+    if (playing) put(ctx.scene, area.x + 1, area.y + 1, area.w - 2, area.h - 2);
+    else if (view) { const vi = inner(view); put(ctx.scene, vi.x, vi.y, vi.w, vi.h); }
+    else put(ctx.scene, area.x, area.y, 0, 0);
+    if (modeRow) put(modeSw, modeRow.x + 40, modeRow.y + 1, modeRow.w - 41, modeRow.h - 2);
+    if (know) put(jwin, know.x + 4, know.y + 14, know.w - 8 - GUT - 1, know.h - 17);
+    root.style.setProperty("--ob-jh", "100%");
+    lightKey = "";
+    paint();
+  }
+
+  let wasPhone = false;
+  let longAsk = "";
   function size(): void {
+    const phone = isPhone();
+    if (phone !== wasPhone) {
+      wasPhone = phone;
+      // The box holds two short lines on a phone: the long prompt would be cut off in it.
+      const ask = q<HTMLTextAreaElement>(".composer textarea");
+      if (ask) {
+        longAsk ||= ask.placeholder;
+        ask.placeholder = phone ? `Say something to ${ctx.scenario.npc.name.split(/\s+/)[0]}...` : longAsk;
+      }
+      if (phone) journalList?.classList.remove("open");
+      else {
+        P = null;
+        root.classList.remove("ob-land", "ob-low", "ob-more", "ob-playing");
+        for (const el of [q<HTMLElement>(".foot"), journalBtn, modeSw]) unput(el);
+      }
+    }
+    if (phone) { phoneSize(); return; }
     L = layout();
     root.style.setProperty("--u", `${u}px`);
     root.classList.toggle("ob-tall", L.mode === "tall");
@@ -154,7 +291,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   }
 
   function refreshArt(): void {
-    if (!L) return;
+    if (!L || (P && !P.view)) return;
     const vi = inner(L.view);
     const s = sources();
     const PX = 10, PY = 5;
@@ -314,7 +451,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     const maxc = Math.floor((cr.w - 10) / 8);
     const t = clip(`1 ${npc.name.toUpperCase()}`, maxc);
     const roleAll = wrap(npc.role ?? "", maxc);
-    const roleMax = L!.mode === "tall" ? 3 : 2;
+    const roleMax = P ? (cr.h < 80 ? 1 : 2) : L!.mode === "tall" ? 3 : 2;
     const role = roleAll.slice(0, roleMax);
     if (roleAll.length > roleMax) role[roleMax - 1] = `${clip(role[roleMax - 1]!, maxc - 1)}…`;
     const tw = t.length * 8 + 6;
@@ -384,7 +521,8 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   function paint(): void {
     if (!L || destroyed) return;
     for (let y = 0; y < fb.h; y++) for (let x = 0; x < fb.w; x++) fb.pix[y * fb.w + x] = (x & 3) === 0 && (y & 3) === ((x >> 1) & 2) ? PAPER : INK;
-    if (font) {
+    if (font && P) paintPhone(P);
+    else if (font) {
       refreshArt();
       paintView(L.view);
       const logEnd = win(L.log, L.mode === "tall" ? "Log" : "Chronicle", lastRoll());
@@ -410,6 +548,61 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     g2.putImageData(img, 0, 0);
     jwin.classList.toggle("open", !!journalList?.classList.contains("open"));
     queueMicrotask(edges);
+  }
+
+  /** The phone's plain window: one rule, no title bar, every row counts. */
+  function plainWin(r: Rect): void {
+    fb.fill(r, INK);
+    fb.box(r, PAPER);
+  }
+
+  /** A list's position, in the gutter at its side: a thumb, and an arrow where there's more. */
+  function gutter(el: HTMLElement | null, r: Rect): void {
+    if (!el || !font) return;
+    fb.vline(r.x - 1, r.y, r.h, PAPER, 1);
+    const sh = el.scrollHeight, ch = el.clientHeight;
+    if (sh <= ch + 2) return;
+    const ar = 9;
+    const tr = { x: r.x + 1, y: r.y + ar, w: r.w - 2, h: Math.max(4, r.h - 2 * ar) };
+    if (el.scrollTop > 2) fb.text(font, r.x, r.y + 1, "▲", PAPER);
+    if (el.scrollTop + ch < sh - 2) fb.text(font, r.x, r.y + r.h - ar, "▼", PAPER);
+    const t = Math.max(6, Math.round((tr.h * ch) / sh));
+    const y = tr.y + Math.round(((tr.h - t) * el.scrollTop) / Math.max(1, sh - ch));
+    fb.fill({ x: tr.x + 1, y, w: tr.w - 2, h: t }, PAPER);
+  }
+
+  /** Whole words up to n letters, for a name in a narrow bar. */
+  function nameFit(t: string, n: number): string {
+    if (t.length <= n) return t;
+    const fit: string[] = [];
+    for (const w of t.split(/\s+/)) {
+      if (fit.join(" ").length + (fit.length ? 1 : 0) + w.length > n) break;
+      fit.push(w);
+    }
+    // Never stop on a little word ("MARROW THE").
+    while (fit.length > 1 && /^(THE|OF|A|AN|AND|DE|VON|VAN|AT|IN)$/.test(fit[fit.length - 1]!)) fit.pop();
+    return fit.join(" ") || clip(t, n);
+  }
+
+  function paintPhone(p: PhoneLay): void {
+    const f = font!;
+    plainWin(p.head);
+    if (!p.short) fb.text(f, p.head.x + 3, p.head.y + 2, nameFit(ctx.scenario.npc.name.toUpperCase(), Math.floor((p.head.w - 38 - 7) / 8)), PAPER);
+    plainWin(p.foot);
+    if (p.view) { refreshArt(); paintView(p.view); }
+    if (p.sheet) {
+      if (p.know) {
+        win(p.know, "What you know");
+        if (p.knowGut) gutter(journalList, p.knowGut);
+      }
+      if (p.modeRow) {
+        plainWin(p.modeRow);
+        fb.text(f, p.modeRow.x + 3, p.modeRow.y + 8, "SHOW", PAPER);
+      }
+    } else {
+      plainWin(p.log);
+      gutter(logEl, p.gut);
+    }
   }
 
   /** Mark a scrolled list so its first or last part line hides under an ink band with an arrow, never cut through. */
@@ -474,13 +667,26 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     el.style.setProperty("mask-image", m);
     el.style.setProperty("-webkit-mask-image", m);
   }
-  logEl?.addEventListener("scroll", edges, { passive: true });
+  // On a phone the gutter's thumb follows the finger (once a frame).
+  let scrollRaf = 0;
+  const onScroll = () => {
+    edges();
+    if (P && !scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; paint(); });
+  };
+  logEl?.addEventListener("scroll", onScroll, { passive: true });
   /* When a turn settles, the chronicle shows it from its start: the whole turn if it fits, else from the
      answer's first line (the view itself scrolls to the bottom line). */
   let anchorT = 0;
+  /** A finger on the log: leave it where the player has it until their next line. */
+  let reading = false;
+  let turns = 0;
+  logEl?.addEventListener("touchstart", () => { reading = true; }, { passive: true });
   function anchor(): void {
     const el = logEl;
     if (!el || !el.offsetParent || el.querySelector(".prose.waiting")) return;
+    const n = el.querySelectorAll(":scope > .you").length;
+    if (n !== turns) { turns = n; reading = false; }
+    if (P && reading) return;
     const you = [...el.querySelectorAll<HTMLElement>(":scope > .you")].pop();
     if (!you) return;
     const base = el.getBoundingClientRect().top + el.clientTop - el.scrollTop;
@@ -495,16 +701,41 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   const logMo = new MutationObserver(() => { clearTimeout(anchorT); anchorT = window.setTimeout(anchor, 600); });
   if (logEl) logMo.observe(logEl, { childList: true, subtree: true, characterData: true });
   anchorT = window.setTimeout(anchor, 900);
-  journalList?.addEventListener("scroll", edges, { passive: true });
+  journalList?.addEventListener("scroll", onScroll, { passive: true });
 
   /* ---------------------------------- Life ---------------------------------- */
   const ro = new ResizeObserver(() => size());
   ro.observe(root);
-  const mo = new MutationObserver(() => paint());
+  const mo = new MutationObserver(() => {
+    // On a phone the sheet and a playing moment change what's on screen, not only what's painted.
+    if (P && (P.sheet !== sheetOpen() || P.playing !== moving())) size();
+    else paint();
+  });
   mo.observe(ctx.scene, { subtree: true, attributes: true, attributeFilter: ["src", "class"] });
   if (journalList) mo.observe(journalList, { attributes: true, attributeFilter: ["class"] });
   const foot = q(".foot");
   if (foot) mo.observe(foot, { subtree: true, attributes: true, attributeFilter: ["class"] });
+  // The view says when it's a phone (pl-phone, pl-short); the foot's height (the end card, status, a long draft) moves the log.
+  let phoneKey = "";
+  const cmo = new MutationObserver(() => {
+    const k = `${isPhone()}${root.classList.contains("pl-short")}`;
+    if (k !== phoneKey) { phoneKey = k; size(); }
+  });
+  cmo.observe(root, { attributes: true, attributeFilter: ["class"] });
+  const footRo = new ResizeObserver(() => { if (P && !P.land && foot && Math.ceil((foot as HTMLElement).offsetHeight / u) + 2 !== P.foot.h) size(); });
+  if (foot) footRo.observe(foot);
+  // The line you type grows with what you've written (up to four lines), then scrolls.
+  const draft = q<HTMLTextAreaElement>(".composer textarea");
+  const growDraft = () => {
+    if (!draft) return;
+    if (!P) { draft.style.height = ""; return; }
+    const lh = 10 * u, pad = 6 * u;
+    draft.style.height = "auto";
+    draft.style.height = `${Math.max(2 * lh + pad, Math.min(draft.scrollHeight, (P.short ? 2 : 4) * lh + pad))}px`;
+  };
+  draft?.addEventListener("input", growDraft);
+  // MORE from the keyboard: put the keyboard away first, or the sheet would open in a sliver of screen.
+  journalBtn?.addEventListener("pointerdown", () => { if (P) draft?.blur(); });
   const timer = window.setInterval(() => {
     time += 0.25;
     // The cursor blinks at 1 Hz; the person shifts a pixel every few seconds (no motion when reduced).
@@ -528,11 +759,18 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   size();
 
   return {
-    update() { paint(); },
+    update() {
+      // The view empties the box when a line is sent, without an input event.
+      if (P && draft && !draft.value) draft.style.height = "";
+      paint();
+    },
     destroy() {
       destroyed = true;
       ro.disconnect();
       mo.disconnect();
+      cmo.disconnect();
+      footRo.disconnect();
+      cancelAnimationFrame(scrollRaf);
       clearInterval(timer);
       clearTimeout(anchorT);
       logMo.disconnect();

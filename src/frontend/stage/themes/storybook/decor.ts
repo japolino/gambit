@@ -5,6 +5,8 @@
  * against the pointer. Each foe stands over a brocade name scroll with a gilt gauge (its HP), rosettes for
  * its poise and wax seals for its statuses, instead of the stock plate. The engine's events are told on the
  * page as they play. Keyboard: 1–9 pick a skill (or a target), arrows move, Enter takes, Escape goes back.
+ * On a phone (GEO.compact) the page is plain vellum and a foe's plate is drawn flat, both at once: nothing that
+ * has to be read waits on a picture, and the corners and rays are gone.
  */
 import { Container, FillGradient, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import type { BattleEvent, BattleState } from "../../../../engine/types.js";
@@ -14,8 +16,8 @@ import type { StageLayout } from "../../battle/layout.js";
 import { STATUS_STYLE } from "../../theme.js";
 import { drawStatusGlyph } from "../../ui.js";
 import type { StageDecor } from "../types.js";
-import { CINZEL } from "../shared.js";
-import { godRays } from "../../../scene/themes/storybook/textures.js";
+import { CINZEL, GARAMOND } from "../shared.js";
+import { godRays, parchment } from "../../../scene/themes/storybook/textures.js";
 import { corner, diamond, floorRing, gauge, page, pip, scroll, seal, skirtArt } from "./art.js";
 import { GEO } from "./layout.js";
 import { BookMenu } from "./menu.js";
@@ -39,13 +41,33 @@ class FoePlate extends Container {
   private w = 100;
   private gw = 100;
   private gh = 10;
+  /** A phone's plate: the dark ground behind its name, gauge and poise, and where the gauge sits. */
+  private back = new Graphics();
+  private gy = 0;
   constructor(readonly view: EnemyView) {
     super();
     this.nameT.anchor.set(0.5);
-    this.addChild(this.scrollArt, this.nameT, this.gaugeArt, this.fill, this.marks);
+    this.addChild(this.back, this.scrollArt, this.nameT, this.gaugeArt, this.fill, this.marks);
   }
-  layout(ui: number): void {
+  layout(ui: number, slotW = 0): void {
     const v = this.view;
+    const compact = GEO.compact;
+    this.scrollArt.visible = this.gaugeArt.visible = this.back.visible = !compact;
+    this.back.visible = compact;
+    if (compact) {
+      const pw = Math.round(Math.min(190, Math.max(96, slotW - 6)));
+      this.w = this.gw = pw - 12;
+      this.gh = 12;
+      this.nameT.anchor.set(0.5, 0);
+      this.nameT.scale.set(1);
+      this.nameT.style = new TextStyle({ fontFamily: GARAMOND, fontWeight: "700", fontSize: 14, fill: 0xfff0cc, align: "center", wordWrap: true, wordWrapWidth: pw - 10, lineHeight: 16 });
+      this.nameT.position.set(0, 3);
+      this.position.set(0, v.slot.floorY - v.slot.y + 2);
+      this.sig = "";
+      this.fsig = "";
+      return;
+    }
+    this.nameT.anchor.set(0.5);
     const k = Math.max(0.75, ui * 0.82);
     const sw = Math.round(Math.max(150, Math.min(250, v.slot.height * 0.5)) * k);
     this.w = sw;
@@ -73,8 +95,13 @@ class FoePlate extends Container {
     else this.ghost = Math.max(this.ghost, t);
     this.shown = t;
     if (now > this.hold && this.ghost > this.shown) this.ghost = Math.max(this.shown, this.ghost - 0.016);
-    if (this.nameT.text !== u.name.toUpperCase()) this.nameT.text = u.name.toUpperCase();
-    if (this.nameT.width > this.w * 0.68) this.nameT.scale.set((this.w * 0.68) / (this.nameT.width / this.nameT.scale.x));
+    if (GEO.compact) {
+      if (this.nameT.text !== u.name) this.nameT.text = u.name;
+      this.gy = 3 + this.nameT.height + 2;
+    } else {
+      if (this.nameT.text !== u.name.toUpperCase()) this.nameT.text = u.name.toUpperCase();
+      if (this.nameT.width > this.w * 0.68) this.nameT.scale.set((this.w * 0.68) / (this.nameT.width / this.nameT.scale.x));
+    }
     const fsig = `${t.toFixed(3)}|${this.ghost.toFixed(3)}|${u.shield}|${u.broken}|${this.gw}`;
     if (fsig !== this.fsig) this.drawFill(t, u);
     this.fsig = fsig;
@@ -83,6 +110,17 @@ class FoePlate extends Container {
   private fsig = "";
   private drawFill(t: number, u: { shield: number; maxHp: number; broken: boolean }): void {
     const g = this.fill;
+    if (GEO.compact) {
+      // A gauge you can read at arm's length: a thick bar in a gilt rule, no picture.
+      const gw = this.gw, gh = this.gh, x = -gw / 2, y = this.gy;
+      const iw = gw - 4, ih = gh - 4;
+      g.clear();
+      g.roundRect(x, y, gw, gh, 2).fill({ color: 0x1b0b0e }).stroke({ width: 1, color: u.broken ? 0xffe2a0 : 0xd9ad62 });
+      if (this.ghost > t) g.rect(x + 2 + iw * t, y + 2, iw * (this.ghost - t), ih).fill({ color: 0xf1d9b0, alpha: 0.85 });
+      if (t > 0) g.rect(x + 2, y + 2, iw * t, ih).fill(BLOOD());
+      if (u.shield > 0) g.rect(x + 2 + iw * t, y + 2, Math.min(iw * (1 - t), iw * (u.shield / Math.max(1, u.maxHp))), ih).fill({ color: 0xd8e6f0, alpha: 0.7 });
+      return;
+    }
     const gx = this.gaugeArt.x, gy = this.gaugeArt.y, gw = this.gw, gh = this.gh;
     const ix = gx + gw * 0.05, iw = gw * 0.9, iy = gy + gh * 0.32, ih = gh * 0.36;
     g.clear();
@@ -97,6 +135,10 @@ class FoePlate extends Container {
     if (sig === this.sig) return;
     this.sig = sig;
     for (const c of this.marks.removeChildren()) c.destroy({ children: true });
+    if (GEO.compact) {
+      this.marksCompact(u);
+      return;
+    }
     const ps = Math.max(10, gh * 0.95);
     const n = Math.min(u.maxPoise, 10);
     const y = gy + gh + 3;
@@ -117,6 +159,38 @@ class FoePlate extends Container {
       c.position.set(this.gaugeArt.x + gw + 2 + i * (ss * 0.8), gy + gh / 2 - ss / 2);
       this.marks.addChild(c);
     });
+  }
+  /** A phone's poise and statuses: one row under the gauge, then the plate's ground behind it all. */
+  private marksCompact(u: { poise: number; maxPoise: number; broken: boolean; statuses: { id: keyof typeof STATUS_STYLE }[] }): void {
+    const y = this.gy + this.gh + 3;
+    const n = Math.min(u.maxPoise, 10);
+    const ps = 11, ss = 18;
+    const statuses = u.statuses.slice(0, 4);
+    const total = n * (ps + 2) + (statuses.length ? 4 + statuses.length * (ss + 1) : 0);
+    let x = -total / 2;
+    const dots = new Graphics();
+    for (let i = 0; i < n; i += 1) {
+      const on = i < u.poise && !u.broken;
+      dots.circle(x + ps / 2, y + 9 - ps / 2 + 0.5, ps / 2 - 1);
+      if (on) dots.fill({ color: 0xe9c57a }).stroke({ width: 1, color: 0x5a3816 });
+      else dots.stroke({ width: 1.2, color: 0xb8964e });
+      x += ps + 2;
+    }
+    this.marks.addChild(dots);
+    x += statuses.length ? 4 : 0;
+    statuses.forEach((st) => {
+      const sty = STATUS_STYLE[st.id];
+      const c = new Container();
+      c.addChild(new ArtSprite(sty.harmful ? "seal" : "seal-gold", () => (sty.harmful ? seal() : seal().replace(/url\(#sb-wax\)/g, "url(#sb-gold)"))).draw(ss, ss));
+      const gl = new Graphics();
+      drawStatusGlyph(gl, sty.glyph, ss * 0.3, ss * 0.3, ss * 0.4, sty.harmful ? 0xffe2c8 : 0x4a2a0e);
+      c.addChild(gl);
+      c.position.set(x, y);
+      this.marks.addChild(c);
+      x += ss + 1;
+    });
+    const h = y + (n || statuses.length ? 19 : 0) + 2;
+    this.back.clear().roundRect(-this.w / 2 - 6, 0, this.w + 12, h, 3).fill({ color: 0x140a05, alpha: 0.82 }).stroke({ width: 1, color: 0x8a6a2a, alpha: 0.9 });
   }
 }
 
@@ -180,7 +254,11 @@ export function decorate(stage: BattleStage): StageDecor {
   motes.blendMode = "screen";
   const skirt = new ArtSprite("skirt", () => "");
   const pageArt = new ArtSprite("page", () => "");
-  atmos.addChild(rays, vig, motes, skirt, pageArt);
+  // A phone's page: flat colour at once, the vellum over it as soon as it decodes, a gilt rule on its edge.
+  const flatPage = new Graphics();
+  const vellum = new ImageSprite(parchment());
+  const pageRim = new Graphics();
+  atmos.addChild(rays, vig, motes, skirt, pageArt, flatPage, vellum, pageRim);
   stage.back.addChild(atmos);
   // The proscenium corners, over the fight (under the cut-ins).
   const corners = new Container();
@@ -238,6 +316,21 @@ export function decorate(stage: BattleStage): StageDecor {
     };
   }
   const menu = stage.menu instanceof BookMenu ? stage.menu : null;
+  // A foe's whole slot takes the tap on a phone (the stock area is the width of its body).
+  const widen = (v: EnemyView) => {
+    if (!GEO.compact || !lastLayout) return;
+    const w = lastLayout.enemyArea.w / Math.max(1, stage.enemies.size);
+    const top = -v.slot.height, bottom = v.slot.floorY - v.slot.y + 56;
+    v.hitArea = { contains: (x: number, y: number) => Math.abs(x) <= w / 2 && y >= top && y <= bottom };
+  };
+  let lastLayout: StageLayout | null = null;
+  for (const v of stage.enemies.values()) {
+    const place = v.place.bind(v);
+    v.place = (...a: Parameters<EnemyView["place"]>) => {
+      place(...a);
+      widen(v);
+    };
+  }
   // Motes of dust in the light.
   const dust = Array.from({ length: 34 }, (_, i) => ({ x: Math.random(), y: Math.random(), r: 0.6 + Math.random() * 1.8, v: 0.004 + Math.random() * 0.01, p: i * 1.7 }));
   let W = 1, H = 1;
@@ -300,23 +393,41 @@ export function decorate(stage: BattleStage): StageDecor {
     }
   };
   addEventListener("keydown", onKey, true);
+  if (menu) {
+    menu.targetsOf = () => targetList().map((id) => ({ id, name: nameOf(id) }));
+    menu.tapTarget = tap;
+  }
 
   const decor: StageDecor = {
     resize(w: number, h: number, l: StageLayout) {
       W = w;
       H = h;
+      lastLayout = l;
       vig.width = w;
       vig.height = h;
       rays.fit(w * 0.8, h * 0.92);
       rays.position.set(w * 0.24, -h * 0.06);
       const p = GEO.page;
-      const art = page(p.w, p.h);
-      const M = art.pad.x, T = art.pad.top, B = art.pad.bottom;
-      pageArt.draw(p.w + 2 * M, p.h + T + B, `page-${p.w}x${p.h}`, () => art.svg);
-      pageArt.position.set(p.x - M, p.y - T);
-      const skH = Math.round(l.portrait ? h - p.y + 30 : (p.h + (h - p.y - p.h)) * 0.72);
-      skirt.draw(w, skH, `skirt-${w}x${skH}-${p.x}`, () => skirtArt(w, skH, p.x, p.x + p.w));
-      skirt.position.set(0, h - skH);
+      const plainPage = GEO.compact;
+      rays.visible = !plainPage;
+      skirt.visible = pageArt.visible = !plainPage;
+      flatPage.visible = vellum.visible = pageRim.visible = plainPage;
+      if (plainPage) {
+        flatPage.clear().rect(p.x, p.y, p.w, p.h).fill({ color: 0xe6d3ab });
+        vellum.fit(p.w, p.h);
+        vellum.position.set(p.x, p.y);
+        pageRim.clear();
+        if (l.portrait) pageRim.rect(0, p.y - 3, w, 3).fill({ color: 0x2a1205 }).rect(0, p.y - 2, w, 2).fill({ color: 0xd9ad62 });
+        else pageRim.rect(p.x - 3, 0, 3, h).fill({ color: 0x2a1205 }).rect(p.x - 2, 0, 2, h).fill({ color: 0xd9ad62 });
+      } else {
+        const art = page(p.w, p.h);
+        const M = art.pad.x, T = art.pad.top, B = art.pad.bottom;
+        pageArt.draw(p.w + 2 * M, p.h + T + B, `page-${p.w}x${p.h}`, () => art.svg);
+        pageArt.position.set(p.x - M, p.y - T);
+        const skH = Math.round((p.h + (h - p.y - p.h)) * 0.72);
+        skirt.draw(w, skH, `skirt-${w}x${skH}-${p.x}`, () => skirtArt(w, skH, p.x, p.x + p.w));
+        skirt.position.set(0, h - skH);
+      }
       const cw = Math.round(Math.max(l.portrait ? 96 : 150, Math.min(360, Math.min(w * 0.21, h * 0.34))));
       const small = Math.round(cw * 0.7);
       for (const s of cs) {
@@ -327,25 +438,29 @@ export function decorate(stage: BattleStage): StageDecor {
         s.scale.x = Math.abs(s.scale.x) * (s.label === "tr" || s.label === "br" ? -1 : 1);
         s.scale.y = Math.abs(s.scale.y) * (s.label === "bl" || s.label === "br" ? -1 : 1);
         s.position.set(s.label === "tr" || s.label === "br" ? w + 6 : -6, s.label === "bl" || s.label === "br" ? h + 6 : -6);
-        s.visible = big || !l.portrait;
+        s.visible = !plainPage && (big || !l.portrait);
       }
+      const slotW = (l.enemyArea.w * (l.portrait ? 0.98 : 0.86)) / Math.max(1, stage.enemies.size);
       for (const [id, v] of stage.enemies) {
-        plates.get(id)?.layout(l.ui);
+        plates.get(id)?.layout(l.ui, slotW);
+        widen(v);
         const r = rings.get(id)!;
-        const rw = Math.max(120, v.slot.height * 0.62);
+        const rw = plainPage ? Math.min(slotW, Math.max(96, v.slot.height * 0.62)) : Math.max(120, v.slot.height * 0.62);
         const rs = r.children[0] as ArtSprite;
         rs.draw(rw, rw).anchor.set(0.5);
         rs.position.set(0, 0);
         const b = badges.get(id)!;
-        const bw = Math.round(Math.max(96, 120 * l.ui * 0.8));
+        const bw = plainPage ? Math.round(Math.min(124, Math.max(92, slotW - 4))) : Math.round(Math.max(96, 120 * l.ui * 0.8));
         const bh = (bw * 38) / 100;
         (b.children[0] as ArtSprite).draw(bw, bh).position.set(-bw / 2, -bh / 2);
         const bt = b.children[1] as Text;
-        bt.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(bw * 0.1), fill: 0xffd27a, letterSpacing: 2 });
+        bt.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: plainPage ? 13 : Math.round(bw * 0.1), fill: 0xffd27a, letterSpacing: 2 });
         b.position.set(0, -v.slot.height * ((v as unknown as { unit?: { rig?: string } }).unit?.rig === "huge" ? 0.86 : 1.04) - bh * 0.6);
         // A tall foe's diamond comes down onto its head rather than off the top of the window.
         const sy = Math.abs(v.scale.y) || 1;
         b.y = Math.max(b.y, (Math.round(16 * l.ui) + bh * 0.6 - v.y) / sy);
+        // On a phone a tall foe's head is under the order of turns: the diamond stands at its feet, over its plate.
+        if (plainPage) b.y = v.slot.floorY - v.slot.y - bh * 0.5 - 2;
         r.scale.set(1, 0.3);
         r.position.set(0, v.slot.floorY - v.slot.y);
       }

@@ -171,6 +171,75 @@ const ONEBIT = `
 .pl.th-onebit.ob-tall .journal-btn { padding: 0 ${px(3)}; }
 .pl.th-onebit.ob-tall .mode button:first-child::after { content: "STORY"; font-size: ${px(8)}; }
 .pl.th-onebit.ob-tall .mode button:last-child::after { content: "DICE"; font-size: ${px(8)}; }
+
+/* The phone (.pl-phone; rects from ./onebit/console.ts phoneSize): the log is the screen. One bar, the talk, the input
+   and the deal; the rest behind MORE. Text is the 16px face set half a pixel tighter: a few more words a line, and the letters still don't touch. */
+.pl.th-onebit.pl-phone .log, .pl.th-onebit.pl-phone .journal, .pl.th-onebit.pl-phone .composer textarea, .pl.th-onebit.pl-phone .end-sub, .pl.th-onebit.pl-phone .reveals, .pl.th-onebit.pl-phone .status { letter-spacing: calc(${U} * -0.5); }
+.pl.th-onebit.pl-phone .ob-keys { display: contents; }
+.pl.th-onebit.pl-phone .tell { display: none; }
+.pl.th-onebit.pl-phone .log { padding: ${px(2)} ${px(3)} ${px(8)} !important; gap: ${px(5)}; scrollbar-width: none; }
+.pl.th-onebit.pl-phone .log::-webkit-scrollbar { display: none; }
+.pl.th-onebit.pl-phone.ob-more .log { visibility: hidden; }
+.pl.th-onebit.pl-phone .you { align-self: stretch; max-width: none; margin: 0; }
+.pl.th-onebit.pl-phone .scene { z-index: 2; }
+.pl.th-onebit.pl-phone.ob-playing .scene { z-index: 6; }
+/* The bar: who (painted), the stake, patience and how the deal stands. */
+.pl.th-onebit.pl-phone .head { gap: 0; padding: 0; overflow: hidden; }
+.pl.th-onebit.pl-phone .meter { grid-template-columns: auto minmax(0, 1fr) auto; gap: ${px(2)} ${px(3)}; align-items: center; }
+.pl.th-onebit.pl-phone .meter-label { grid-column: 1; grid-row: 1; font: ${px(8)}/${px(10)} ${BIT}; }
+.pl.th-onebit.pl-phone .meter-value { grid-column: 2 / -1; grid-row: 1; font: ${px(8)}/${px(10)} ${BIT}; gap: ${px(3)}; margin-right: ${px(39)}; }
+.pl.th-onebit.pl-phone .bar { grid-column: 1 / 3; grid-row: 2; height: ${px(6)}; margin: 0; padding: ${px(1)}; }
+.pl.th-onebit.pl-phone .bar::before { content: none; }
+.pl.th-onebit.pl-phone .patience { grid-column: 3; grid-row: 2; }
+.pl.th-onebit.pl-phone .patience .pl-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.pl.th-onebit.pl-phone .journal-btn { position: absolute; z-index: 2; padding: 0; overflow: hidden; white-space: nowrap; color: transparent; background: ${PAPER}; touch-action: manipulation; }
+.pl.th-onebit.pl-phone .journal-btn::before { content: none; }
+.pl.th-onebit.pl-phone .journal-btn::after { content: "MORE"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: ${PAPER}; color: ${INK}; font: ${px(8)}/${px(10)} ${BIT}; }
+.pl.th-onebit.pl-phone.ob-more .journal-btn::after { content: "BACK"; }
+/* The sheet behind MORE. */
+.pl.th-onebit.pl-phone .ob-jwin .journal { height: 100%; padding: ${px(1)} ${px(3)} ${px(4)} ${px(1)}; scrollbar-width: none; touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.pl.th-onebit.pl-phone .ob-jwin .journal::-webkit-scrollbar { display: none; }
+.pl.th-onebit.pl-phone .journal li { margin: 0 0 ${px(4)}; padding-left: ${px(10)}; text-indent: ${px(-10)}; }
+.pl.th-onebit.pl-phone .mode { position: absolute; z-index: 2; display: flex; gap: ${px(1)}; border: 0; background: ${INK}; }
+.pl.th-onebit.pl-phone:not(.ob-more) .mode { display: none; }
+.pl.th-onebit.pl-phone .mode::before { content: none; }
+.pl.th-onebit.pl-phone .mode button { position: relative; flex: 1 1 0; padding: 0; overflow: hidden; white-space: nowrap; color: transparent; border: ${px(1)} solid ${PAPER}; touch-action: manipulation; }
+.pl.th-onebit.pl-phone .mode button::after { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: ${INK}; color: ${PAPER}; font: ${px(8)}/${px(10)} ${BIT}; }
+.pl.th-onebit.pl-phone .mode button.on::after { background: ${PAPER}; color: ${INK}; }
+.pl.th-onebit.pl-phone .mode button:first-child::after { content: "STORY"; }
+.pl.th-onebit.pl-phone .mode button:last-child::after { content: "DICE"; }
+.pl.th-onebit.pl-phone .moments { right: ${px(2)}; top: ${px(2)}; gap: ${px(3)}; }
+.pl.th-onebit.pl-phone .moments button { width: ${px(68)}; height: ${px(30)}; }
+/* The line you type, Say beside it; the deal under them, two big buttons. */
+.pl.th-onebit.pl-phone .foot { overflow-y: auto; gap: ${px(2)}; padding: ${px(1)}; touch-action: pan-y; }
+.pl.th-onebit.pl-phone .status { padding: 0 ${px(1)}; }
+.pl.th-onebit.pl-phone .composer:not(.hidden) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: ${px(2)}; align-items: stretch; flex: none; }
+.pl.th-onebit.pl-phone .composer textarea { min-height: 0; height: ${px(26)}; padding: ${px(3)} ${px(2)} ${px(3)} ${px(10)}; line-height: ${px(10)}; outline: 0; border: ${px(1)} solid ${PAPER}; }
+.pl.th-onebit.pl-phone .composer textarea:focus { outline: ${px(1)} solid ${PAPER}; outline-offset: 0; }
+.pl.th-onebit.pl-phone .composer::before { left: ${px(2)}; top: ${px(4)}; }
+.pl.th-onebit.pl-phone .say { position: static; height: auto; min-height: 44px; min-width: 56px; padding: 0 ${px(3)}; touch-action: manipulation; }
+.pl.th-onebit.pl-phone .say::after { content: none; }
+.pl.th-onebit.pl-phone .actions { flex-direction: row; gap: ${px(2)}; flex: none; }
+.pl.th-onebit.pl-phone .actions button, .pl.th-onebit.pl-phone .leave { display: flex; align-items: center; justify-content: center; flex: 1 1 0; width: auto; min-height: 44px; padding: ${px(1)} ${px(2)}; text-indent: 0; text-align: center; line-height: ${px(10)}; border: ${px(1)} solid ${PAPER}; touch-action: manipulation; }
+.pl.th-onebit.pl-phone .actions .deal { flex: 1.7 1 0; }
+.pl.th-onebit.pl-phone .actions button::before, .pl.th-onebit.pl-phone .leave::before { content: none !important; }
+.pl.th-onebit.pl-phone .actions button:disabled { border-style: dashed; }
+.pl.th-onebit.pl-phone .leave { width: 100%; flex: none; background: ${PAPER}; color: ${INK}; }
+.pl.th-onebit.pl-phone .end { flex: none; }
+.pl.th-onebit.pl-phone .end.show { gap: ${px(3)}; padding: ${px(1)}; }
+.pl.th-onebit.pl-phone .end-title { font: ${px(8)}/${px(10)} ${BIT}; background: ${PAPER}; color: ${INK}; padding: ${px(1)} ${px(2)}; }
+/* Short: the thin stake line, the log, the input. MORE still reaches the deal (it takes the input's place). */
+.pl.th-onebit.pl-phone.pl-short .meter { grid-template-columns: auto auto minmax(0, 1fr); gap: 0 ${px(4)}; height: 100%; align-content: center; }
+.pl.th-onebit.pl-phone.pl-short .meter-label, .pl.th-onebit.pl-phone.pl-short .bar { display: none; }
+.pl.th-onebit.pl-phone.pl-short .meter-value { grid-column: 1; grid-row: 1; margin: 0; }
+.pl.th-onebit.pl-phone.pl-short .patience { grid-column: 2; grid-row: 1; }
+.pl.th-onebit.pl-phone.pl-short .head { padding-right: ${px(39)}; }
+.pl.th-onebit.pl-phone.pl-short:not(.ob-land) .actions { display: none; }
+.pl.th-onebit.pl-phone.pl-short.ob-more:not(.ob-land) .actions:not(.hidden) { display: flex; }
+.pl.th-onebit.pl-phone.pl-short.ob-more:not(.ob-land) .composer { display: none; }
+.pl.th-onebit.pl-phone.ob-land .actions { flex-direction: column; }
+.pl.th-onebit.pl-phone.ob-land.ob-low .actions { display: none; }
+.pl.th-onebit.pl-phone.ob-land .actions button { flex: none; }
 @media (prefers-reduced-motion: reduce) {
   .th-onebit .die.rolling, .th-onebit .dots, .th-onebit .status::after { animation: none !important; }
 }

@@ -169,8 +169,9 @@ export function commandCss(): string {
 .cmd .tx .cmdi.g-go .n { color: #fff; }
 .cmd .tx .cmdi.g-fight { color: ${RED}; }
 .cmd .tx .cmdi.g-move { color: #fff; }
-.cmd .tx .cmdi:hover, .cmd .tx .cmdi:focus-visible { background: #fff; color: ${BLUE}; outline: none; text-shadow: none; }
-.cmd .tx .cmdi:hover .n, .cmd .tx .cmdi:focus-visible .n { color: ${BLUE}; }
+@media (hover: hover) { .cmd .tx .cmdi:hover { background: #fff; color: ${BLUE}; outline: none; text-shadow: none; } .cmd .tx .cmdi:hover .n { color: ${BLUE}; } }
+.cmd .tx .cmdi:focus-visible, .cmd .tx .cmdi:active { background: #fff; color: ${BLUE}; outline: none; text-shadow: none; }
+.cmd .tx .cmdi:focus-visible .n, .cmd .tx .cmdi:active .n { color: ${BLUE}; }
 .cmd .tx .cmdi.cur { color: ${GREY}; }
 .cmd.busy .tx .cmdi { color: ${DARK}; pointer-events: none; }
 .cmd.busy .tx .cmdi .n { color: ${DARK}; }
@@ -181,6 +182,52 @@ export function commandCss(): string {
 .cmd .tx .echo { color: ${CYAN}; }
 .cmd .tx .spin { display: inline-block; width: var(--c); color: ${YEL}; }
 .cmd .scrollmark { position: absolute; right: 0; width: var(--c); height: var(--c); z-index: 6; color: ${YEL}; background: #000; text-align: center; pointer-events: none; }
+
+/* ------------------------------- Phones --------------------------------- */
+/* No tube: flat bands of plain text. Rows a thumb can hit, nothing over the words, and the terminal scrolls. */
+.cmd.phone .crt { display: none; }
+.cmd.phone .w { text-shadow: none; }
+.cmd.phone .vp > .fr, .cmd.phone .st > .fr, .cmd.phone .term > .fr { display: none; }
+.cmd.phone .vp { background: #000; }
+.cmd.phone .st { background: ${BLUE}; }
+.cmd.phone .term { background: #000; }
+.cmd.phone .vp > .notch { background: #000; color: #fff; }
+.cmd.phone .vp .art { left: 0; right: 0; top: var(--c); bottom: 0; }
+.cmd.phone .vp { z-index: 20; }
+.cmd.phone .w.st > .body, .cmd.phone .w.term > .body { left: 0; right: 0; top: 0; bottom: 0; }
+
+/* The status band: two rows of plain text, then keys a thumb can hit. */
+.cmd.phone .w.st > .body { padding: 0 6px; }
+.cmd.phone .st .dim { color: ${CYAN}; }
+.cmd.phone .st .keysrow { display: flex; gap: 6px; height: 44px; margin-top: 4px; align-items: stretch; }
+.cmd.phone .st .hk { flex: 1 1 auto; height: 44px; line-height: 44px; padding: 0 4px; text-align: center; touch-action: manipulation; }
+.cmd.phone .st .hk:hover { background: ${CYAN}; color: #000; }
+.cmd.phone .st .hk.on { background: #fff; color: ${BLUE}; }
+
+/* The terminal: reading first, then one row per command. */
+.cmd.phone .term .tx { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; line-height: calc(var(--c) + 4px); }
+.cmd.phone .tx .in { padding: 4px 6px 0; }
+.cmd.phone .tx .l { min-height: calc(var(--c) + 4px); }
+.cmd.phone .tx .log { color: ${GREY}; }
+.cmd.phone .tx .log.last { color: #fff; }
+.cmd.phone .tx .desc { margin: 4px 0 8px; }
+.cmd.phone .tx .hd { display: none; }
+.cmd.phone .tx .cmdi { display: flex; align-items: center; min-height: 44px; padding: 2px 2px 2px calc(var(--c) * 1.75); border-bottom: 1px solid ${BLUE}; touch-action: manipulation; }
+.cmd.phone .tx .cmdi .n { top: 50%; left: 2px; transform: translateY(-50%); line-height: var(--c); }
+.cmd.phone:not(.busy) .tx .cmdi.g-go .n { color: ${YEL}; }
+.cmd.phone .tx .pr { display: none; }
+/* Busy: the line says so wherever the finger has scrolled to. */
+.cmd.phone .tx .pr[aria-busy] { display: block; position: sticky; bottom: 0; padding: 4px 0 4px var(--c); background: #000; z-index: 1; }
+.cmd.phone.busy .scrollmark.dn { display: none !important; }
+.cmd.phone .scrollmark { pointer-events: none; }
+.cmd.phone .scrollmark.up { right: 2px; }
+.cmd.phone .scrollmark.dn { left: 0; right: 0; width: auto; height: calc(var(--c) + 4px); font-size: 0; background: ${YEL}; color: #000; text-shadow: none; }
+.cmd.phone .scrollmark.dn::after { content: "v more v"; font-size: var(--c); line-height: calc(var(--c) + 4px); }
+
+/* The journal takes the whole screen on a phone, with a real Close. */
+.cmd.phone .vp .jr { left: 6px; right: 6px; top: calc(var(--c) + 6px); bottom: 52px; touch-action: pan-y; overscroll-behavior: contain; line-height: calc(var(--c) + 4px); }
+.cmd.phone .jr li { margin-bottom: 6px; }
+.cmd.phone .jclose { left: 8px; right: 8px; bottom: 4px; height: 44px; line-height: 44px; text-align: center; touch-action: manipulation; }
 
 @keyframes cmdBlink { 50% { opacity: 0; } }
 @keyframes cmdLed { 50% { opacity: .25; } }
@@ -245,5 +292,27 @@ export function commandCss(): string {
 .gs.command > .mw .mw-dots i { transform: none; width: var(--cmd-c, 24px); height: var(--cmd-c, 24px); background: url("${glyph("empty", DARK)}") 0 0 / 100% 100%; image-rendering: pixelated; }
 .gs.command > .mw .mw-dots i.on { background-image: url("${glyph("full", YEL)}"); }
 .gs.command > .mw .mw-hint { font: var(--cmd-c, 24px) / var(--cmd-c, 24px) "Gambit 8bit", monospace; letter-spacing: 0; text-transform: none; color: ${CYAN}; opacity: 1; animation: cmdBlink 1.1s steps(1) infinite; }
+
+/* The class panel, on a phone: after its own rules above. */
+@media (max-width: 760px), (max-height: 480px) {
+  .gs.command > .fg { font-size: var(--cmd-c, 16px); line-height: calc(var(--cmd-c, 16px) + 4px); }
+  .gs.command > .fg button, .gs.command > .fg summary { min-height: 44px; touch-action: manipulation; }
+  .gs.command > .fg header .x, .gs.command > .fg nav button, .gs.command > .fg button.go, .gs.command > .fg button.plain { padding: 0 calc(var(--cmd-c, 16px) * .5); }
+  .gs.command > .fg .body { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+  .gs.command > .fg header { flex-wrap: nowrap; align-items: center; gap: 8px; padding: 0 0 8px; }
+  .gs.command > .fg header .purse { margin-left: 0; flex: 1 1 auto; min-width: 0; }
+  .gs.command > .fg header .x { flex: none; min-width: 44px; height: 44px; text-align: center; }
+  .gs.command > .fg nav { gap: 4px 8px; padding: 0 0 8px; }
+  .gs.command > .fg nav button { padding: 0 6px; }
+  .gs.command > .fg .cls { grid-template-columns: calc(var(--cmd-c, 16px) * 3) minmax(0, 1fr); gap: 4px 8px; margin-bottom: 8px; }
+  .gs.command > .fg .cls .pic { width: calc(var(--cmd-c, 16px) * 3); height: calc(var(--cmd-c, 16px) * 3); }
+  .gs.command > .fg .cls > :nth-child(n+3) { grid-column: 2; justify-self: start; }
+  .gs.command > .fg details { margin: 0 0 8px calc(var(--cmd-c, 16px) * 3 + 8px); }
+  .gs.command > .fg details summary { display: flex; align-items: center; }
+  .gs.command > .fg .tag, .gs.command > .fg .sheet .sk .meta { color: ${GREY}; margin-left: calc(var(--cmd-c, 16px) * .5); }
+  .gs.command > .fg .sheet .sk { padding-left: 8px; }
+  .gs.command > .fg .sheet .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gs.command > .fg textarea, .gs.command > .fg select { font-size: 16px; line-height: 20px; min-height: 44px; }
+}
 `;
 }

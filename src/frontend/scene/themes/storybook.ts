@@ -138,6 +138,8 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   /* --------------------------- Events (delegated) --------------------------- */
   function onClick(e: MouseEvent): void {
     const t = e.target as Element;
+    // On a phone a tap beside the open slip only closes it (it covers the page: the tap can't have been meant for what's under it).
+    if (slip && plainPage() && !t.closest(".sb-slip, [data-sys=theme]")) return closeSlip();
     const act = t.closest<HTMLElement>("[data-act]");
     if (act) return void menu.find((m) => m.key === act.dataset.act)?.run();
     const talk = t.closest<HTMLElement>("[data-talk]");
@@ -180,8 +182,15 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     slip.innerHTML = `<h4>Choose a binding</h4>${ctx.themes.map((t) => `<button role="menuitem" data-theme="${t.id}" aria-current="${t.id === cur}">${esc(t.label)}</button>`).join("")}`;
     const r = tabT.getBoundingClientRect();
     const rr = sb.getBoundingClientRect();
-    slip.style.left = `${Math.max(8, Math.min(rr.width - 250, r.left - rr.left - 40))}px`;
-    slip.style.bottom = `${Math.max(8, rr.bottom - r.top + 10)}px`;
+    if (plainPage()) {
+      // A phone: over the top of the window, where all of it fits (the stylesheet caps its height).
+      slip.style.left = "50%";
+      slip.style.top = "8px";
+      slip.style.transform = "translateX(-50%)";
+    } else {
+      slip.style.left = `${Math.max(8, Math.min(rr.width - 250, r.left - rr.left - 40))}px`;
+      slip.style.bottom = `${Math.max(8, rr.bottom - r.top + 10)}px`;
+    }
     sb.append(slip);
     tabT.setAttribute("aria-expanded", "true");
     (slip.querySelector('[aria-current="true"]') as HTMLElement | null)?.focus();
@@ -194,11 +203,17 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   /* --------------------------- Dialogue frame size -------------------------- */
   let fw = 0, fh = 0;
+  /** Phone or short window: the stylesheet drops the page's frame and the skirt, so don't draw them. */
+  const plainPage = () => ui.clientWidth <= 760 || ui.clientHeight <= 480;
   const ro = new ResizeObserver(() => {
     const w = Math.round(dlg.clientWidth), h = Math.round(dlg.clientHeight);
     if (!w || !h || (w === fw && h === fh)) return;
     fw = w;
     fh = h;
+    if (plainPage()) {
+      frameBack.innerHTML = frameFront.innerHTML = "";
+      return;
+    }
     const fr = dialogueFrame(w, h);
     for (const [elx, html] of [[frameBack, fr.back], [frameFront, fr.front]] as const) {
       elx.style.left = `${-DLG_PAD.x}px`;
@@ -215,7 +230,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const W = Math.round(ui.clientWidth), H = Math.round(Math.min(160, ui.clientHeight * 0.17));
     const x0 = Math.round(dlg.offsetLeft), x1 = Math.round(dlg.offsetLeft + dlg.offsetWidth);
     const k = `${W}|${H}|${x0}|${x1}`;
-    if (W && k !== skirtKey) {
+    if (W && k !== skirtKey && !plainPage()) {
       skirtKey = k;
       skirtEl.innerHTML = skirt(W, H, x0, x1);
     }
@@ -284,7 +299,8 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   /* --------------------------- Parallax ------------------------------------ */
   let px = 9, py = 9;
   const stopFrame = ctx.onFrame((t, dt) => {
-    if (ctx.reducedMotion) return;
+    // A phone has no pointer to follow, and its light is gone (the stylesheet).
+    if (ctx.reducedMotion || plainPage()) return;
     const p = ctx.pointer();
     if (Math.abs(p.x - px) > 0.0005 || Math.abs(p.y - py) > 0.0005) {
       px = p.x;
@@ -367,6 +383,8 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     txt.innerHTML = `<div class="main">${descHtml}${now}${busy}</div>${earlier ? `<aside class="margin" aria-label="Earlier">${DIVIDER}${DIVIDER_KNOT}<div class="mh">Earlier</div><ol class="log">${earlier}</ol></aside>` : ""}`;
     requestAnimationFrame(() => {
       pageEl.scrollTop = pageEl.scrollHeight;
+      // On a phone the page opens on the narration's first line, however long it is; what came before is above it.
+      if (plainPage()) pageEl.scrollTop = Math.max(0, (txt.querySelector<HTMLElement>(".main")?.offsetTop ?? 0) - 4);
       const mg = txt.querySelector(".margin");
       if (mg) mg.scrollTop = mg.scrollHeight;
     });
@@ -425,13 +443,23 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     ribCache.clear();
     for (const [k, b] of keep) ribCache.set(k, b);
     choices.replaceChildren(...nodes);
+    // How many rows of two a phone needs; the stylesheet gives the list its height (and the page the rest) from this.
+    sb.style.setProperty("--rows", String(Math.max(1, Math.ceil(list.length / 2))));
     if (focusKey) (choices.querySelector(`[data-act="${CSS.escape(focusKey)}"]`) as HTMLElement | null)?.focus();
   }
 
   function renderCast(v: SceneView): Set<string> {
     people = ctx.people(v);
     const on = new Set<string>();
-    const phone = ui.clientWidth < 760;
+    // A short window has no room for anyone to stand: nobody is "on stage", so talking to them is a ribbon in the list.
+    if (ui.clientHeight <= 480) {
+      tags.innerHTML = "";
+      castBack.replaceChildren();
+      castFront.replaceChildren();
+      seen.cast = "";
+      return on;
+    }
+    const phone = plainPage();
     const again = () => ctx.rerender();
     type Shown = { p: PersonView; url: string; cameo: boolean };
     const shown: Shown[] = [];
@@ -473,7 +501,9 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     tags.innerHTML = shown
       .map((s) => {
         const at = place.get(s)!;
-        const art = nameScroll(esc(s.p.name), s.p.talkable, `t${seedOf(s.p.id)}`);
+        // The scroll's curve holds about a dozen letters at a phone's size, and cuts off the rest: there, a long name gives its first word.
+        const label = phone && s.p.name.length > 11 ? s.p.name.split(/\s+/)[0]! : s.p.name;
+        const art = nameScroll(esc(label), s.p.talkable, `t${seedOf(s.p.id)}`);
         return s.p.talkable
           ? `<button class="tag" data-talk="${esc(s.p.id)}" style="--x:${at.x}" aria-label="Talk to ${esc(s.p.name)}" title="Talk to ${esc(s.p.name)}, ${esc(s.p.role)}">${art}</button>`
           : `<span class="tag mute" data-talk="${esc(s.p.id)}" style="--x:${at.x}" title="${esc(`${s.p.name}, ${s.p.role}`)}">${art}</span>`;

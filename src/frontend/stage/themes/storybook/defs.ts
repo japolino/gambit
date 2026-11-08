@@ -147,6 +147,12 @@ function queued<T>(job: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * On a phone-sized screen the pictures are small and rasterising is slow: their bevels and soft shadows can't be
+ * seen at that size and are by far the dearest part, so they go. The fight should not wait on gilding.
+ */
+const plain = (svg: string): string => (Math.min(globalThis.innerWidth || 9999, globalThis.innerHeight || 9999) <= 480 ? svg.replace(/ filter="url\(#[\w-]+\)"/g, "") : svg);
+
 const textures = new Map<string, Promise<Texture>>();
 const order: string[] = [];
 
@@ -162,7 +168,7 @@ export function svgTexture(key: string, w: number, h: number, make: () => string
   const k = `${key}@${Math.round(w)}x${Math.round(h)}x${res}`;
   let t = textures.get(k);
   if (!t) {
-    t = queued(() => rasterise(make(), w * res, h * res)).then((c) => {
+    t = queued(() => rasterise(plain(make()), w * res, h * res)).then((c) => {
       const tex = Texture.from(c);
       tex.source.resolution = res;
       return tex;

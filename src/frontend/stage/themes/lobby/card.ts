@@ -13,6 +13,7 @@ import type { FigureSource } from "../../puppet/source.js";
 import { STATUS_STYLE, hex } from "../../theme.js";
 import { vgrad } from "../../ui.js";
 import { CARD_FOCUS, CARD_HP, CARD_WINDOW, brackets, cardFrame, cardWindowShade } from "./art.js";
+import { currentGeom } from "./state.js";
 
 const pct = (n: number, of: number) => `${((n / of) * 100).toFixed(3)}%`;
 
@@ -36,6 +37,8 @@ export class LobbyCard extends PartyCard {
   private readonly sts: HTMLElement;
   /** Card grid unit in px (the frame is drawn on 250x364). */
   private k = 1;
+  /** The portrait window in px, inside the card. */
+  private win = { x: 0, y: 0, w: 0, h: 0 };
 
   constructor(unit: DisplayUnit, bust: FigureSource, strength: number, cutout: boolean) {
     super(unit, bust, strength, cutout);
@@ -86,10 +89,13 @@ export class LobbyCard extends PartyCard {
     this.position.set(rect.x, rect.y);
     const k = rect.w / 250;
     this.k = k;
-    const win = { x: CARD_WINDOW.x * k, y: CARD_WINDOW.y * k, w: CARD_WINDOW.w * k, h: CARD_WINDOW.h * k };
+    // A phone's card is short and wide: a straight window over a text panel (css.ts sizes the panel, 48 of --u).
+    const g = currentGeom();
+    const win = g?.portrait ? { x: 2, y: 2, w: rect.w - 4, h: Math.max(20, rect.h - 2 - 48 * g.u) } : { x: CARD_WINDOW.x * k, y: CARD_WINDOW.y * k, w: CARD_WINDOW.w * k, h: CARD_WINDOW.h * k };
+    this.win = win;
     // Behind the bust: the lobby's warm slate, darker at the foot.
     this.frame.clear().rect(win.x, win.y, win.w, win.h).fill(vgrad(0x4a3a2a, 0x0b0907));
-    this.frame.ellipse(win.x + win.w / 2, win.y + win.h * 0.32, win.w * 0.46, win.h * 0.3).fill({ color: 0xffd28a, alpha: 0.08 });
+    if (!g?.portrait) this.frame.ellipse(win.x + win.w / 2, win.y + win.h * 0.32, win.w * 0.46, win.h * 0.3).fill({ color: 0xffd28a, alpha: 0.08 });
     this.portraitMask.clear().rect(win.x, win.y, win.w, win.h).fill({ color: 0xffffff });
     this.shade.clear();
     this.info.clear();
@@ -114,9 +120,11 @@ export class LobbyCard extends PartyCard {
     }
     const face = bust.faceLocal;
     const faceH = Math.max(1, bust.faceHeightLocal);
-    const s = Math.min(win.h / (bust.imageH * 0.26), Math.max(win.h / (bust.imageH * 1.1), (win.h * 0.33) / faceH));
+    // In a phone's short window the face has to fill it, or there is no one to see.
+    const wide = win.w > win.h * 1.2;
+    const s = wide ? (win.h * 0.62) / faceH : Math.min(win.h / (bust.imageH * 0.26), Math.max(win.h / (bust.imageH * 1.1), (win.h * 0.33) / faceH));
     bust.scale.set(s);
-    bust.position.set(win.x + win.w / 2 - face.x * s, win.y + win.h * 0.38 - face.y * s);
+    bust.position.set(win.x + win.w / 2 - face.x * s, win.y + win.h * (wide ? 0.46 : 0.38) - face.y * s);
   }
 
   override setTargetable(on: boolean): void {
@@ -155,12 +163,12 @@ export class LobbyCard extends PartyCard {
   override update(now: number, dt: number): void {
     super.update(now, dt);
     // A taller lift than the stock card's, and the DOM card follows (lift and shake).
-    this.pivot.y = this.lift * 26 * this.k;
+    // (A phone's cards sit right under the foes' plates: a small lift, or it covers their poise.)
+    this.pivot.y = this.lift * (currentGeom()?.portrait ? 4 : 26 * this.k);
     this.el.style.transform = `translate3d(${this.x.toFixed(1)}px, ${(this.y - this.pivot.y).toFixed(1)}px, 0)`;
   }
 
   override get portraitCentre(): { x: number; y: number } {
-    const k = this.k;
-    return { x: this.rect.x + this.rect.w / 2, y: this.rect.y + (CARD_WINDOW.y + CARD_WINDOW.h * 0.45) * k - this.pivot.y };
+    return { x: this.rect.x + this.rect.w / 2, y: this.rect.y + this.win.y + this.win.h * 0.45 - this.pivot.y };
   }
 }

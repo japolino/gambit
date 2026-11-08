@@ -246,6 +246,11 @@ const CALM = `
 /* Last, so it wins over each theme's log padding: room under the newest line, and (outside the pixel themes) a soft top edge. */
 const LOG_EDGE = `
 .pl.in-room { background: transparent; }
+/* Phones (pl-phone, pl-short: view.ts). The log scrolls by touch; iOS zooms into any input under 16px. */
+.pl.pl-phone .log { pointer-events: auto; touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scroll-behavior: auto; }
+.pl.pl-phone textarea, .pl.pl-phone input { font-size: 16px !important; }
+/* A moment that isn't playing never takes a click, whatever a theme's layer rules say: it covers the whole scene. */
+.pl .moment:not(.show), .pl .moment:not(.show) * { pointer-events: none !important; }
 .pl.in-room .plate, .pl.in-room .vignette { display: none; }
 .pl[class*="th-"] .log { padding-bottom: 22px; scroll-padding-bottom: 22px; }
 .pl[class*="th-"]:not(.th-onebit):not(.th-command) .log { padding-top: 18px; -webkit-mask-image: linear-gradient(transparent 0, #000 18px); mask-image: linear-gradient(transparent 0, #000 18px); }

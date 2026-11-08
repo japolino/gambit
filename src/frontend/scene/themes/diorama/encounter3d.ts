@@ -81,14 +81,20 @@ export function solvePose(fov: number, a: { y: number; z: number; s: number }, b
 /** The framing for a fight: the counter top is the stage floor. */
 export function battlePose(aspect: number): Pose {
   const fov = encounterFov(aspect);
-  if (aspect < 0.95) return solvePose(fov, { y: TOP, z: 0, s: 0.3 }, { y: TOP, z: FRONT_Z, s: 0.43 }, 3.6);
+  if (aspect < 0.95) {
+    // Upright, the counter sits high enough to leave room for the cards and a full skill rack: the shorter the screen, the higher.
+    const floor = Math.max(0.33, Math.min(0.4, 0.33 + 0.643 - aspect));
+    return solvePose(fov, { y: TOP, z: 0, s: floor - 0.0715 }, { y: TOP, z: FRONT_Z, s: floor + 0.0585 }, 3.6);
+  }
   return solvePose(fov, { y: TOP, z: 0, s: 0.46 }, { y: TOP, z: FRONT_Z, s: 0.665 }, 2.8);
 }
 
 /** The framing for a talk: the person behind the counter, big, the counter's back edge low on screen. */
-export function parleyPose(aspect: number): Pose {
+export function parleyPose(aspect: number, strip = false): Pose {
   const fov = encounterFov(aspect);
   if (aspect < 0.95) return solvePose(fov, { y: 2.0, z: -0.5, s: 0.03 }, { y: TOP, z: 0, s: 0.36 }, 3.4, 0, 1.75);
+  // A phone gives the talk a short wide strip of room: the person fills it, the counter along its foot.
+  if (strip) return solvePose(fov, { y: 2.02, z: -0.5, s: 0.07 }, { y: TOP, z: 0, s: 0.9 }, 2.6);
   return solvePose(fov, { y: 2.02, z: -0.5, s: 0.2 }, { y: TOP, z: 0, s: 0.6 }, 3.5);
 }
 

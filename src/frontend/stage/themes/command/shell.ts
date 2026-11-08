@@ -18,6 +18,8 @@ export interface Rect {
 
 export interface Geo {
   tall: boolean;
+  /** A phone in either orientation (the same test as Parley's .pl-phone): no monitor, and each screen lays itself out for a thumb. */
+  phone: boolean;
   W: number;
   H: number;
   /** One cell in screen pixels (a multiple of 8 when it can be). */
@@ -39,12 +41,17 @@ const BEZ = { s: 2, t: 1, b: 2.6, well: 0.75 };
 
 /** The scene's own geometry (../../../scene/themes/command.ts computeGeo), so the monitor does not move when a fight starts. */
 export function computeGeo(W: number, H: number): Geo {
-  const tall = W < 720 || W / Math.max(1, H) < 0.95;
+  const phone = W <= 760 || H <= 480;
+  const tall = phone || W < 720 || W / Math.max(1, H) < 0.95;
+  if (phone) {
+    const c = W >= 600 && H > 480 ? 24 : W >= 352 ? 16 : 12;
+    return { tall, phone, W, H, c, cols: Math.floor(W / c), rows: Math.floor(H / c), glass: { x: 0, y: 0, w: W, h: H }, ox: 0, oy: 0, mon: null, well: 0, side: 0 };
+  }
   if (tall) {
     const c = W >= 600 ? 24 : W >= 352 ? 16 : 12;
     const cols = Math.max(20, Math.floor((W - 4) / c));
     const rows = Math.max(30, Math.floor((H - 4) / c));
-    return { tall, W, H, c, cols, rows, glass: { x: 0, y: 0, w: W, h: H }, ox: Math.max(0, Math.floor((W - cols * c) / 2)), oy: Math.max(0, Math.floor((H - rows * c) / 2)), mon: null, well: 0, side: 0 };
+    return { tall, phone, W, H, c, cols, rows, glass: { x: 0, y: 0, w: W, h: H }, ox: Math.max(0, Math.floor((W - cols * c) / 2)), oy: Math.max(0, Math.floor((H - rows * c) / 2)), mon: null, well: 0, side: 0 };
   }
   const cols = WIDE_COLS;
   const rows = WIDE_ROWS;
@@ -67,7 +74,7 @@ export function computeGeo(W: number, H: number): Geo {
   const mw = gw + 2 * (s + well);
   const mh = gh + 2 * well + t + b;
   const mon = { x: Math.round((W - mw) / 2), y: Math.max(0, Math.round(H - mh - H * 0.012)), w: mw, h: mh };
-  return { tall, W, H, c, cols, rows, glass: { x: mon.x + s + well, y: mon.y + t + well, w: gw, h: gh }, ox: c, oy: c, mon, well, side: s };
+  return { tall, phone, W, H, c, cols, rows, glass: { x: mon.x + s + well, y: mon.y + t + well, w: gw, h: gh }, ox: c, oy: c, mon, well, side: s };
 }
 
 const OTHER_DISKS = ["Storybook", "Diorama", "Lobby", "Table", "1-bit"];

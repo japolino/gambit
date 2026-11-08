@@ -62,8 +62,8 @@ export class TableCard extends PartyCard {
     this.portraitMask.clear().moveTo(x0, bottom).lineTo(x0, spring).quadraticCurveTo(x0, top, w / 2, top).quadraticCurveTo(x1, top, x1, spring).lineTo(x1, bottom).closePath().fill({ color: 0xffffff });
     this.fitBust(this.bust, w, bottom - top, top);
     const big = w > 150;
-    this.nameText.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(w * (big ? 0.095 : 0.11)), fill: PAPER_INK, letterSpacing: 1 });
-    fitText(this.nameText, w * 0.8);
+    this.nameText.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: Math.max(12, Math.round(w * (big ? 0.095 : 0.11))), fill: PAPER_INK, letterSpacing: w < 130 ? 0 : 1 });
+    fitText(this.nameText, w * (w < 130 ? 0.94 : 0.8));
     this.nameText.anchor.set(0.5, 0.5);
     this.nameText.position.set(w / 2, (W.bottom + 19) * sy);
     this.hpText.style = new TextStyle({ fontFamily: FELL, fontSize: Math.round(w * (big ? 0.15 : 0.17)), fill: 0xfff2e0, stroke: { color: 0x2a0406, width: 3 }, fontWeight: "700" });

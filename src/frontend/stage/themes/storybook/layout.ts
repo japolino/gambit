@@ -5,12 +5,16 @@
  * on the vellum under them), the foes stand in the painting centre-right, the skill ribbons hang on the
  * right under "What will … do?", the page's right half tells the tale (the skill's lore, the last blows), and
  * the order of turns is the chapter header: an astrolabe and a scroll of coins at the top left.
- * Phone: the foes on top, the page below them holding the arches, their stats, then the ribbons.
+ * Phone (and any short window): the foes large over the painting, the order of turns above them, then a
+ * plain vellum page holding the party's arches, their stats, what to do and the skills. In landscape the
+ * page is the right-hand side. Sizes there are fixed in px: a tap target and a line of text must not shrink.
  */
 import type { Rect, StageLayout } from "../../battle/layout.js";
 
 export interface BookGeo {
   portrait: boolean;
+  /** Phone or short window: the plain page, flat ribbons, fixed readable sizes. */
+  compact: boolean;
   /** Overall scale (1 at 1920×1080). */
   s: number;
   /** The page box (the vellum; the frame overhangs it). */
@@ -27,7 +31,7 @@ export interface BookGeo {
 
 /** The geometry of the last layout (one stage at a time). */
 export const GEO: BookGeo = {
-  portrait: false, s: 1, page: { x: 0, y: 0, w: 1, h: 1 }, archH: 1, statsH: 1,
+  portrait: false, compact: false, s: 1, page: { x: 0, y: 0, w: 1, h: 1 }, archH: 1, statsH: 1,
   rib: { x: 0, y: 0, w: 1, h: 1 }, text: { x: 0, y: 0, w: 1, h: 1 }, plate: { x: 0, y: 0 },
 };
 
@@ -38,7 +42,7 @@ export const ARCH_RATIO = (400 / 260) * 0.9;
 export function bookLayout(w: number, h: number, partyCount: number): StageLayout {
   const n = Math.max(1, partyCount);
   const portrait = w / h < 0.95;
-  if (portrait) return phone(w, h, n);
+  if (portrait || h <= 480) return compact(w, h, n, portrait);
   const s = Math.min(w / 1920, h / 1080);
   const ui = clamp(0.8, 1.4, 1.32 * Math.max(s, 0.6));
   const db = Math.max(12, Math.round(h * 0.022));
@@ -69,6 +73,7 @@ export function bookLayout(w: number, h: number, partyCount: number): StageLayou
   const my = ribTop - Math.round(60 * Math.max(s, 0.7));
   const menu: Rect = { x: mx, y: my, w: w - mx, h: h - my };
   GEO.portrait = false;
+  GEO.compact = false;
   GEO.s = s;
   GEO.page = page;
   GEO.archH = archH;
@@ -96,38 +101,63 @@ export function bookLayout(w: number, h: number, partyCount: number): StageLayou
   };
 }
 
-function phone(w: number, h: number, n: number): StageLayout {
-  const ui = clamp(0.85, 1.3, w / 390);
-  const s = w / 600;
-  const m = Math.round(6 * ui);
-  const tl: Rect = { x: m + 2, y: m + 2, w: w - 2 * m - 4, h: Math.round(54 * ui) };
-  const page: Rect = { x: m + 8, y: Math.round(h * 0.55), w: w - 2 * m - 16, h: h - Math.round(h * 0.55) - m - 10 };
-  const aw = Math.round(Math.min((page.w - 8) / (n * 0.98), (h * 0.15) / ARCH_RATIO));
-  const archH = Math.round(aw * ARCH_RATIO);
-  const statsH = Math.round(aw * 0.12 + 26);
-  const step = n > 1 ? Math.min(aw * 1.08, (page.w - aw) / (n - 1)) : 0;
-  const cx0 = page.x + (page.w - (aw + step * (n - 1))) / 2;
-  const cards: Rect[] = Array.from({ length: n }, (_, i) => ({ x: Math.round(cx0 + i * step), y: page.y - archH, w: aw, h: archH + statsH }));
-  const my = page.y + statsH + Math.round(4 * ui);
-  const menu: Rect = { x: 0, y: my, w, h: h - my };
-  GEO.portrait = true;
-  GEO.s = s;
+/** The vellum under an arch's foot: its name scroll and class resource. */
+const STATS = 38;
+/** The line above the skills: who is choosing, or why a skill is out of reach. */
+const RUBRIC = 26;
+/** A skill's ribbon: three rows of two hold any class's five skills, each row a full tap target. */
+export const RIB_H = 46;
+export const RIB_GAP = 5;
+
+function compact(w: number, h: number, n: number, portrait: boolean): StageLayout {
+  const ui = clamp(0.85, 1.3, portrait ? w / 390 : h / 360);
+  const skills = RUBRIC + 3 * RIB_H + 2 * RIB_GAP;
+  const tlH = 48;
+  const tl: Rect = { x: 4, y: 4, w: 0, h: tlH };
+  // The strip under a foe's feet: its name, gauge and poise.
+  const plateH = 56;
+  let page: Rect, archH: number, cardsY: number, enemyArea: Rect, floorY: number;
+  if (portrait) {
+    const pageH = STATS + skills + 12;
+    page = { x: 0, y: h - pageH, w, h: pageH };
+    archH = Math.round(clamp(70, 132, h * 0.157));
+    cardsY = page.y - archH;
+    floorY = cardsY - plateH;
+    tl.w = w - 8;
+    enemyArea = { x: 0, y: tl.y + tlH, w, h: floorY - tl.y - tlH };
+  } else {
+    const pw = Math.round(w * 0.56);
+    page = { x: w - pw, y: 0, w: pw, h };
+    archH = Math.round(clamp(56, 132, h - STATS - skills - 12));
+    cardsY = 2;
+    // Landscape's slots are narrow: a foe's name takes two lines.
+    floorY = h - plateH - 20;
+    tl.w = page.x - 8;
+    enemyArea = { x: 0, y: tl.y + tlH, w: page.x, h: floorY - tl.y - tlH };
+  }
+  const gap = 4;
+  const aw = Math.round(Math.min((page.w - 12 - gap * (n - 1)) / n, 170));
+  const cx0 = page.x + (page.w - (aw * n + gap * (n - 1))) / 2;
+  const cards: Rect[] = Array.from({ length: n }, (_, i) => ({ x: Math.round(cx0 + i * (aw + gap)), y: cardsY, w: aw, h: archH + STATS }));
+  const my = cardsY + archH + STATS;
+  const menu: Rect = { x: page.x + 8, y: my, w: page.w - 16, h: h - my - 6 };
+  GEO.portrait = portrait;
+  GEO.compact = true;
+  GEO.s = w / 600;
   GEO.page = page;
   GEO.archH = archH;
-  GEO.statsH = statsH;
-  const ribTop = Math.round(30 * ui);
-  GEO.rib = { x: page.x + 10, y: ribTop, w: page.w - 20, h: menu.h - ribTop - Math.round(16 * ui) - m };
-  GEO.text = { x: page.x + 16, y: 0, w: page.w - 32, h: 0 };
-  GEO.plate = { x: page.x + 14, y: Math.round(8 * ui) };
-  const floorY = Math.round(h * 0.28);
+  GEO.statsH = STATS;
+  GEO.text = { x: 0, y: 0, w: menu.w, h: RUBRIC };
+  GEO.rib = { x: 0, y: RUBRIC, w: menu.w, h: menu.h - RUBRIC };
+  GEO.plate = { x: 0, y: 0 };
   return {
-    w, h, portrait: true, ui,
-    enemyArea: { x: 0, y: tl.y + tl.h, w, h: floorY - tl.y - tl.h },
+    w, h, portrait, ui,
+    enemyArea,
     floorY,
     timeline: tl,
-    party: { x: page.x, y: page.y - archH, w: page.w, h: archH + statsH },
+    party: { x: page.x, y: cardsY, w: page.w, h: archH + STATS },
     cards,
     menu,
-    banner: { x: w / 2, y: Math.round(h * 0.14) },
+    banner: { x: enemyArea.x + enemyArea.w / 2, y: Math.round(tl.y + tlH + 30) },
   };
 }

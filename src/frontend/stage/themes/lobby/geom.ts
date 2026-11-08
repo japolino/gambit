@@ -5,13 +5,15 @@
  * and the running log top left, the acting party member standing tall left of centre (the lobby's lead), the
  * turn order as pocket-watch lockets hanging along the top right, the enemies on the floor right of the lead,
  * the party's three framed cards bottom left (they cover the lead's legs), and the skill medallions bottom right.
- * Phones stack it: title, lockets, the enemies, the cards, the skills.
+ * Phones stack it: a one-line title, lockets, the enemies, compact cards, the skills as a list of rows. A phone on its
+ * side puts the skills in a column on the right.
  */
 import type { Rect, StageLayout } from "../../battle/layout.js";
 
 export type LobbyGeom = {
   w: number;
   h: number;
+  /** The phone layout: upright, or a window too short for the design grid (a phone on its side). */
   portrait: boolean;
   /** One design pixel (1080p = 1). */
   u: number;
@@ -34,32 +36,37 @@ export type LobbyGeom = {
 export const CARD_RATIO = 364 / 250;
 
 export function lobbyGeom(w: number, h: number, partyCount: number): LobbyGeom {
-  const portrait = w / h < 0.95;
+  const portrait = w / h < 0.95 || h < 480;
   const n = Math.max(1, partyCount);
   if (portrait) {
-    const u = Math.max(0.85, Math.min(1.7, w / 390));
+    // On its side, the screen splits: the fight on the left, the skills down the right.
+    const side = w / h >= 0.95;
+    const u = side ? Math.max(0.85, Math.min(1, h / 360)) : Math.max(0.85, Math.min(1.7, w / 390));
     const ui = u;
     const m = Math.round(8 * u);
     const gap = Math.round(6 * u);
-    const cw = (w - 2 * m - gap * (n - 1)) / n;
-    const skillsH = Math.round(Math.max(150 * u, Math.min(196 * u, h * 0.24)));
-    const ch = Math.round(Math.min(cw * CARD_RATIO, h * 0.23));
-    const cardY = h - m - skillsH - gap - ch;
+    const leftW = side ? Math.round(w * 0.54) : w;
+    const cw = (leftW - 2 * m - gap * (n - 1)) / n;
+    // Three rows of skill buttons and their heading; more skills scroll inside the panel.
+    const skillsH = side ? h - 2 * m : Math.round(Math.min(236 * u, Math.max(190 * u, h * 0.3)));
+    const ch = Math.round(Math.max(92 * u, Math.min(136 * u, h * 0.17)));
+    const cardY = side ? h - m - ch : h - m - skillsH - gap - ch;
     const cards = Array.from({ length: n }, (_, i) => ({ x: m + i * (cw + gap), y: cardY, w: cw, h: ch }));
-    const order: Rect = { x: m, y: Math.round(58 * u), w: w - 2 * m, h: Math.round(58 * u) };
-    const top = order.y + order.h + Math.round(4 * u);
-    const floorY = Math.round(cardY - 90 * u);
+    // (On its side the title goes: the turn order takes the top line, the foes need the height.)
+    const order: Rect = { x: m, y: side ? 0 : Math.round(28 * u), w: leftW - 2 * m, h: Math.round(62 * u) };
+    const top = order.y + order.h;
+    const floorY = Math.round(cardY - 66 * u);
     return {
       w, h, portrait, u, ui,
-      title: { x: m, y: Math.round(4 * u), s: u * 0.5 },
-      sub: { x: m, y: top + Math.round(4 * u), w: w - 2 * m, h: Math.round(40 * u) },
+      title: { x: m, y: Math.round(2 * u), s: u * 0.5 },
+      sub: { x: m, y: top, w: leftW - 2 * m, h: Math.round(44 * u) },
       lead: null,
       order,
       cards,
-      menu: { x: m, y: cardY + ch + gap, w: w - 2 * m, h: skillsH },
-      enemyArea: { x: 0, y: top, w, h: Math.max(60, floorY - top) },
+      menu: side ? { x: leftW + m, y: m, w: w - leftW - 2 * m, h: skillsH } : { x: m, y: cardY + ch + gap, w: w - 2 * m, h: skillsH },
+      enemyArea: { x: 0, y: top, w: leftW, h: Math.max(60, floorY - top) },
       floorY,
-      banner: { x: w / 2, y: top + Math.round(26 * u) },
+      banner: { x: leftW / 2, y: top + Math.round(26 * u) },
     };
   }
   const u = Math.min(w / 1920, h / 1080);

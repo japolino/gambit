@@ -18,6 +18,9 @@
  * disk file box whose floppies switch themes, the external drive whose lamp
  * is the busy light, a taped quick-reference card and a desk lamp, all on a
  * walnut desk in a dark room lit by the screen.
+ *
+ * On a phone (geo.phone, either way up) there is no tube: the picture with one label line, a blue status band and
+ * the terminal, flat and unframed, its commands rows a thumb can hit and the whole of it scrolling by touch.
  */
 import { BOARD_SKINS } from "../board-skins.js";
 import { esc, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
@@ -38,6 +41,8 @@ interface Rect {
 /** Where everything is, in screen pixels and in cells. */
 interface Geo {
   tall: boolean;
+  /** A phone in either orientation (the same test as Parley's .pl-phone). */
+  phone: boolean;
   W: number;
   H: number;
   /** One cell, in screen pixels (a multiple of 8 when it can be: crisp 8x8 glyphs). */
@@ -61,12 +66,19 @@ const VP_COLS = 27;
 const BEZ = { s: 2, t: 1, b: 2.6, well: 0.75 };
 
 function computeGeo(W: number, H: number): Geo {
-  const tall = W < 720 || W / Math.max(1, H) < 0.95;
+  const phone = W <= 760 || H <= 480;
+  const tall = phone || W < 720 || W / Math.max(1, H) < 0.95;
+  if (phone) {
+    const c = W >= 600 && H > 480 ? 24 : W >= 352 ? 16 : 12;
+    const cols = Math.floor(W / c);
+    const rows = Math.floor(H / c);
+    return { tall, phone, W, H, c, cols, rows, glass: { x: 0, y: 0, w: W, h: H }, ox: Math.floor((W - cols * c) / 2), oy: Math.floor((H - rows * c) / 2), mon: null, well: 0, side: 0 };
+  }
   if (tall) {
     const c = W >= 600 ? 24 : W >= 352 ? 16 : 12;
     const cols = Math.max(20, Math.floor((W - 4) / c));
     const rows = Math.max(30, Math.floor((H - 4) / c));
-    return { tall, W, H, c, cols, rows, glass: { x: 0, y: 0, w: W, h: H }, ox: Math.max(0, Math.floor((W - cols * c) / 2)), oy: Math.max(0, Math.floor((H - rows * c) / 2)), mon: null, well: 0, side: 0 };
+    return { tall, phone, W, H, c, cols, rows, glass: { x: 0, y: 0, w: W, h: H }, ox: Math.max(0, Math.floor((W - cols * c) / 2)), oy: Math.max(0, Math.floor((H - rows * c) / 2)), mon: null, well: 0, side: 0 };
   }
   const cols = WIDE_COLS;
   const rows = WIDE_ROWS;
@@ -91,7 +103,7 @@ function computeGeo(W: number, H: number): Geo {
   const mw = gw + 2 * (s + well);
   const mh = gh + 2 * well + t + b;
   const mon = { x: Math.round((W - mw) / 2), y: Math.max(0, Math.round(H - mh - H * 0.012)), w: mw, h: mh };
-  return { tall, W, H, c, cols, rows, glass: { x: mon.x + s + well, y: mon.y + t + well, w: gw, h: gh }, ox: c, oy: c, mon, well, side: s };
+  return { tall, phone, W, H, c, cols, rows, glass: { x: mon.x + s + well, y: mon.y + t + well, w: gw, h: gh }, ox: c, oy: c, mon, well, side: s };
 }
 
 /** Truncate to n cells. */
@@ -186,8 +198,8 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     if (!r) return;
     const c = geo.c;
     Object.assign(win.el.style, { left: `${r.x * c}px`, top: `${r.y * c}px`, width: `${r.w * c}px`, height: `${r.h * c}px` });
-    const t = fit(top, r.w - 6);
-    const b = fit(bottom, r.w - 6);
+    const t = fit(top, geo.phone ? r.w : r.w - 6);
+    const b = fit(bottom, geo.phone ? r.w : r.w - 6);
     const key = `${r.w}x${r.h}|${t.length}|${b.length}`;
     if (key !== win.frameKey) {
       win.frameKey = key;
@@ -395,6 +407,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function windows(v: SceneView): { vp: Rect; ros: Rect | null; map: Rect | null; st: Rect; term: Rect } {
     const n = people.length;
     const hasMap = !!v.delve || !!v.hex;
+    if (geo.phone) return phoneWindows(v, hasMap);
     // Who is here; with nobody, the same box reads the surroundings instead (not in a delve: the map has that).
     // A fixed-size window, like a VRAM region: four rows whether one person is here or four.
     const rosRows = v.delve ? 0 : 4;
@@ -432,6 +445,37 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     return { vp: vpR, ros: rosR, map: mapR, st: stR, term: { x: 0, y, w: cols, h: Math.max(6, geo.rows - y) } };
   }
 
+  /**
+   * A phone: the picture is a strip, the terminal gets the screen. No "Here" window: whoever is here is on the
+   * picture and in the commands. The journal, open, takes the whole screen. Landscape puts the terminal at the right.
+   */
+  function phoneWindows(v: SceneView, hasMap: boolean): { vp: Rect; ros: Rect | null; map: Rect | null; st: Rect; term: Rect } {
+    const { cols, rows } = geo;
+    const ST = 5;
+    let out: { vp: Rect; ros: Rect | null; map: Rect | null; st: Rect; term: Rect };
+    if (geo.W > geo.H) {
+      const lw = Math.max(18, Math.round(cols * 0.42));
+      const free = rows - ST;
+      const mapH = hasMap ? Math.floor(free / 2) : 0;
+      const vpH = free - mapH;
+      out = { vp: { x: 0, y: 0, w: lw, h: vpH }, ros: null, map: mapH ? { x: 0, y: vpH, w: lw, h: mapH } : null, st: { x: 0, y: free, w: lw, h: ST }, term: { x: lw, y: 0, w: cols - lw, h: rows } };
+    } else if (v.delve) {
+      // The corridor and its map side by side: walking needs both, and the commands the height.
+      const lw = Math.ceil(cols / 2);
+      const top = Math.max(7, Math.min(10, Math.round(rows * 0.22)));
+      out = { vp: { x: 0, y: 0, w: lw, h: top }, ros: null, map: { x: lw, y: 0, w: cols - lw, h: top }, st: { x: 0, y: top, w: cols, h: ST }, term: { x: 0, y: top + ST, w: cols, h: rows - top - ST } };
+    } else {
+      const vpH = hasMap ? 5 : Math.max(6, Math.min(10, Math.round(rows * 0.2)));
+      const mapH = hasMap ? Math.max(8, Math.min(12, Math.round(rows * 0.28))) : 0;
+      let y = vpH;
+      const mapR = mapH ? { x: 0, y, w: cols, h: mapH } : null;
+      y += mapH;
+      out = { vp: { x: 0, y: 0, w: cols, h: vpH }, ros: null, map: mapR, st: { x: 0, y, w: cols, h: ST }, term: { x: 0, y: y + ST, w: cols, h: rows - y - ST } };
+    }
+    if (ctx.journal.open) out.vp = { x: 0, y: 0, w: cols, h: rows };
+    return out;
+  }
+
   /** Resize: grid, monitor, props, room, CRT textures and the overlay variables. */
   function relayout(): void {
     const W = Math.max(1, root.clientWidth);
@@ -440,6 +484,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const { c, glass } = geo;
     const v8 = c / 8;
     cmd.classList.toggle("tall", geo.tall);
+    cmd.classList.toggle("phone", geo.phone);
     cmd.style.setProperty("--c", `${c}px`);
     cmd.style.setProperty("--v", `${v8}px`);
     cmd.style.setProperty("--scan", `url("${scanTile(v8)}")`);
@@ -671,15 +716,26 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const title = d ? `Delve: ${s.where}` : isNew ? `${s.where} NEW` : s.where;
     const tShown = fit(title, r.vp.w - 6);
     const newHtml = isNew && tShown.endsWith(" NEW") ? `${esc(tShown.slice(0, -4))} <span class="new">NEW</span>` : undefined;
+    if (geo.phone) {
+      // One label line over the picture: the place at the left, the day (or the way you face) at the right.
+      const w = r.vp.w;
+      const open = ctx.journal.open;
+      const right0 = open ? "" : d ? "" : dayLine;
+      const tag = isNew && !open ? " NEW" : "";
+      const right = right0 && s.where.length + tag.length + right0.length + 3 > w ? (TIME_SHORT[s.time] ?? s.time) : right0;
+      const name = open ? "Journal" : fit(s.where, Math.max(4, w - 2 - tag.length - (right ? right.length + 1 : 0)));
+      const pad = " ".repeat(Math.max(0, w - 2 - name.length - tag.length - right.length));
+      setWin(vp, r.vp, ` ${name}${tag}${pad}${right} `, "", ` ${esc(name)}${tag ? ` <span class="new">NEW</span>` : ""}${pad}${esc(right)} `);
+    } else
     setWin(vp, r.vp, ctx.journal.open ? "Journal" : title, ctx.journal.open ? "" : dayLine, newHtml);
     renderViewport(v, r.vp);
     setWin(ros, r.ros, "Here");
     if (r.ros) renderRoster(v, r.ros);
-    setWin(map, r.map, d ? "Map" : "Overland", d ? `Keys: ${d.keys}` : "");
+    setWin(map, r.map, d ? (geo.phone ? `Map ${(DIRS[d.facing] ?? "North").charAt(0)}` : "Map") : "Overland", d ? `Keys: ${d.keys}` : "");
     if (r.map) renderMap(v, r.map);
     setWin(st, r.st);
     renderStatus(v, r.st);
-    setWin(term, r.term, diskMenu ? "Disk" : "");
+    setWin(term, r.term, diskMenu && !geo.phone ? "Disk" : "");
     renderTerminal(v, r.term);
     // Bezel lamps show what is open; the disk box shows what is in the drive.
     keys.querySelector('[data-a="jr"]')?.classList.toggle("on", ctx.journal.open);
@@ -701,8 +757,9 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function renderViewport(v: SceneView, r: Rect): void {
     const c = geo.c;
     const v8 = c / 8;
-    const cw = r.w - 2;
-    const ch = r.h - 2;
+    // A phone's picture runs to the edges, under its one label line.
+    const cw = geo.phone ? r.w : r.w - 2;
+    const ch = geo.phone ? r.h - 1 : r.h - 2;
     const open = ctx.journal.open;
     artBox.style.display = open ? "none" : "";
     enc.style.display = open ? "none" : "";
@@ -741,10 +798,10 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       setHtml(enc, "");
     } else {
       // Small picture-in-picture sprite windows docked on the bottom rule, the talk key set into each top rule.
-      const bw = Math.min(n === 1 ? 9 : n === 2 ? 8 : 7, Math.floor((cw - (n - 1)) / n));
+      const bw = Math.min(n === 1 ? 9 : n === 2 ? 8 : 7, Math.floor((cw - (n - 1)) / n), geo.phone ? ch : 99);
       const bh = bw;
       const gap = 1;
-      const x0 = 1 + Math.floor((cw - n * bw - (n - 1) * gap) / 2);
+      const x0 = geo.phone ? cw - n * bw - (n - 1) * gap : 1 + Math.floor((cw - n * bw - (n - 1) * gap) / 2);
       const y0 = 1 + ch - bh;
       const sig = JSON.stringify([shown.map((p) => p.id), bw, bh, c, items.map((m) => m.key)]);
       if ((enc as unknown as { _sig?: string })._sig !== sig) {
@@ -826,8 +883,13 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       ? `<h3>The thread ${t.found.length}/${t.total}</h3><div class="goal">${esc(t.goal)}</div>${t.found.length ? `<ul>${t.found.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : `<div class="muted">Nothing found yet.</div>`}`
       : "";
     setHtml(jrIn, thread + ctx.journal.html(v));
-    const label = "J:Close";
+    const label = geo.phone ? "Close" : "J:Close";
     const c = geo.c;
+    if (geo.phone) {
+      Object.assign(jclose.style, { left: "", top: "", width: "" });
+      setHtml(jclose, label);
+      return;
+    }
     Object.assign(jclose.style, { left: `${Math.floor((r.w - label.length) / 2) * c}px`, top: `${(r.h - 1) * c}px`, width: `${label.length * c}px` });
     setHtml(jclose, label);
   }
@@ -903,7 +965,10 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const right = s.supplies ? `<span title="Supplies">${pair("Food", `${s.supplies.now}/${s.supplies.max}`, s.supplies.now <= 1 ? "lo" : "num")}</span>` : s.thread ? `<span>${pair("Day", String(s.day))}</span>` : "";
     const rows = [`<div class="r">${row1}</div>`, `<div class="r">${left}<span class="sp"></span>${right}</div>`];
     // A phone has no bezel: its keys live on a third row.
-    if (geo.tall) {
+    if (geo.phone) {
+      const hk = (k: string, word: string, act: string, on: boolean) => `<button class="hk${on ? " on" : ""}" data-a="${act}" aria-label="${word} (${k})">${word}</button>`;
+      rows.push(`<div class="r keysrow">${hk("J", "Journal", "jr", ctx.journal.open)}${hk("C", "Class", "cls", ctx.classes.open)}${hk("T", "Disk", "disks", diskMenu)}</div>`);
+    } else if (geo.tall) {
       const hk = (k: string, word: string, act: string, on: boolean) => `<button class="hk${on ? " on" : ""}" data-a="${act}" aria-label="${word} (${k})">${k} ${word}</button>`;
       rows.push(`<div class="r keysrow">${hk("J", "Jrnl", "jr", ctx.journal.open)}<span class="sp"></span>${hk("C", "Class", "cls", ctx.classes.open)}<span class="sp"></span>${hk("T", "Disk", "disks", diskMenu)}</div>`);
     }
@@ -932,8 +997,17 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       });
     }
     lines.push(b.busy ? `<div class="l pr ch" aria-busy="true"><span class="busyt">${esc(b.busy)}</span> <span class="spin">|</span></div>` : `<div class="l pr ch"><span class="echo"></span><span class="cu"></span></div>`);
-    if (setHtml(txIn, lines.join(""))) followTerm = true;
-    if (followTerm) tx.scrollTop = tx.scrollHeight;
+    const changed = setHtml(txIn, lines.join(""));
+    if (geo.phone) {
+      // Open at what just happened, to be read down from; a render with nothing new leaves the finger's place alone.
+      if (changed) {
+        const from = txIn.querySelector<HTMLElement>(".log.last") ?? txIn.querySelector<HTMLElement>(".desc");
+        tx.scrollTop = from ? Math.max(0, from.offsetTop - txIn.offsetTop - 4) : 0;
+      }
+    } else {
+      if (changed) followTerm = true;
+      if (followTerm) tx.scrollTop = tx.scrollHeight;
+    }
     syncMarks();
     void r;
   }
@@ -941,12 +1015,14 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function syncMarks(): void {
     upMark.style.display = tx.scrollTop > 0 ? "" : "none";
     dnMark.style.display = tx.scrollTop + tx.clientHeight < tx.scrollHeight - 2 ? "" : "none";
+    // A phone's More band sits over the last row: at the end of the list it has gone, so nothing stays under it.
   }
 
   /* ------------------------------ Input --------------------------------- */
 
   function setFocus(id: string | null): void {
-    if (id === focusId) return;
+    // On a phone a finger is not a pointer: the talk starts at once, and a big box would only flash over the picture.
+    if (geo.phone || id === focusId) return;
     focusId = id;
     renderFocus();
   }
@@ -1033,7 +1109,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const sp = txIn.querySelector(".spin");
       if (sp) sp.textContent = SPIN[Math.floor(t / 110) % 4]!;
     }
-    if (ctx.reducedMotion) return;
+    if (ctx.reducedMotion || geo.phone) return;
     const p = ctx.pointer();
     const qx = Math.round(p.x * 100) / 100;
     const qy = Math.round(p.y * 100) / 100;
@@ -1077,6 +1153,11 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     });
   });
   if (gs) mo.observe(gs, { childList: true, subtree: true, attributes: true, attributeFilter: ["style"] });
+  // The class panel closes itself (its own X, outside this screen): a phone's Class key follows it.
+  const syncClassKey = () => {
+    if (geo.phone) st.body.querySelector('.hk[data-a="cls"]')?.classList.toggle("on", ctx.classes.open);
+  };
+  gs?.addEventListener("click", syncClassKey);
 
   /* ------------------------------ Resize -------------------------------- */
 
@@ -1144,6 +1225,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       stopFrame();
       ro.disconnect();
       mo.disconnect();
+      gs?.removeEventListener("click", syncClassKey);
       clearTimeout(roomTimer);
       root.removeEventListener("click", onClick);
       root.removeEventListener("pointerover", overPerson);

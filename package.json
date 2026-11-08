@@ -12,7 +12,8 @@
     "play": "bun run scripts/play.ts",
     "balance": "bun run scripts/balance.ts",
     "preview": "bun run scripts/preview.ts",
-    "fx:import": "bun run scripts/fx-import.ts"
+    "fx:import": "bun run scripts/fx-import.ts",
+    "qa:phone": "bun run scripts/phone-qa.ts"
   },
   "dependencies": {
     "pixi.js": "8.22.0",

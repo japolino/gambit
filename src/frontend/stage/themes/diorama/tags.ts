@@ -14,6 +14,11 @@ import type { Rect } from "../../battle/layout.js";
 import { rng } from "../../../scene/themes/contract.js";
 import { CINZEL, FELL, GARA, P, eyelet, fit, stamp, stock, tape, txt } from "./paper.js";
 
+/** A phone, upright or on its side (the same line as the Parley's pl-phone). */
+const onPhone = (): boolean => innerWidth <= 760 || innerHeight <= 480;
+/** The tallest a phone's tag needs to be to hold its name, its stamp and a thumb. */
+const PHONE_ROW = 46;
+
 class Tag extends Container {
   private g = new Graphics();
   private glowG = new Graphics();
@@ -163,7 +168,12 @@ export class TagMenu extends ActionMenu {
     const { w, h } = this.rect;
     const m = this.mode;
     if (m.kind === "skills") this.lastSkills = m.skills;
-    const dowelY = Math.round(34 * ui);
+    const phone = onPhone();
+    const skillsNow = m.kind === "skills" ? m.skills : null;
+    // A phone with more skills than rows fit gives up the header: the lit card already says whose turn it is.
+    const wantRows = skillsNow ? Math.ceil(skillsNow.filter((s) => !s.signature).length / 2) + skillsNow.filter((s) => s.signature).length : 0;
+    const bare = phone && !!skillsNow && Math.round(42 * ui) + wantRows * PHONE_ROW + (wantRows - 1) * 5 > h;
+    const dowelY = bare ? Math.round(7 * ui) : Math.round((phone ? 30 : 34) * ui);
     if (m.kind === "wait") {
       if (m.text) {
         const t = txt(m.text, { fontFamily: FELL, fontStyle: "italic", fontSize: Math.round(22 * ui), fill: 0xf2e2c0, dropShadow: { color: 0x000000, alpha: 0.9, blur: 4, distance: 1 } });
@@ -193,13 +203,15 @@ export class TagMenu extends ActionMenu {
     st.position.set(tt.x + tt.width, 5 * ui + (tt.height - st.height) / 2 + 1 * ui);
     st.visible = st.x + st.width < pw - 10 * ui;
     head.addChild(plaque, tt, st);
-    head.position.set(8 * ui, dowelY - ph - 9 * ui);
-    this.content.addChild(head);
+    head.position.set(8 * ui, dowelY - ph - (phone ? 7 : 9) * ui);
+    if (!bare) this.content.addChild(head);
+    else head.destroy({ children: true });
 
-    const top = dowelY + Math.round(16 * ui);
+    const top = dowelY + Math.round((phone ? 11 : 16) * ui);
     const aiming = m.kind === "target";
     const list = m.kind === "skills" ? m.skills : this.lastSkills?.some((s) => s.name === m.skill) ? this.lastSkills : null;
-    if (m.kind === "target" && !list) {
+    // On a phone the aiming step is one plain tag with what to do, and Back / Confirm: the rack would crush them.
+    if (m.kind === "target" && (!list || phone)) {
       const big = new Tag(Math.min(w - 20 * ui, 520 * ui), Math.min(h - top - 64 * ui, 92 * ui), ui, false, "kraft", 3, () => {});
       big.position.set(10 * ui, top);
       const hint = txt(m.hint, { fontFamily: FELL, fontStyle: "italic", fontSize: Math.round(19 * ui), fill: P.ink, wordWrap: true, wordWrapWidth: big.w - big.h * 0.7 - 16 * ui });
@@ -219,12 +231,14 @@ export class TagMenu extends ActionMenu {
     const skills = list!.map((s, i) => ({ s, key: i + 1 }));
     const plain = skills.filter((x) => !x.s.signature);
     const sig = skills.filter((x) => x.s.signature);
-    const cols = w > 420 * ui ? 2 : plain.length > 3 && w > 300 * ui ? 2 : 1;
-    const gapX = Math.round(16 * ui);
-    const gapY = Math.round(9 * ui);
+    const cols = w > 420 * ui || (phone && w > 280) ? 2 : plain.length > 3 && w > 300 * ui ? 2 : 1;
+    const gapX = Math.round((phone ? 10 : 16) * ui);
+    const gapY = phone ? 5 : Math.round(9 * ui);
     const rows = Math.ceil(plain.length / cols) + sig.length + (aiming ? 1 : 0);
     const tw2 = (w - 22 * ui - gapX * (cols - 1)) / cols;
-    const th = Math.max(40 * ui, Math.min(74 * ui, (h - top - 8 * ui - gapY * (rows - 1)) / rows));
+    const roomy = (h - top - 8 * ui - gapY * (rows - 1)) / rows;
+    // A phone holds every tag at a real tap target's height; only a rack that can't fit any other way goes under it.
+    const th = Math.max(phone ? Math.min(PHONE_ROW, Math.max(38, roomy)) : 40 * ui, Math.min(74 * ui, roomy));
     const after = (s: MenuSkill) => {
       if (!aiming) return;
       const t = this.tags[this.tags.length - 1]!;
@@ -282,26 +296,35 @@ export class TagMenu extends ActionMenu {
     t.pivot.set(t.eyeX, h / 2);
     t.position.set(x + t.eyeX, y + h / 2);
     t.baseX = t.x;
+    const phone = onPhone();
     const inset = h * 0.62;
-    const nameSize = Math.round(Math.min(26 * ui, h * 0.42));
+    // A narrow tag (a phone) stamps its cost or reason under the name instead of beside it, at a size that can be read.
+    const under = phone && !!sub && w < 250 * ui;
+    const nameSize = Math.round(under ? Math.max(15, Math.min(19 * ui, h * 0.37)) : Math.min(26 * ui, h * 0.42));
     const leather = kind === "leather";
     const name = txt(label, { fontFamily: FELL, fontSize: nameSize, fill: leather ? (enabled ? 0xf5d36c : 0xd8b878) : enabled ? P.ink : 0x4a3a2a });
-    // A narrow tag (a phone) stamps its cost under the name instead of beside it.
-    const narrow = !subIsReason && !!sub && w < 250 * ui && h > 44 * ui;
+    const narrow = under || (!phone && !subIsReason && !!sub && w < 250 * ui && h > 44 * ui);
     const stampW = !subIsReason && sub && !narrow ? Math.min(w * 0.36, 130 * ui) : 0;
     fit(name, w - inset - stampW - 14 * ui - (signature ? 20 * ui : 0));
     const twoLine = (subIsReason && sub && h > 44 * ui) || narrow;
-    name.position.set(inset, twoLine ? h * 0.1 : (h - name.height) / 2);
+    name.position.set(inset, under ? 2 : twoLine ? h * 0.1 : (h - name.height) / 2);
     t.addChild(name);
-    if (key && key <= 9 && enabled) {
+    if (key && key <= 9 && enabled && !phone) {
       // The key that picks it, pencilled in the corner.
       const k = txt(String(key), { fontFamily: GARA, fontStyle: "italic", fontSize: Math.round(11 * ui), fill: P.pencil });
       k.alpha = 0.7;
       k.position.set(w - k.width - 5 * ui, h - k.height - 2 * ui);
       t.addChild(k);
     }
-    if (sub && !subIsReason) {
-      const sz = Math.round(Math.min(12 * ui, h * 0.2));
+    if (under) {
+      // Twelve pixels at the least, and only narrowed if it would run off the tag.
+      const s = stamp(sub, 12, leather ? 0xffb090 : subIsReason ? P.redInk : sub.toLowerCase() === "basic" ? 0x7a5a36 : P.redInk, subIsReason ? -0.03 : -0.02);
+      const room = w - inset - 12 * ui;
+      if (s.width > room) s.scale.set(room / s.width);
+      s.position.set(inset + (s.width * s.scale.x) / 2 + 2, h - 11);
+      t.addChild(s);
+    } else if (sub && !subIsReason) {
+      const sz = phone ? 12 : Math.round(Math.min(12 * ui, h * 0.2));
       const s = stamp(sub, sz, sub.toLowerCase() === "basic" ? 0x7a5a36 : P.redInk, -0.07 + (seed % 5) * 0.025);
       if (narrow) {
         s.scale.set(0.85);
@@ -314,7 +337,7 @@ export class TagMenu extends ActionMenu {
       t.addChild(s);
     } else if (sub) {
       // Not yet: what it needs, stamped across the tag in red (the name stays readable under it).
-      const sz = Math.round(Math.min(12 * ui, h * 0.2));
+      const sz = phone ? 12 : Math.round(Math.min(12 * ui, h * 0.2));
       const s = stamp(sub, sz, leather ? 0xffb090 : P.redInk, -0.12);
       const room = Math.max(60 * ui, w - name.x - name.width - 24 * ui);
       if (s.width > room) s.scale.set(room / s.width);

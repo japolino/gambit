@@ -167,13 +167,15 @@ export const lobby: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function settle(): boolean {
     const w = stage.clientWidth;
     const h = Math.max(1, stage.clientHeight);
-    const p = w < 760;
+    // A short window (a phone on its side) gets the phone's column too: the design grid would shrink its text to nothing.
+    const p = w < 760 || h < 480;
     const wd = !p && w / h >= 2;
     const changed = p !== phone || wd !== wide;
     phone = p;
     wide = wd;
     lb.classList.toggle("phone", p);
     lb.classList.toggle("wide", wd);
+    lb.classList.toggle("land", p && w >= 560 && w > h);
     unit = p ? w / 560 : Math.min(w / 1920, h / 1080);
     return changed;
   }
@@ -431,7 +433,7 @@ export const lobby: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     return `<div class="md">${A.medallion(art ? esc(art) : null)}</div>
 <div class="sh">${A.shield()}<b><small>Day</small>${s.day}</b></div>
 ${b.isNew ? `<div class="new">${A.seal()}<b>NEW</b></div>` : ""}
-<div class="rib"><b title="${esc(s.where)}">${esc(s.where)}</b>${dividerRule}<span>${esc(s.time)} · ${esc(v.delve ? "Delve" : s.card)}</span></div>`;
+<div class="rib"><b title="${esc(s.where)}">${esc(s.where)}</b>${dividerRule}<span><em class="dy">Day ${s.day} · </em>${esc(s.time)} · ${esc(v.delve ? "Delve" : s.card)}</span></div>`;
   }
 
   function resources(v: SceneView): string {
@@ -549,14 +551,14 @@ ${fight ? `<span class="gauge">VIGOR</span><span class="gauge2">${vig}%</span>` 
 <span class="ttl">${A.plaque(262, 50)}<b>${esc(name)}</b></span>${arrows}${many ? `<span class="pips">${i + 1} / ${list.length}</span>` : ""}</div>`;
   }
 
-  function dockItem(m: MenuItem, v: SceneView): string {
+  function dockItem(m: MenuItem, v: SceneView, feat = false): string {
     let ic: string;
     if (m.group === "talk") {
       const p = v.people.find((x) => x.id === m.target);
       const art = m.target ? ctx.personArt(v, m.target, "color") : null;
       ic = A.miniPortrait(art ? esc(art.url) : null, esc((p?.name ?? "?").slice(0, 1)));
     } else ic = m.group === "go" ? (m.kind === "delve" || m.key === "leave" ? A.door() : A.rose()) : m.group === "fight" ? A.sabres() : A.rose();
-    return `<button class="lb-dk${m.group === "talk" ? " talk" : ""}" data-a="m:${esc(m.key)}"><span class="ic">${ic}</span><span>${esc(m.label)}</span></button>`;
+    return `<button class="lb-dk${m.group === "talk" ? " talk" : ""}${feat ? " feat" : ""} g-${esc(m.group)}" data-a="m:${esc(m.key)}"><span class="ic">${ic}</span><span>${esc(m.label)}</span></button>`;
   }
 
   /** The line of the story to chase: the next open quest step, else the thread. */
@@ -653,7 +655,7 @@ ${fight ? `<span class="gauge">VIGOR</span><span class="gauge2">${vig}%</span>` 
       const moves = menu.filter((m) => m.group === "move");
       const leave = menu.filter((m) => m.group !== "move");
       instr = `<span class="chartslot"></span>${orienter(v, moves)}`;
-      cards = leave.length ? wideCardHtml(leave[0]!, v) : "";
+      cards = leave.length ? (phone ? dockItem(leave[0]!, v, true) : wideCardHtml(leave[0]!, v)) : "";
       dock.push(...leave.slice(1));
     } else {
       const doing = menu.filter((m) => m.group === "do").sort((x, y) => INSTRUMENT_ORDER.indexOf(x.kind) - INSTRUMENT_ORDER.indexOf(y.kind));
@@ -666,14 +668,16 @@ ${fight ? `<span class="gauge">VIGOR</span><span class="gauge2">${vig}%</span>` 
       const featured = fight ?? goes[0];
       const rest = fight ? goes : goes.slice(1);
       const parts: string[] = [];
-      if (featured) parts.push(wideCardHtml(featured, v));
+      // A phone lists every way on as a plain row: nothing hidden behind arrows, no card taller than the screen.
+      if (featured) parts.push(phone ? dockItem(featured, v, true) : wideCardHtml(featured, v));
       if (v.hex) {
         wantHex = true;
         parts.push(`<div class="lb-hex">${A.chartFrame()}<span class="hexslot"></span><span class="ttl">${A.plaque(280, 46)}<b>${v.hex.wild ? "The Wilds" : "Frontier Chart"}</b></span></div>`);
         dock.push(...rest);
       } else if (rest.length) {
         // A wide stage shows two travel cards: the first fixed, the second cycling the rest.
-        if (wide && rest.length > 1) parts.push(tallCardHtml([rest[0]!], 0), tallCardHtml(rest.slice(1), cyc));
+        if (phone) dock.push(...rest);
+        else if (wide && rest.length > 1) parts.push(tallCardHtml([rest[0]!], 0), tallCardHtml(rest.slice(1), cyc));
         else parts.push(tallCardHtml(rest, cyc));
       }
       cards = parts.join("");

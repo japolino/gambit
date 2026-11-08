@@ -21,18 +21,37 @@ export function dioramaLayout(w: number, h: number, partyCount: number): StageLa
     const gap = Math.round(7 * ui);
     const timeline: Rect = { x: 0, y: 0, w, h: Math.round(54 * ui) };
     // The figures' feet: a little behind the middle of the counter top.
-    const floorY = Math.round(band ? h * (band.back + (band.front - band.back) * 0.55) : h * 0.4);
+    const floorY = Math.round(band ? h * (band.back + (band.front - band.back) * 0.55) : h * (w <= 760 ? 0.36 : 0.4));
     const areaTop = timeline.y + timeline.h * 1.3;
     const enemyArea: Rect = band ? { x: w * band.left, y: areaTop, w: w * (band.right - band.left), h: floorY - areaTop } : { x: 0, y: areaTop, w, h: floorY - areaTop };
     // Room under the feet for the price tags, then the cards and the skill tags down to the bottom edge.
-    const tagsY = floorY + Math.round(70 * ui);
-    const cardH = Math.round(Math.min(150 * ui, h * 0.19));
+    // A phone's cards are compact (card.ts): the skill tags need the height, every row a real tap target.
+    const phone = w <= 760;
+    const tagsY = floorY + Math.round((phone ? 58 : 70) * ui);
+    const cardH = Math.round(phone ? Math.min(92 * ui, h * 0.16) : Math.min(150 * ui, h * 0.19));
     const party: Rect = { x: m, y: tagsY, w: w - 2 * m, h: cardH };
     const cardW = (party.w - gap * (n - 1)) / n;
     const cards = Array.from({ length: n }, (_, i) => ({ x: party.x + i * (cardW + gap), y: party.y, w: cardW, h: cardH }));
     const menuY = party.y + party.h + gap;
     const menu: Rect = { x: m, y: menuY, w: w - 2 * m, h: Math.max(140, h - menuY - m) };
     return { w, h, portrait, ui, enemyArea, floorY, timeline, party, cards, menu, banner: { x: w / 2, y: Math.round(areaTop + 40 * ui) } };
+  }
+  if (h <= 480) {
+    // A phone on its side: the skill rack takes the right of the screen, full height; the bunting, the figures on the
+    // counter and the compact cards share the left.
+    const menuW = Math.round(w * 0.44);
+    const leftW = w - menuW - 12;
+    const menu: Rect = { x: w - menuW - 6, y: 4, w: menuW, h: h - 10 };
+    const timeline: Rect = { x: 4, y: 0, w: leftW, h: Math.round(54 * ui) };
+    const floorY = Math.round(band ? h * (band.back + (band.front - band.back) * 0.55) : h * 0.57);
+    const areaTop = Math.round(timeline.h * 1.25);
+    const enemyArea: Rect = { x: 4, y: areaTop, w: leftW, h: floorY - areaTop };
+    const cardH = Math.max(70, Math.min(Math.round(92 * ui), h - floorY - Math.round(50 * ui) - 6));
+    const party: Rect = { x: 6, y: h - cardH - 6, w: leftW - 6, h: cardH };
+    const cardGap = 6;
+    const cardW = (party.w - cardGap * (n - 1)) / n;
+    const cards = Array.from({ length: n }, (_, i) => ({ x: party.x + i * (cardW + cardGap), y: party.y, w: cardW, h: cardH }));
+    return { w, h, portrait, ui, enemyArea, floorY, timeline, party, cards, menu, banner: { x: leftW / 2, y: areaTop + Math.round(30 * ui) } };
   }
   const m = Math.round(14 * ui);
   const gap = Math.round(14 * ui);

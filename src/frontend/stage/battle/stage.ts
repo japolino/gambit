@@ -460,8 +460,9 @@ export class BattleStage {
     this.menu.showWait("");
     try {
       const result = await this.opts.onAction(action);
-      await this.play(result.state, result.events);
+      await this.update(result.state, result.events);
     } catch (err) {
+      if (this.destroyed) return;
       this.busy = false;
       void this.floaters.banner(this.layout.banner.x, this.layout.banner.y, "Not now", err instanceof Error ? err.message : String(err), C.enemy, 1200);
       this.showMenu();
@@ -474,7 +475,8 @@ export class BattleStage {
 
   /** Play events toward `state` (queued behind any batch already playing). */
   update(state: BattleState, events: BattleEvent[]): Promise<void> {
-    this.queue = this.queue.then(() => this.play(state, events));
+    // One failed batch must not stop every batch after it.
+    this.queue = this.queue.catch(() => {}).then(() => this.play(state, events));
     return this.queue;
   }
 
@@ -484,6 +486,9 @@ export class BattleStage {
     this.showMenu();
     try {
       await playEvents(this, events, state);
+    } catch (err) {
+      // The animation is lost; the fight isn't. The state below still lands and the menu comes back.
+      console.warn("[gambit] battle animation failed", err);
     } finally {
       this.clock.speed = 1;
       this.busy = false;

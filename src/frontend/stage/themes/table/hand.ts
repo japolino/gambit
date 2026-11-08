@@ -7,8 +7,9 @@
  * ("tap an enemy"), a "take it back" tab and, for cards that need no target,
  * a red wax seal to press. While the other side moves the fan sinks.
  *
- * On a phone there's no room for a hand: the read card becomes a parchment
- * slip over the fan.
+ * On a phone (either way up) there's no room for a fan or a hand: the skills are
+ * a grid of paper tiles with their name, cost and why-not in plain view, and
+ * what you read or aim with is a parchment slip over them.
  */
 import { Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
 import { ActionMenu, type MenuSkill } from "../../battle/action-menu.js";
@@ -25,7 +26,7 @@ const ink = (size: number, o: Partial<ConstructorParameters<typeof TextStyle>[0]
 const prose = (size: number, width: number, o: Partial<ConstructorParameters<typeof TextStyle>[0] & object> = {}) =>
   new TextStyle({ fontFamily: FELL, fontSize: size, fill: 0x1c120a, wordWrap: true, wordWrapWidth: width, lineHeight: size * 1.18, ...o });
 
-type FanCard = { c: Container; face: Sprite; skill: MenuSkill; i: number; lift: number; want: number };
+type FanCard = { c: Container; face: Sprite; skill: MenuSkill; i: number; lift: number; want: number; hi?: Graphics };
 
 export class TableHand extends ActionMenu {
   /** The layout of the fight (set by the theme each resize). */
@@ -111,7 +112,9 @@ export class TableHand extends ActionMenu {
     } else {
       this.reading = null;
       // The rest of the hand stays in your fingers, sunk: face up while you aim the card you played, face down while they move.
-      if (m.kind === "target") this.deal(this.lastSkills.filter((s) => s.name !== m.skill), false, false);
+      if (d.tiles && m.kind === "target") {
+        // The slip covers the tiles.
+      } else if (m.kind === "target") this.deal(this.lastSkills.filter((s) => s.name !== m.skill), false, false);
       else this.deal(this.lastSkills, false, true);
     }
     this.readCard();
@@ -123,6 +126,7 @@ export class TableHand extends ActionMenu {
     const r = this.rect;
     const n = skills.length;
     if (!n) return;
+    if (d.tiles) return this.dealTiles(skills, live);
     const port = d.portrait;
     const ch = port ? Math.min(r.h * 0.98, r.w * 0.235 * (CARD_H / CARD_W)) : Math.min(r.h * 0.92, d.h * 0.3);
     const cw = ch * (CARD_W / CARD_H);
@@ -204,6 +208,72 @@ export class TableHand extends ActionMenu {
     });
   }
 
+  /** A phone: every skill as a paper tile, its name and its cost or why-not readable, a thumb's height tall. */
+  private dealTiles(skills: MenuSkill[], live: boolean): void {
+    const r = this.rect;
+    const n = skills.length;
+    const pad = 6;
+    const gap = 5;
+    const cols = r.w >= 420 ? 3 : 2;
+    const rows = Math.ceil(n / cols);
+    const tw = (r.w - pad * 2 - gap * (cols - 1)) / cols;
+    const th = Math.max(44, Math.min(58, (r.h - pad - gap * (rows - 1)) / rows));
+    skills.forEach((s, i) => {
+      const c = new Container();
+      c.position.set(r.x + pad + (i % cols) * (tw + gap), r.y + Math.floor(i / cols) * (th + gap));
+      const shape = [0, 1.5, tw * 0.45, 0, tw, 1.5, tw - 1.5, th - 1, tw * 0.55, th, 1, th - 1.5];
+      const g = new Graphics();
+      g.poly(shape).fill({ color: s.usable ? 0xe8dcc4 : 0xa89e8a }).stroke({ width: 2, color: PAPER_INK });
+      if (s.signature) g.rect(3, 3, 4, th - 6).fill({ color: BLOOD });
+      c.addChild(g);
+      const hi = new Graphics().poly(shape).stroke({ width: 3, color: 0xffcf6a });
+      hi.alpha = 0;
+      c.addChild(hi);
+      const left = s.signature ? 11 : 8;
+      const room = tw - left - 6;
+      const second = s.usable ? s.cost : (s.reason ?? "Not now");
+      // The name: one line if it fits at a readable size, otherwise two.
+      const name = new Text({ text: s.name.toUpperCase(), style: ink(13, { letterSpacing: 0, lineHeight: 14.5, wordWrap: false, fill: s.usable ? PAPER_INK : 0x2a1a10 }) });
+      if (name.width > room) {
+        if (name.width * (12 / 13) <= room) name.style.fontSize = 12;
+        else {
+          name.style.fontSize = 12;
+          name.style.lineHeight = 13;
+          name.style.wordWrap = true;
+          name.style.wordWrapWidth = room;
+        }
+      }
+      if (name.width > room) name.scale.set(room / name.width);
+      const sub = new Text({ text: second, style: new TextStyle({ fontFamily: FELL, fontWeight: "700", fontSize: 13, lineHeight: 15, fill: s.usable ? 0x2c5a8a : 0x8a0e14 }) });
+      if (sub.width > room) sub.scale.set(Math.max(0.93, room / sub.width));
+      const total = name.height + (second ? sub.height : 0);
+      const top = (th - total) / 2;
+      name.position.set(left, top);
+      sub.position.set(left, top + name.height);
+      c.addChild(name);
+      if (second) c.addChild(sub);
+      if (!live) {
+        c.eventMode = "none";
+        c.alpha = 0.5;
+        this.fan.addChild(c);
+        this.cards.push({ c, face: new Sprite(), skill: s, i, lift: 0, want: 0, hi });
+        return;
+      }
+      c.eventMode = "static";
+      c.cursor = s.usable ? "pointer" : "not-allowed";
+      c.hitArea = { contains: (x: number, y: number) => x >= 0 && x <= tw && y >= -gap / 2 && y <= th + gap / 2 };
+      const fc: FanCard = { c, face: new Sprite(), skill: s, i, lift: 0, want: 0, hi };
+      c.on("pointerover", () => (fc.want = 1));
+      c.on("pointerout", () => (fc.want = 0));
+      c.on("pointertap", () => {
+        if (s.usable) this.onPick(s.id);
+        else this.point(i);
+      });
+      this.fan.addChild(c);
+      this.cards.push(fc);
+    });
+  }
+
   /** Point at a card (mouse or keyboard): it lifts, and your hand reads it. */
   point(i: number): void {
     for (const c of this.cards) c.want = c.i === i ? 1 : 0;
@@ -253,6 +323,11 @@ export class TableHand extends ActionMenu {
       title = m.skill;
       line = m.confirm ? "Press the seal to play it" : "Your move";
       body = m.hint;
+      if (d.tiles) {
+        const s = this.lastSkills.find((x) => x.name === m.skill);
+        line = s?.cost ?? "";
+        if (s?.flavor) body = `${m.hint} ${s.flavor}`;
+      }
       buttons.push({ label: "Take it back", seal: false, run: () => this.onBack() });
       if (m.confirm) buttons.push({ label: "Play", seal: true, run: () => this.onConfirm() });
     } else {
@@ -429,23 +504,36 @@ export class TableHand extends ActionMenu {
     this.held.addChild(c);
   }
 
-  private slip(title: string, line: string, body: string, warn: string, buttons: { label: string; seal: boolean; run: () => void }[], ui: number): void {
+  /** A phone: what you read or aim with, on parchment over the tiles. Its buttons are a thumb's height; tap it to put it away when it only reads. */
+  private slip(title: string, line: string, body: string, warn: string, buttons: { label: string; seal: boolean; run: () => void }[], _ui: number): void {
     const r = this.rect;
-    const w = r.w - 16 * ui;
+    const m = this.mode;
+    const x0 = 6;
+    const w = r.w - x0 * 2;
     const c = new Container();
-    const t = new Text({ text: title.toUpperCase(), style: ink(Math.round(14 * ui), { fill: 0x7a0c10 }) });
-    fitText(t, w - 24 * ui);
-    t.position.set(12 * ui, 8 * ui);
-    const sub = [line, body, warn].filter(Boolean).join(" · ");
-    const b = new Text({ text: sub, style: prose(Math.round(12.5 * ui), w - 24 * ui, { fontStyle: "italic" }) });
-    b.position.set(12 * ui, t.y + t.height + 2 * ui);
-    let h = b.y + b.height + 8 * ui;
+    const t = new Text({ text: title.toUpperCase(), style: ink(15, { fill: 0x7a0c10, letterSpacing: 0 }) });
+    fitText(t, w - 24);
+    t.position.set(12, 8);
+    const parts: Text[] = [];
+    let y = t.y + t.height + 2;
+    const add = (text: string, o: Partial<ConstructorParameters<typeof TextStyle>[0] & object>): void => {
+      if (!text) return;
+      const b = new Text({ text, style: prose(14, w - 24, o) });
+      b.position.set(12, y);
+      parts.push(b);
+      y += b.height + 2;
+    };
+    add(line, { fill: 0x2c5a8a, fontWeight: "700" });
+    add(warn, { fill: 0x8a0e14, fontWeight: "700" });
+    add(body, { fontStyle: "italic" });
+    if (m.kind === "skills") add("Tap to close.", { fill: 0x5a4a30 });
+    let h = y + 6;
     const row = new Container();
     let bx = 0;
     for (const bt of buttons) {
-      const btn = bt.seal ? waxSeal(17 * ui, "PLAY") : paperTab(bt.label, 12 * ui);
-      btn.position.set(bt.seal ? bx + 17 * ui : bx, bt.seal ? 17 * ui : 2 * ui);
-      bx += (bt.seal ? 34 * ui : btn.width) + 12 * ui;
+      const btn = bt.seal ? waxSeal(25, "PLAY") : tallTab(bt.label);
+      btn.position.set(bt.seal ? bx + 28 : bx, bt.seal ? 25 : 2);
+      bx += (bt.seal ? 56 : btn.width) + 16;
       btn.eventMode = "static";
       btn.cursor = "pointer";
       btn.on("pointertap", (e) => {
@@ -455,14 +543,25 @@ export class TableHand extends ActionMenu {
       row.addChild(btn);
     }
     if (buttons.length) {
-      row.position.set(12 * ui, h);
-      h += 40 * ui;
+      row.position.set(12, h);
+      h += 54;
     }
+    // Over the tiles (all of them, so the two never read through each other) unless they're only waiting.
+    const full = m.kind !== "wait";
+    h = Math.max(h, full ? r.h - 6 : 0);
+    const shape = [0, 3, w * 0.4, 0, w, 4, w - 2, h - 2, w * 0.6, h, 2, h - 3];
     const g = new Graphics();
-    g.poly([0, 3, w * 0.4, 0, w, 4, w - 2, h - 2, w * 0.6, h, 2, h - 3]).fill({ color: 0xe8dcc4 }).stroke({ width: 2.5, color: PAPER_INK });
-    g.poly([0, 3, w * 0.4, 0, w, 4, w - 2, h - 2, w * 0.6, h, 2, h - 3]).fill({ color: 0x8a6a3a, alpha: 0.08 });
-    c.addChild(g, t, b, row);
-    c.position.set(r.x + 8 * ui, r.y + 4 * ui);
+    g.poly(shape).fill({ color: 0xe8dcc4 }).stroke({ width: 2.5, color: PAPER_INK });
+    g.poly(shape).fill({ color: 0x8a6a3a, alpha: 0.08 });
+    c.addChild(g, t, ...parts, row);
+    c.position.set(r.x + x0, Math.min(r.y, this.duel!.h - h - 4));
+    if (m.kind === "skills") {
+      // It only reads (why a card can't be played): tap it away.
+      c.eventMode = "static";
+      c.cursor = "pointer";
+      c.hitArea = { contains: (x: number, yy: number) => x >= 0 && x <= w && yy >= 0 && yy <= h };
+      c.on("pointertap", () => this.point(-1));
+    }
     this.held.addChild(c);
   }
 
@@ -472,6 +571,14 @@ export class TableHand extends ActionMenu {
     const down = this.mode.kind === "skills" ? 0 : 1;
     this.sink += (down - this.sink) * (this.reduced ? 1 : 1 - Math.exp(-dt / 0.2));
     const d = this.duel;
+    if (d?.tiles) {
+      for (const c of this.cards) {
+        const want = Math.max(c.want, this.focusIndex === c.i ? 1 : 0);
+        c.lift += (want - c.lift) * k;
+        if (c.hi) c.hi.alpha = c.lift;
+      }
+      return;
+    }
     const ch = this.cards[0]?.face.height ?? 0;
     for (const c of this.cards) {
       const want = Math.max(c.want, this.focusIndex === c.i ? 1 : 0);
@@ -527,6 +634,20 @@ function waxSeal(R: number, word: string): Container {
 }
 
 /** A torn paper tab with a word in ink: the "take it back" control. */
+/** A paper tab a thumb can hit: 44px tall, 14px type. */
+function tallTab(label: string): Container {
+  const c = new Container();
+  const t = new Text({ text: label.toUpperCase(), style: ink(14, { letterSpacing: 0 }) });
+  const w = t.width + 28;
+  const h = 44;
+  const g = new Graphics();
+  g.poly([0, 2, w * 0.5, 0, w, 3, w - 3, h, w * 0.4, h - 2, 2, h]).fill({ color: 0xd9c49a }).stroke({ width: 2, color: PAPER_INK });
+  t.position.set(14, (h - t.height) / 2);
+  c.addChild(g, t);
+  c.hitArea = { contains: (x: number, y: number) => x >= 0 && y >= 0 && x <= w && y <= h };
+  return c;
+}
+
 function paperTab(label: string, size: number): Container {
   const c = new Container();
   const t = new Text({ text: label.toUpperCase(), style: ink(Math.round(size)) });

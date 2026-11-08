@@ -31,11 +31,24 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let overlay: Overlay | null = null;
   let stage: StageHandle | null = null;
   let current: BattleState | null = null;
-  let pending: ((step: Step) => void) | null = null;
+  /** The player's action the backend hasn't answered yet. Always ends: an answer, an error, a timeout or a close. */
+  let pending: { resolve: (step: Step) => void; reject: (err: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
+  const failAction = (why: string) => {
+    if (!pending) return;
+    const p = pending;
+    pending = null;
+    clearTimeout(p.timer);
+    p.reject(new Error(why));
+  };
   let disposed = false;
-  /** Set by a click that should bring the Stage up; a resumed fight waits for "Resume". */
-  let wantStage = false;
-  /** The Parley on screen, the last state the backend sent, and whether a click asked for it. */
+  /**
+   * The screen the last click is waiting for (a resumed fight waits for "Resume"). One at a time: the newest click
+   * wins and an error clears it, so a late message can't bring up a screen nobody is waiting for.
+   */
+  let want: "stage" | "parley" | "scene" | null = null;
+  /** A finished card battle's trip back to its scene. One at a time, and any other screen change cancels it. */
+  let returnTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The Parley on screen and the last state the backend sent. */
   let parley: ParleyView | null = null;
   let parleyState: { state: ParleyState; scenario: ParleyScenario; journal: string[] } | null = null;
   /** The card status of the chat on screen. */
@@ -69,15 +82,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     test: () => voice.say("The road ahead is quiet. For now."),
   });
   voice.onChange(() => panel.setVoice(voiceUi()));
-  let wantParley = false;
-  /** The Scene on screen (6.1), the last view the backend sent, and whether a click asked for it. */
+  /** The Scene on screen (6.1) and the last view the backend sent. */
   let scene: SceneHandle | null = null;
   let sceneView: SceneView | null = null;
   /** The scene's theme is staging the current fight or talk in its own room (the scene stays visible). */
   let staged = false;
   /** The locked look's palette tokens (a battle outside a themed chat wears them). */
   let lookUi: Parameters<typeof applyUiTokens>[0] = null;
-  let wantScene = false;
   /** A fact card played in the Table theme: its citation waits for the Parley it starts. */
   let pendingCite: string | null = null;
   let parleyMode: ParleyViewMode = "immersive";
@@ -101,7 +112,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   const panel = createPanel(ctx, {
     start: (encounterId) => {
       panel.setStatus("Setting the scene…");
-      wantStage = true;
+      want = "stage";
       send({ type: "battle.start", encounterId });
     },
     open: () => {
@@ -120,7 +131,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     },
     parley: (scenarioId) => {
       panel.setStatus("Finding them…");
-      wantParley = true;
+      want = "parley";
       send({ type: "parley.start", scenarioId, chatId: activeChatId() });
     },
     resumeParley: () => {
@@ -156,13 +167,13 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   }
 
   function startTalk(chatId: string, castId: string, kind?: ContestChip["kind"], chipId?: string): void {
-    wantParley = true;
+    want = "parley";
     panel.setStatus("Setting the scene…");
     send({ type: "card.talk", chatId, castId, ...(kind ? { kind } : {}), ...(chipId ? { chipId } : {}) });
   }
 
   function openScene(chatId: string): void {
-    wantScene = true;
+    want = "scene";
     panel.setStatus("Opening the scene…");
     send({ type: "scene.open", chatId });
   }
@@ -170,6 +181,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   async function showScene(view: SceneView): Promise<void> {
     const ov = await ensureOverlay();
     if (disposed) return;
+    clearTimeout(returnTimer);
     if (!ov.visible()) send({ type: "stage.opened" });
     ov.show();
     parley?.destroy();
@@ -182,7 +194,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       const chatId = view.chatId;
       scene = mountScene(ov.content, view, {
         act: (hotspot) => {
-          if (hotspot.startsWith("talk:")) wantParley = true;
+          if (hotspot.startsWith("talk:")) want = "parley";
           send({ type: "scene.act", chatId, hotspot });
         },
         step: (move) => send({ type: "delve.step", chatId, move }),
@@ -195,7 +207,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         forge: (op, arg, arg2, text) => send({ type: "forge.act", chatId, op, ...(arg !== undefined ? { arg } : {}), ...(arg2 !== undefined ? { arg2 } : {}), ...(text !== undefined ? { text } : {}) }),
         cite: (personId, text) => {
           pendingCite = `I know this: ${text.replace(/\.?$/, ".")}`;
-          wantParley = true;
+          want = "parley";
           send({ type: "scene.act", chatId, hotspot: `talk:${personId}` });
         },
       });
@@ -207,8 +219,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   /** A card battle ended: let the banner play, then go back to the scene it started in. */
   function backToScene(delay = 1600): void {
-    setTimeout(() => {
-      if (disposed || !current || current.outcome === "ongoing") return;
+    clearTimeout(returnTimer);
+    returnTimer = setTimeout(() => {
+      if (disposed || !stage || !current || current.outcome === "ongoing") return;
       const chatId = current.meta?.chatId;
       stage?.destroy();
       stage = null;
@@ -219,7 +232,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         scene.show();
       } else if (chatId) {
         // A resumed card battle has no scene under it yet: open the one it was fought in.
-        wantScene = true;
+        want = "scene";
         send({ type: "scene.open", chatId });
       }
     }, delay);
@@ -256,14 +269,18 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       scene = null;
       parley?.destroy();
       parley = null;
+      want = null;
+      clearTimeout(returnTimer);
+      failAction("The stage closed.");
     });
     return overlay;
   }
 
   function onAction(action: Action): Promise<Step> {
     if (!current) return Promise.reject(new Error("No battle"));
-    return new Promise<Step>((resolve) => {
-      pending = resolve;
+    return new Promise<Step>((resolve, reject) => {
+      const timer = setTimeout(() => failAction("No answer yet. Try again."), 30_000);
+      pending = { resolve, reject, timer };
       send({ type: "battle.act", battleId: current!.id, action });
     });
   }
@@ -306,6 +323,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   async function showParley(state: ParleyState, scenario: ParleyScenario, journal: string[]): Promise<void> {
     const ov = await ensureOverlay();
     if (disposed) return;
+    clearTimeout(returnTimer);
     if (!ov.visible()) send({ type: "stage.opened" });
     ov.show();
     stage?.destroy();
@@ -382,23 +400,25 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "battle.state": {
         const fresh = !current || current.id !== msg.state.id;
+        // A different fight can't be the answer to this one's action.
+        if (fresh) failAction("A new fight began.");
         current = msg.state;
         panel.setResumable(msg.state.outcome === "ongoing");
         panel.setStatus(msg.state.outcome === "ongoing" ? "" : `Last fight: ${msg.state.outcome}.`);
         if (pending) {
-          const resolve = pending;
+          const p = pending;
           pending = null;
-          resolve({ state: msg.state, events: msg.events });
+          clearTimeout(p.timer);
+          p.resolve({ state: msg.state, events: msg.events });
           // The player's last blow ended a card battle: back to its scene once the stage has played it out.
           if (msg.state.meta?.chatId && msg.state.outcome !== "ongoing") backToScene(4500);
         } else if (fresh) {
+          clearTimeout(returnTimer);
           stage?.destroy();
           stage = null;
-          if (msg.state.meta?.chatId && scene && msg.state.outcome === "ongoing") wantStage = true;
-          if (wantStage) {
-            wantStage = false;
-            void showStage(msg.state, msg.events);
-          }
+          const asked = want === "stage";
+          if (asked) want = null;
+          if (asked || (msg.state.meta?.chatId && scene && msg.state.outcome === "ongoing")) void showStage(msg.state, msg.events);
         } else if (stage) {
           void stage.update(msg.state, msg.events).then(() => {
             if (msg.state.meta?.chatId && msg.state.outcome !== "ongoing") backToScene();
@@ -418,8 +438,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         panel.setStatus("");
         if (scene && scene.chatId === msg.view.chatId) {
           scene.setView(msg.view);
-        } else if (wantScene) {
-          wantScene = false;
+        } else if (want === "scene") {
+          want = null;
           void showScene(msg.view);
         }
         break;
@@ -464,8 +484,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         panel.setParley(msg.state.end ? null : msg.scenario.name, msg.view, msg.journal.length);
         panel.setStatus("");
         if (parley && parley.parleyId === msg.state.id) parley.setState(msg.state, msg.journal, msg.view);
-        else if (wantParley && !msg.resumed) {
-          wantParley = false;
+        else if (want === "parley" && !msg.resumed) {
+          want = null;
           void showParley(msg.state, msg.scenario, msg.journal);
         }
         break;
@@ -496,7 +516,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         parley?.setNarrator(msg.mode);
         break;
       case "parley.error":
-        wantParley = false;
+        if (want === "parley") want = null;
         chips.clear();
         if (parley) parley.error(msg.error);
         else panel.setStatus(msg.error);
@@ -516,9 +536,14 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         panel.setModels(msg.state);
         break;
       case "battle.error":
+        if (want === "stage") want = null;
+        failAction(msg.error);
         panel.setStatus(msg.error);
         break;
       case "notice":
+        // A refusal or a failure ends whatever the click was waiting for; information doesn't.
+        if (msg.level !== "info") want = null;
+        if (msg.level === "error") failAction(msg.text);
         panel.setStatus(msg.text);
         break;
     }
@@ -530,6 +555,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
 
   return () => {
     disposed = true;
+    clearTimeout(returnTimer);
+    failAction("Gambit closed.");
     unsub();
     offChat();
     chips.destroy();

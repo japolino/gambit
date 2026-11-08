@@ -22,7 +22,7 @@ import type { StageDecor } from "../types.js";
 import { STATUS_STYLE } from "../../theme.js";
 import { drawStatusGlyph } from "../../ui.js";
 import { board, type EnemyMark } from "../../../scene/themes/diorama/bridge.js";
-import { P, CINZEL, fit, txt } from "./paper.js";
+import { P, CINZEL, FELL, fit, txt } from "./paper.js";
 import type { TagMenu } from "./tags.js";
 import type { Bunting } from "./bunting.js";
 
@@ -149,7 +149,9 @@ class Base extends Container {
     this.body.addChild(this.g);
     const g = this.g;
     g.clear();
-    const name = txt(u.name.toUpperCase(), { fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(13 * ui), fill: 0x2a1404, letterSpacing: 1.2 * ui });
+    // On a phone a long name in spaced capitals would shrink below reading size: ink it in the narrower hand instead.
+    const phone = innerWidth <= 760 || innerHeight <= 480;
+    const name = phone ? txt(u.name, { fontFamily: FELL, fontSize: 14, fill: 0x2a1404 }) : txt(u.name.toUpperCase(), { fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(13 * ui), fill: 0x2a1404, letterSpacing: 1.2 * ui });
     const W = Math.round(Math.max(170 * ui, Math.min(250 * ui, Math.max(figW * 0.95, name.width + 54 * ui))));
     const rx = W / 2;
     const ry = Math.round(W * 0.11);
@@ -216,14 +218,14 @@ class Base extends Container {
     g.roundRect(px, py, pw, ph, 3 * ui).fill({ color: P.brass }).stroke({ width: 1, color: P.brassDark });
     g.rect(px + 2, py + 2, pw - 4, ph * 0.35).fill({ color: P.brassHi, alpha: 0.35 });
     for (const sx of [px + 6 * ui, px + pw - 6 * ui]) g.circle(sx, py + ph / 2, 2 * ui).fill({ color: P.brassDark });
-    fit(name, pw - 24 * ui);
+    fit(name, pw - (phone ? 14 : 24 * ui));
     name.anchor.set(0.5, 0);
-    name.position.set(0, py + 3 * ui);
+    name.position.set(0, py + (phone ? 1 : 3 * ui));
     this.body.addChild(name);
     const bx = px + 14 * ui;
     const bw = pw - 28 * ui;
     const bh = Math.max(5, Math.round(7 * ui));
-    const by = py + ph - bh - 5 * ui;
+    const by = py + ph - bh - (phone ? 2 : 5 * ui);
     g.rect(bx, by, bw, bh).fill({ color: 0x2a0a06 });
     if (this.ghost > this.hp) g.rect(bx, by, bw * this.ghost, bh).fill({ color: 0xe8a090 });
     g.rect(bx, by, bw * Math.max(0, this.hp), bh).fill({ color: 0xb3261e });

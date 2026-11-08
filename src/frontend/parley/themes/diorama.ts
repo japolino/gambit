@@ -5,6 +5,7 @@
 import type { ParleyTheme } from "./types.js";
 import { FELL, GARA } from "../style.js";
 import { ROOM_CSS, decorateRoom } from "./diorama/room.js";
+import { PHONE_CSS, decoratePhone } from "./diorama/phone.js";
 
 /* ------------------------------------------------------------------ */
 /* Diorama: paper on an oak counter under a hanging lamp; the          */
@@ -119,10 +120,21 @@ const DIORAMA = `
 `;
 
 export const theme: ParleyTheme = {
-  // The flat lamplit counter above is the talk without the room (no WebGL); ROOM_CSS dresses it as paperwork over the shop's 3D room.
-  css: DIORAMA + ROOM_CSS,
+  // The flat lamplit counter above is the talk without the room (no WebGL); ROOM_CSS dresses it as paperwork over the shop's 3D room; PHONE_CSS is either one on a phone.
+  css: DIORAMA + ROOM_CSS + PHONE_CSS,
   inRoom: true,
   decorate(ctx) {
-    return ctx.root.classList.contains("in-room") ? decorateRoom(ctx) : {};
+    const room = ctx.root.classList.contains("in-room") ? decorateRoom(ctx) : {};
+    const phone = decoratePhone(ctx);
+    return {
+      update(state, journal) {
+        room.update?.(state, journal);
+        phone.update();
+      },
+      destroy() {
+        phone.destroy();
+        room.destroy?.();
+      },
+    };
   },
 };

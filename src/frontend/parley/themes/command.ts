@@ -13,6 +13,10 @@
  *
  * Structure and art are built in `decorate`; the stylesheet only places and inverts. This file is the theme's
  * own; see ./types.ts for what a Parley theme may provide.
+ *
+ * On a phone (.pl-phone) there is no monitor and no character-grid layout: it is a DOS screen in one column, a thin
+ * strip of the view, a blue status band, the terminal (nearly all of the screen), then the deal commands and the
+ * prompt at the thumb. What you know, the moments and the mode switch sit behind the status band's Know key.
  */
 import type { ParleyTheme, ParleyThemeCtx, ParleyDecor } from "./types.js";
 import { BIT } from "../style.js";
@@ -27,7 +31,7 @@ const GREY = "#AAAAAA";
 const DARK = "#555555";
 const RED = "#FF5555";
 const GREEN = "#55FF55";
-const F = `var(--c) / var(--c) ${BIT}`;
+const F = `var(--c) / var(--lh, var(--c)) ${BIT}`;
 
 const COMMAND = `
 .pl.th-command { display: block; padding: 0; background: #050508; color: #fff; font: ${F};
@@ -183,7 +187,121 @@ const COMMAND = `
 .th-command .end-sub, .th-command .reveals { font: ${F}; color: ${CYAN}; }
 .th-command :focus-visible { outline: var(--v) dashed ${YEL}; outline-offset: 0; }
 @media (max-width: 760px) { .th-command .composer textarea { font-size: max(16px, var(--c)); } }
-@media (prefers-reduced-motion: reduce) { .th-command *, .th-command *::before, .th-command *::after { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .th-command *, .th-command *::before, .th-command *::after { animation: none !important; transition: none !important; } .th-command .moment.show::after { display: none; } }
+`;
+
+/** Phones: readable and tappable first. One column of DOS bands, no monitor, frames, CRT layers or glow. */
+const PL = ".pl.th-command.pl-phone";
+const PHONE = `
+${PL} { --lh: calc(var(--c) + 4px); background: #000; }
+${PL} .cmdx-back, ${PL} .cmdx-front, ${PL} .cmdp-w, ${PL} .cmdp-crt, ${PL} .tell, ${PL} .kind { display: none; }
+${PL} .cmdp-screen { background: #000; }
+${PL} .cmdp-grid { display: flex; flex-direction: column; text-shadow: none; }
+
+/* The view: a strip across the top, the person's head in the place. */
+${PL} .scene { position: relative; flex: 0 0 var(--strip, 0px); min-height: 0; }
+${PL} .cmdp-figwrap { animation: none; }
+${PL} .cmdp-win { display: none; }
+${PL} .cmdp-plate { left: 0; bottom: 0; background: #000; color: ${YEL}; padding: 0 8px; white-space: nowrap; max-width: 100%; overflow: hidden; }
+
+/* Fare, patience and the Know key: one blue band. */
+${PL} .head { position: relative; flex: none; background: ${BLUE}; padding: 4px 8px 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: var(--lh) var(--lh) 8px; column-gap: var(--c); align-items: center; }
+${PL} .meter-label { grid-row: 1; grid-column: 1; color: ${CYAN}; }
+${PL} .meter-value { grid-row: 1; grid-column: 2; justify-self: start; color: #fff; white-space: nowrap; }
+${PL} .patience { grid-row: 2; grid-column: 1 / 3; align-items: center; }
+${PL} .pl-label { color: ${CYAN}; }
+${PL} .pip { background-color: #000; }
+${PL} .bar { grid-row: 3; grid-column: 1 / -1; align-self: end; height: 4px; margin: 0 -8px; background: #000; }
+${PL} .bar .fill { background: ${YEL}; }
+${PL} .journal-btn { grid-row: 1 / span 2; grid-column: 3; align-self: center; height: 36px; min-width: 44px; padding: 0 6px; font-size: 0; background: ${CYAN}; color: #000; text-align: center; touch-action: manipulation; }
+${PL} .journal-btn::before { display: none; }
+${PL} .journal-btn::after { content: "Know " attr(data-n); font: ${F}; line-height: 36px; }
+
+/* The terminal: nearly all of the screen. */
+${PL} .log { position: relative; flex: 1 1 0; min-height: 0; background: #000; padding: 8px 10px 14px; }
+${PL} .log > * { margin: 0 0 calc(var(--lh) * .75); }
+${PL} .npc .speaker { float: none; margin: 0; }
+${PL} .npc .speaker::after { content: none; }
+${PL} .prose p + p { margin-top: calc(var(--lh) * .5); }
+${PL} .imm { padding-left: 0; }
+${PL} .tray { flex-wrap: wrap; min-height: var(--lh); height: auto; }
+${PL} .die { height: var(--lh); }
+${PL} .result { white-space: normal; }
+${PL} .cmdp-more { position: absolute; z-index: 5; right: 4px; height: var(--lh); padding: 0 4px; color: #000; background: ${YEL}; pointer-events: none; display: none; }
+${PL} .cmdp-more.show { display: block; }
+
+/* The commands and the prompt, at the thumb. They sit above the input so the input never moves under a finger. */
+${PL} .foot { position: relative; flex: none; display: flex; flex-direction: column; gap: 8px; background: ${BLUE}; padding: 8px; max-height: 70%; overflow-y: auto; }
+${PL} .status { height: auto; white-space: normal; color: ${YEL}; }
+${PL} .status:empty { display: none; }
+${PL} .hand { display: none; }
+${PL} .actions { order: -1; display: flex; gap: 8px; align-items: stretch; }
+${PL} .actions button, ${PL} .leave { min-height: 44px; flex: 2 1 0; min-width: 0; padding: 2px 6px; text-align: center; white-space: normal; background: #000; color: ${RED}; touch-action: manipulation; }
+${PL} .actions .deal { flex: 3 1 0; background: ${YEL}; color: #000; }
+${PL} .actions button::before { content: none; }
+${PL} .actions button:disabled { background: #000; color: ${GREY}; }
+${PL} .composer { order: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
+${PL} .composer::before { content: none; }
+${PL} .composer textarea { grid-column: 1; height: 44px; line-height: 18px; padding: 4px 6px; box-sizing: border-box; overflow-y: auto; background: #000; }
+${PL} .composer textarea::placeholder { color: ${GREY}; }
+${PL} .composer textarea:placeholder-shown:not(:focus) { background: #000; animation: none; }
+${PL} .say { grid-column: 2; height: 44px; min-width: 64px; padding: 0 8px; text-align: center; background: ${CYAN}; color: #000; touch-action: manipulation; }
+${PL} .say::after { content: "Say"; line-height: 44px; }
+${PL} .say:disabled { background: #000; color: ${GREY}; }
+
+/* The end card. */
+${PL} .end { padding: 0; }
+${PL} .end.show { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+${PL} .end-title { padding: 4px 8px; text-transform: none; }
+${PL} .end-sub, ${PL} .reveals { color: #fff; }
+${PL} .reveals { margin: 0; padding-left: var(--c); }
+${PL} .leave { flex: none; background: ${CYAN}; color: #000; }
+
+/* What you know, the moments and the mode switch: a sheet over the whole screen. */
+${PL} .cmdp-sheet { position: absolute; inset: 0; z-index: 30; display: none; flex-direction: column; background: #000; color: #fff; }
+${PL} .cmdp-sheet.open { display: flex; }
+${PL} .sh-top { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--c); background: ${BLUE}; padding: 0 0 0 8px; color: ${YEL}; }
+${PL} .sh-x { height: 44px; padding: 0 12px; border: 0; font: ${F}; background: ${CYAN}; color: #000; touch-action: manipulation; }
+${PL} .sh-who { flex: none; padding: 8px 10px 0; color: ${GREY}; }
+${PL} .sh-who b { display: block; font-weight: normal; color: ${YEL}; }
+${PL} .journal { position: static; display: block; flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 12px 10px; background: none; }
+${PL} .journal::before, ${PL} .journal::after { content: none; }
+${PL} .journal li { margin: 0 0 12px; padding-left: calc(var(--c) * 1.5); }
+${PL} .journal li::before { width: var(--c); height: var(--c); top: 2px; }
+${PL} .journal li.used { color: ${GREY}; }
+${PL} .journal li.empty { padding-left: 0; }
+${PL} .moments { position: static; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; background: ${BLUE}; }
+${PL} .moments:empty { display: none; }
+${PL} .moments::before { content: "Moments"; color: ${CYAN}; margin-right: 4px; }
+${PL} .moments button { width: 56px; height: 44px; background: ${CYAN}; color: #000; touch-action: manipulation; }
+${PL} .moments button::before { content: counter(mom); }
+${PL} .mode { flex: none; display: flex; gap: 8px; padding: 8px; background: ${BLUE}; }
+${PL} .mode button { flex: 1 1 0; width: auto; height: 44px; font: ${F}; color: #fff; background: #000; touch-action: manipulation; overflow: hidden; }
+${PL} .mode button::after { content: none; }
+${PL} .mode button.on { background: ${CYAN}; color: #000; box-shadow: none; }
+
+/* A moment plays over the whole screen (moved out of the strip in decorate). */
+${PL} .moment .cap { left: 8px; right: 8px; bottom: 8px; padding: 8px; outline: none; }
+
+/* The keyboard is open or the screen is short: one thin line for the stakes, the talk, the prompt. */
+${PL}.pl-short .scene, ${PL}.pl-short .meter-label, ${PL}.pl-short .pl-label { display: none; }
+${PL}.pl-short .head { padding: 0 0 0 8px; grid-template-rows: 32px 3px; }
+${PL}.pl-short .meter-value { grid-row: 1; grid-column: 1; }
+${PL}.pl-short .patience { grid-row: 1; grid-column: 2; }
+${PL}.pl-short .bar { grid-row: 2; height: 3px; margin: 0 0 0 -8px; }
+${PL}.pl-short .journal-btn { grid-row: 1; height: 32px; }
+${PL}.pl-short .journal-btn::after { line-height: 32px; }
+${PL}.pl-short .log { padding: 4px 10px 10px; }
+${PL}.pl-short .foot { padding: 6px 8px; gap: 6px; }
+${PL}.pl-short .foot:has(textarea:focus) .actions { display: none; }
+${PL}.pl-short:not(.cmdp-land) .moment { display: none; }
+/* Landscape: the commands stay on the prompt's row, which has the width for them. */
+${PL}.cmdp-land .foot { flex-direction: row; align-items: stretch; flex-wrap: wrap; }
+${PL}.cmdp-land .status { flex: 1 0 100%; }
+${PL}.cmdp-land .composer { order: 0; flex: 1 1 36%; min-width: 200px; }
+${PL}.cmdp-land .actions { order: 1; flex: 1 1 50%; }
+${PL}.cmdp-land .foot:has(textarea:focus) .actions { display: flex; }
+${PL}.cmdp-land .end { flex: 1 0 100%; }
 `;
 
 /* -------------------------------- Layout -------------------------------- */
@@ -322,6 +440,13 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   const hint = root.querySelector<HTMLElement>(".hint");
   const plateImg = scene.querySelector<HTMLImageElement>(".plate-img")!;
   const plateCanvas = scene.querySelector<HTMLCanvasElement>(".plate-canvas");
+  const moment = scene.querySelector<HTMLElement>(".moment")!;
+  const momentTabs = scene.querySelector<HTMLElement>(".moments")!;
+  const modeSwitch = head.querySelector<HTMLElement>(".mode")!;
+  const titleRow = head.querySelector<HTMLElement>(".title-row")!;
+  const journalBtn = head.querySelector<HTMLElement>(".journal-btn")!;
+  const input = foot.querySelector<HTMLTextAreaElement>("textarea")!;
+  const placeholder = input.placeholder;
   const fig = scene.querySelector<HTMLElement>(".fig")!;
   const faces = [...fig.querySelectorAll<HTMLImageElement>("img.face")];
 
@@ -368,6 +493,19 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   plate.className = "cmdp-plate";
   scene.prepend(place, figWrap);
   scene.append(plate, journal);
+  // Phones: the sheet behind the Know key, and a mark that says the talk goes on below the fold.
+  const sheet = document.createElement("div");
+  sheet.className = "cmdp-sheet";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-label", "What you know");
+  sheet.innerHTML = `<div class="sh-top"><span>What you know</span><button type="button" class="sh-x">Close</button></div>
+    <div class="sh-who"><b>${esc(npc.name)}</b>${esc(npc.role)}</div>`;
+  sheet.querySelector(".sh-x")!.addEventListener("click", () => journal.classList.remove("open"));
+  const more = document.createElement("div");
+  more.className = "cmdp-more";
+  more.setAttribute("aria-hidden", "true");
+  more.textContent = "v";
+  grid.append(sheet, more);
   // The deal and walk-away commands read as numbered commands.
   root.querySelectorAll<HTMLElement>(".actions button").forEach((b, i) => (b.dataset.k = `F${i + 2}`));
 
@@ -379,6 +517,10 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   let exchanges = ctx.state.exchanges.length;
   const reduced = ctx.reducedMotion;
   const T = () => tg.t;
+  const isPhone = () => root.classList.contains("pl-phone");
+  /** On a phone, the strip's size in CSS pixels (0 when there is no strip); the art is two CSS pixels to its pixel. */
+  let strip = { w: 0, h: 0 };
+  const PHONE_V = 2;
 
   /** A window frame with labels in its rules. */
   function frame(el: HTMLElement, r: Rect, top: string, bottom = "", topColor = "#fff"): void {
@@ -406,10 +548,11 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   const plateRows = () => roleLines.length + 2;
   function drawPlace(): void {
     const r = w.view;
-    const c = T();
-    const v = c / 8;
-    const W = (r.w - 2) * 8 + ARTM * 2;
-    const H = (r.h - 2) * 8 + ARTM * 2;
+    const phone = isPhone();
+    if (phone && !strip.h) return;
+    const v = phone ? PHONE_V : T() / 8;
+    const W = (phone ? Math.ceil(strip.w / PHONE_V) : (r.w - 2) * 8) + ARTM * 2;
+    const H = (phone ? Math.ceil(strip.h / PHONE_V) : (r.h - 2) * 8) + ARTM * 2;
     const src = plateSource();
     Object.assign(place.style, { left: `${-ARTM * v}px`, top: `${-ARTM * v}px`, width: `${W * v}px`, height: `${H * v}px` });
     if (place.width !== W || place.height !== H) {
@@ -450,16 +593,50 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     const framed = fig.classList.contains("framed");
     const r = w.view;
     const c = T();
-    const v = c / 8;
+    const phone = isPhone();
+    if (phone && !strip.h) return;
+    const v = phone ? PHONE_V : c / 8;
     const cw = r.w - 2;
     const ch = r.h - 2;
     const free = ch - plateRows();
-    const key = `${im.src}|${framed}|${cw}x${ch}|${c}|${pal}|${regKey}|${free}`;
+    const key = `${im.src}|${framed}|${cw}x${ch}|${c}|${pal}|${regKey}|${free}|${phone ? `${strip.w}x${strip.h}` : ""}`;
     if (!force && key === figKey) return;
     figKey = key;
     let W: number, H: number, ox: number, oy: number;
     const g0 = (cv: HTMLCanvasElement) => cv.getContext("2d", { willReadFrequently: true })!;
-    if (framed) {
+    if (phone) {
+      // The strip has room for a head: head and shoulders, the whole height of the strip, in the middle.
+      figWin.style.display = "none";
+      const sw8 = Math.ceil(strip.w / v);
+      H = Math.ceil(strip.h / v);
+      const iw = im.naturalWidth;
+      const ih = im.naturalHeight;
+      if (framed) {
+        W = Math.min(sw8, Math.round(H * 1.1));
+        figCv.width = W;
+        figCv.height = H;
+        const fg = g0(figCv);
+        fg.fillStyle = "#000";
+        fg.fillRect(0, 0, W, H);
+        fg.imageSmoothingQuality = "high";
+        coverDraw(fg, im, iw, ih, W, H, 0.5, 0.15);
+      } else {
+        const b = figureBox(im);
+        const bw = (b.x1 - b.x0) * iw;
+        const bh = (b.y1 - b.y0) * ih;
+        const tallness = bh / Math.max(1, bw);
+        const k = H / (bh * (tallness > 2 ? 0.4 : tallness > 1.4 ? 0.55 : 0.8));
+        W = Math.min(sw8, Math.round(bw * k) + 4);
+        figCv.width = W;
+        figCv.height = H;
+        const fg = g0(figCv);
+        fg.clearRect(0, 0, W, H);
+        fg.imageSmoothingQuality = "high";
+        fg.drawImage(im, b.head * iw - W / 2 / k, b.y0 * ih, W / k, H / k, 0, 0, W, H);
+      }
+      ox = Math.round((sw8 - W) / 2) * v;
+      oy = 0;
+    } else if (framed) {
       // An opaque picture: its own window, with the place showing round it.
       const fw = Math.min(cw - 4, Math.round(free * 0.8));
       const fh = Math.min(free - 2, fw + 2);
@@ -523,6 +700,12 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
 
   /** The nameplate docked at the view's foot: the name set into its rule, the role under it. */
   function buildPlate(): void {
+    if (isPhone()) {
+      roleLines = [];
+      Object.assign(plate.style, { left: "", top: "", width: "", height: "" });
+      plate.textContent = npc.name;
+      return;
+    }
     const r = w.view;
     const c = T();
     const cw = r.w - 2;
@@ -537,6 +720,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   }
 
   function titles(): void {
+    if (isPhone()) return;
     frame(wins.view, w.view, ctx.scenario.name, "", CYAN);
     frame(wins.stat, w.stat, `${contest.kind.charAt(0).toUpperCase()}${contest.kind.slice(1)} - Exchange ${exchanges + 1}`);
     frame(wins.term, w.term, "Parley");
@@ -554,7 +738,69 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     wins.term.insertAdjacentHTML("beforeend", rule + `<div class="notch" style="left:${tx * c}px;top:${row * c}px;width:${label.length * c}px;color:${YEL}">${label}</div>`);
   }
 
+  /** Where the view's parts live: in the view on a wide screen, in the sheet (or over everything) on a phone. */
+  function placeParts(phone: boolean): void {
+    if (phone) {
+      sheet.append(journal, momentTabs, modeSwitch);
+      grid.append(moment, sheet, more);
+    } else {
+      titleRow.append(modeSwitch);
+      scene.insertBefore(momentTabs, plate);
+      scene.insertBefore(moment, plate);
+      scene.append(journal);
+      for (const el of [sheet, more]) el.classList.remove("open", "show");
+    }
+  }
+
+  function syncKnow(): void {
+    journalBtn.dataset.n = /\((\d+)\)/.exec(journalBtn.textContent ?? "")?.[1] ?? "";
+  }
+
+  /** Is there more of the talk below the fold? (Phones: the log has no visible scrollbar until it moves.) */
+  function syncMore(): void {
+    if (!isPhone()) return;
+    const below = log.scrollHeight - log.clientHeight - log.scrollTop > 8;
+    more.classList.toggle("show", below);
+    if (below) more.style.top = `${log.offsetTop + log.clientHeight - more.offsetHeight - 4}px`;
+  }
+
+  function layoutPhone(): void {
+    const W = root.clientWidth;
+    const H = root.clientHeight;
+    geo = shell.layout(W, H);
+    const c = W >= 420 ? 16 : 14;
+    tg = { t: c, cols: Math.floor(W / c), rows: Math.floor(H / c) };
+    w = windowsFor(tg, true);
+    root.style.setProperty("--c", `${c}px`);
+    root.style.setProperty("--v", `${c / 8}px`);
+    root.classList.toggle("cmdp-land", root.classList.contains("pl-short") && W > H * 1.4 && H >= 280);
+    scr.style.filter = "";
+    put(screen, { x: 0, y: 0, w: W, h: H });
+    put(grid, { x: 0, y: 0, w: W, h: H });
+    for (const el of [scene, head, log, foot, journal]) Object.assign(el.style, { left: "", top: "", width: "", height: "" });
+    placeParts(true);
+    // The picture gets a strip while there are lines to spare; the talk keeps the rest.
+    const stripH = root.classList.contains("pl-short") || H < 520 ? 0 : H < 620 ? 72 : Math.round(Math.min(120, H * 0.15));
+    strip = { w: W, h: stripH };
+    root.style.setProperty("--strip", `${stripH}px`);
+    place.style.transform = "";
+    input.placeholder = "Say something...";
+    syncKnow();
+    buildPlate();
+    drawPlace();
+    drawFigure(true);
+    syncMore();
+  }
+
   function layout(): void {
+    if (isPhone()) {
+      layoutPhone();
+      return;
+    }
+    root.classList.remove("cmdp-land");
+    input.placeholder = placeholder;
+    root.style.removeProperty("--strip");
+    placeParts(false);
     geo = shell.layout(root.clientWidth, root.clientHeight);
     tg = textGrid(geo);
     w = windowsFor(tg, geo.tall);
@@ -624,8 +870,8 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     const run = () => {
       if (!img.naturalWidth || img.getAttribute("src") !== url) return;
       const r = w.view;
-      const W = (r.w - 2) * 8;
-      const H = (r.h - 2) * 8;
+      const W = isPhone() ? Math.ceil(root.clientWidth / PHONE_V) : (r.w - 2) * 8;
+      const H = isPhone() ? Math.ceil(root.clientHeight / PHONE_V) : (r.h - 2) * 8;
       const c = canvas(W, H);
       const g = c.getContext("2d", { willReadFrequently: true })!;
       coverDraw(g, img, img.naturalWidth, img.naturalHeight, W, H);
@@ -645,11 +891,11 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     if (img.complete) run();
     else img.addEventListener("load", run, { once: true });
   };
-  const mm = new MutationObserver(() => scene.querySelectorAll<HTMLImageElement>(".moment img, .moments img").forEach(ditherImg));
-  mm.observe(scene, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
+  const mm = new MutationObserver(() => [moment, momentTabs].forEach((el) => el.querySelectorAll<HTMLImageElement>("img").forEach(ditherImg)));
+  for (const el of [moment, momentTabs]) mm.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
 
   const onMove = (e: PointerEvent) => {
-    if (reduced) return;
+    if (reduced || isPhone()) return;
     const r = root.getBoundingClientRect();
     const x = ((e.clientX - r.left) / Math.max(1, r.width) - 0.5) * 2;
     const y = ((e.clientY - r.top) / Math.max(1, r.height) - 0.5) * 2;
@@ -686,6 +932,25 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     if (root.clientWidth !== geo.W || root.clientHeight !== geo.H) layout();
   });
   ro.observe(root);
+  // view.ts says when this is a phone layout, and may say it after this first layout, or with the size unchanged.
+  let phoneKey = "";
+  const phoneNow = () => `${root.classList.contains("pl-phone")}|${root.classList.contains("pl-short")}`;
+  const cls = new MutationObserver(() => {
+    const k = phoneNow();
+    if (k !== phoneKey) {
+      phoneKey = k;
+      layout();
+    }
+  });
+  cls.observe(root, { attributes: true, attributeFilter: ["class"] });
+  const jo = new MutationObserver(() => sheet.classList.toggle("open", journal.classList.contains("open")));
+  jo.observe(journal, { attributes: true, attributeFilter: ["class"] });
+  log.addEventListener("scroll", syncMore, { passive: true });
+  const lo = new MutationObserver(syncMore);
+  lo.observe(log, { subtree: true, childList: true, characterData: true });
+  const lr = new ResizeObserver(syncMore);
+  lr.observe(log);
+  phoneKey = phoneNow();
   layout();
   // A face can land before its load listener sees it (cached, or set while the figure is hidden): look again until it shows.
   const poll = window.setInterval(() => {
@@ -699,6 +964,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   return {
     update(state) {
       const n = state.exchanges.length;
+      syncKnow();
       shell.busy(!!root.querySelector(".status")?.textContent);
       if (n !== exchanges) {
         exchanges = n;
@@ -717,6 +983,11 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       mo.disconnect();
       mm.disconnect();
       ro.disconnect();
+      cls.disconnect();
+      jo.disconnect();
+      lo.disconnect();
+      lr.disconnect();
+      log.removeEventListener("scroll", syncMore);
       plateImg.removeEventListener("load", redraw);
       for (const f of faces) f.removeEventListener("load", onFace);
       root.removeEventListener("pointermove", onMove);
@@ -727,4 +998,4 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   };
 }
 
-export const theme: ParleyTheme = { css: COMMAND, decorate };
+export const theme: ParleyTheme = { css: COMMAND + PHONE, decorate };

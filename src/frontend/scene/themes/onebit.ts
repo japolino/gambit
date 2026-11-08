@@ -15,6 +15,10 @@
  * PC function-key strip for the journal, classes and theme. Invisible buttons sit over everything drawn as a
  * control, so mouse, touch, keyboard and screen readers all work; hover and
  * focus are drawn into the frame buffer as inverse video.
+ *
+ * A phone keeps the type at one fixed unit (about 2 CSS px, the face at 16px) whatever the screen's height: the
+ * windows stack in a page that scrolls, the picture shrinks to what the words leave, every control is 44 CSS px
+ * tall, and a corner button and a thumb at the screen's edge say there's more below.
  */
 import { BOARD_SKINS } from "../board-skins.js";
 import { esc, type MenuItem, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
@@ -34,6 +38,10 @@ const CSS = `
 .ob { position: absolute; inset: 0; background: ${CSS_INK}; overflow: hidden; }
 .ob-scroll { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .ob-scroll::-webkit-scrollbar { display: none; }
+.ob-cue { position: absolute; right: 0; bottom: 0; width: 44px; height: 44px; margin: 0; padding: 0; border: 2px solid ${CSS_INK}; background: ${CSS_PAPER}; cursor: pointer; z-index: 3; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.ob-cue::after { content: ""; position: absolute; left: 11px; top: 14px; width: 18px; height: 12px; background: ${CSS_INK}; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.ob-cue[hidden], .ob-thumb[hidden] { display: none; }
+.ob-thumb { position: absolute; right: 0; width: 4px; background: ${CSS_PAPER}; outline: 1px solid ${CSS_INK}; pointer-events: none; z-index: 3; }
 .ob-stage { position: relative; }
 .ob-cv { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 .ob-hits { position: absolute; inset: 0; }
@@ -86,6 +94,14 @@ const CSS = `
 .gs.onebit .mw-dots i.on { background: ${CSS_PAPER}; }
 .gs.onebit .mw-hint { font: var(--ob-f)/1 "Gambit 8bit", monospace; opacity: 1; letter-spacing: 0; }
 @keyframes obBlink { 50% { visibility: hidden; } }
+/* A phone's class panel: every control a thumb's height (the same test as isPhone). */
+@media (max-width: 760px), (max-height: 480px) {
+  .gs.onebit > .fg button { min-height: 44px; }
+  .gs.onebit > .fg .cls { grid-template-columns: calc(var(--ob-u) * 20) minmax(0, 1fr) auto; overflow-wrap: anywhere; }
+  .gs.onebit > .fg header .x { min-width: 44px; min-height: 44px; }
+  .gs.onebit > .fg details summary { padding: 9px 0; }
+  .gs.onebit > .fg .body { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+}
 @media (prefers-reduced-motion: reduce) { .gs.onebit .mw.waiting .mw-title, .gs.onebit > .fg .busyline { animation: none; } }
 `;
 
@@ -132,6 +148,30 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   root.innerHTML = `<style>${CSS}</style><div class="ob"><div class="ob-scroll"><div class="ob-stage"><canvas class="ob-cv" aria-hidden="true"></canvas><div class="ob-hits"></div></div></div><div class="ob-world"></div><svg class="ob-hexsrc" aria-hidden="true"></svg><div class="ob-sr" role="region" aria-label="Scene"></div></div>`;
   const ob = root.querySelector(".ob") as HTMLDivElement;
   const scroller = root.querySelector(".ob-scroll") as HTMLDivElement;
+  // A phone's page is taller than the screen, and its scrollbar is hidden: say so, and offer a thumb's way down.
+  const cue = document.createElement("button");
+  cue.type = "button";
+  cue.className = "ob-cue";
+  cue.hidden = true;
+  cue.setAttribute("aria-label", "Scroll down for more");
+  const thumb = document.createElement("div");
+  thumb.className = "ob-thumb";
+  thumb.hidden = true;
+  root.querySelector(".ob")!.append(cue, thumb);
+  cue.addEventListener("click", () => scroller.scrollBy({ top: Math.round(scroller.clientHeight * 0.7), behavior: ctx.reducedMotion ? "auto" : "smooth" }));
+  const paintCue = () => {
+    const sh = scroller.scrollHeight, ch = scroller.clientHeight, top = scroller.scrollTop;
+    // A window over the page has its own controls in that corner, and the page stays put under it.
+    const covered = ctx.journal.open || ctx.classes.open;
+    scroller.style.overflowY = isPhone() && ctx.journal.open ? "hidden" : "";
+    const over = isPhone() && !covered && sh > ch + 2;
+    thumb.hidden = !over;
+    cue.hidden = !over || top + ch >= sh - 4;
+    if (!over) return;
+    thumb.style.height = `${Math.max(24, Math.round((ch * ch) / sh))}px`;
+    thumb.style.top = `${Math.round(((ch - Math.max(24, (ch * ch) / sh)) * top) / Math.max(1, sh - ch))}px`;
+  };
+  scroller.addEventListener("scroll", paintCue, { passive: true });
   const stage = root.querySelector(".ob-stage") as HTMLDivElement;
   const cv = root.querySelector(".ob-cv") as HTMLCanvasElement;
   const hitLayer = root.querySelector(".ob-hits") as HTMLDivElement;
@@ -224,11 +264,15 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   }
 
   /* --------------------------------- Sizing --------------------------------- */
+  /** As Parley's .pl-phone: a phone's type stays at one size, however little screen is left. */
+  function isPhone(): boolean {
+    return root.clientWidth <= 760 || root.clientHeight <= 480;
+  }
   function measure(): { W: number; rows: number; s: number; u: number } {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const wd = Math.max(200, root.clientWidth * dpr);
     const hd = Math.max(200, root.clientHeight * dpr);
-    const sc = Math.max(2, Math.min(Math.floor(hd / 290), Math.floor(wd / 190)));
+    const sc = isPhone() ? Math.max(2, Math.round(2 * dpr)) : Math.max(2, Math.min(Math.floor(hd / 290), Math.floor(wd / 190)));
     return { W: Math.floor(wd / sc), rows: Math.floor(hd / sc), s: sc, u: sc / dpr };
   }
 
@@ -240,7 +284,9 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const W = m0.W;
     let H = m0.rows;
     const aux: "map" | "hex" | null = v.delve ? "map" : v.hex ? "hex" : null;
-    const mode: Layout["mode"] = W < 330 ? "tall" : W / H >= 2.15 ? "wide" : "std";
+    // A phone on its side is as short as a keyboard's leftovers: the page scrolls, as upright, in two columns.
+    const land = isPhone() && W >= 330 && H < 240;
+    const mode: Layout["mode"] = W < 330 || land ? "tall" : W / H >= 2.15 ? "wide" : "std";
     const statH = statusHeight(v);
     const none = { x: -999, y: -999, w: 0, h: 0 };
     if (mode === "wide") {
@@ -302,30 +348,46 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         classes: { x: m + Math.round(lw * 0.38), y: m, w: W - 2 * m - Math.round(lw * 0.38), h: ch },
       };
     }
-    // Tall (a phone): one column; the frame grows and the page scrolls.
-    const m = 4, g = 5, fw = W - 2 * m;
-    let y = m;
+    // Tall (a phone): the frame grows and the page scrolls. One column; two on its side.
+    const m = 2, g = 3;
+    const lw = land ? Math.round((W - 2 * m - g) * 0.54) : W - 2 * m;
+    const rx = land ? m + lw + g : m;
+    const fw = land ? W - rx - m : lw;
+    let y = m, yL = m;
     const take = (h: number): Rect => {
-      const r = { x: m, y, w: fw, h };
+      const r = { x: rx, y, w: fw, h };
       y += h + g;
       return r;
     };
-    const viewR = take(Math.round(fw * 0.7));
-    const chars = Math.floor((fw - 8) / 8);
+    const takeL = (h: number): Rect => {
+      if (!land) return take(h);
+      const r = { x: m, y: yL, w: lw, h };
+      yL += h + g;
+      return r;
+    };
+    // The picture gets what the words can spare; a delve's corridor is the game, so it stays large.
+    const wantView = Math.round(lw * 0.7);
+    const viewR = takeL(v.delve ? (land ? Math.min(wantView, H - 2 * m) : wantView) : Math.min(wantView, Math.round(screenRows * (land ? 0.55 : 0.3))));
+    const chars = Math.floor((lw - 8) / 8);
     const b = ctx.box(v);
-    const need = Math.min(16, wrap(b.desc, chars).length + 1 + b.log.slice(-4).reduce((n, l) => n + wrap(l, chars - 2).length, 0) + (b.busy ? 1 : 0));
-    const textR = take(17 + Math.max(5, need) * 10 + 2);
+    const need = Math.min(30, wrap(b.desc, chars).length + 1 + b.log.slice(-4).reduce((n, l) => n + wrap(l, chars - 2).length, 0) + (b.busy ? 1 : 0));
+    const textR = takeL(17 + Math.max(4, need) * 10 + 2);
     const items = ctx.menu(v);
-    const cmdH = 17 + 26 + items.reduce((n, it) => n + wrap(it.label, Math.floor((fw - 21) / 8) - 2).length * 9 + 6, 0) + 8;
+    const rm = rowMin();
+    const groups = items.filter((it, i) => i > 0 && items[i - 1]!.group !== it.group).length;
+    const cmdH = 17 + 22 + items.reduce((n, it) => n + Math.max(rm, wrap(it.label, Math.floor((fw - 21) / 8) - 2).length * 9 + 4), 0) + groups * 3 + 6;
     const cmdR = take(cmdH);
     const auxR = aux ? take(aux === "map" ? 120 : 150) : none;
     const statR = take(statH);
-    const keys = { x: m, y, w: fw, h: 11 };
-    y += 11 + m;
-    H = Math.max(H, y);
-    const vis = { x: m, y: m, w: fw, h: Math.min(H, screenRows) - 2 * m };
+    const keys = { x: rx, y, w: fw, h: rm };
+    y += rm + m;
+    H = Math.max(H, y, yL);
+    const vis = { x: m, y: m, w: W - 2 * m, h: Math.min(H, screenRows) - 2 * m };
     return { mode, W, H, keys, view: viewR, text: textR, cmd: cmdR, aux: auxR, stat: statR, journal: vis, classes: vis };
   }
+
+  /** The tallest a control may be short of on a phone: 44 CSS px, in rows. */
+  const rowMin = () => Math.ceil(44 / u);
 
   function statusHeight(v: SceneView): number {
     const st = ctx.status(v);
@@ -599,7 +661,8 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         const sel = p.id === chosen;
         const idx = menu.findIndex((m) => m.key === `talk:${p.id}`);
         const label = `${idx >= 0 && idx < 10 ? `${(idx + 1) % 10} ` : ""}${p.name.toUpperCase()}`;
-        const t = clip(label, Math.max(3, Math.floor((bits.w + 16) / 8)));
+        // A phone's small view draws small people: their names get their share of the width, not the figure's.
+        const t = clip(label, Math.max(3, Math.floor((L!.mode === "tall" ? cr.w / Math.max(1, placed.length) - 8 : bits.w + 16) / 8)));
         const tw = t.length * 8 + 6 + (sel ? 10 : 0);
         const tx = Math.max(cr.x + 2, Math.min(cr.x + cr.w - tw - 2, f.cx - (tw >> 1)));
         fb.fill({ x: tx - 2, y: ty - 2, w: tw + 4, h: 14 }, INK);
@@ -883,7 +946,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
           else fb.box({ x: bx, y: y + 1, w: 6, h: 6 }, c);
         }
       }
-      hits.push({ key: "thread", r: { x: x - 2, y: y - 1, w: w + 4, h: 10 }, label: `Thread ${found} of ${th.total}: ${th.goal}. Open the journal`, title: th.goal, run: () => press("thread", () => !ctx.journal.open && ctx.journal.toggle()) });
+      hits.push({ key: "thread", r: L!.mode === "tall" ? { x: x - 2, y: y - 7, w: w + 4, h: rowMin() } : { x: x - 2, y: y - 1, w: w + 4, h: 10 }, label: `Thread ${found} of ${th.total}: ${th.goal}. Open the journal`, title: th.goal, run: () => press("thread", () => !ctx.journal.open && ctx.journal.toggle()) });
       y += 11;
     }
     if (st.supplies) {
@@ -934,7 +997,9 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     win(r, v.delve ? "Delve" : "Command");
     const cr = inner(r);
     const head = v.delve ? "WHICH WAY?" : "WHAT NOW?";
-    const big = head.length * 16 + 14 <= cr.w ? 2 : 1;
+    const phone = L!.mode === "tall";
+    const big = !phone && head.length * 16 + 14 <= cr.w ? 2 : 1;
+    const minRow = phone ? rowMin() : 0;
     const items = ctx.menu(v);
     if (!cursor || !items.some((m) => m.key === cursor)) cursor = items[0]?.key ?? null;
     const cmdLit = items.some((m) => lit(m.key) || lit(`pad:${m.key}`) || lit(`fig:${m.target ?? ""}`));
@@ -949,7 +1014,8 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     });
     // Groups part by air, not rules; the prompt gets as much headroom as the list leaves.
     let rg = 2;
-    const sum = (gap: number) => rows.reduce((n, row) => n + row.lines.length * 9 + rg + (row.sep ? gap : 0), 0);
+    const rowH = (row: Row) => Math.max(minRow, row.lines.length * 9 + rg);
+    const sum = (gap: number) => rows.reduce((n, row) => n + rowH(row) + (row.sep ? gap : 0), 0);
     const head0 = (pd: number[]) => pd[0]! + 8 * big + pd[1]! + pd[2]!;
     const PADS = [[5, 6, 6], [3, 5, 5], [2, 4, 4], [1, 3, 3]];
     let pads = PADS.find((pd) => sum(1) <= cr.h - head0(pd));
@@ -967,7 +1033,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     if (ctx.reducedMotion || busy || time % 1 < 0.65) fb.fill(cur, PAPER);
     fb.hline(cr.x - 1, top, cr.w + 2, PAPER);
     fb.hline(cr.x - 1, top + 2, cr.w + 2, PAPER, 1);
-    const base = (row: Row) => row.lines.length * 9 + rg + (row.sep ? sepGap : 0);
+    const base = (row: Row) => rowH(row) + (row.sep ? sepGap : 0);
     // Pages, if the list cannot fit (a "MORE" row turns them).
     const pages: Row[][] = [[]];
     let used = 0;
@@ -989,7 +1055,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     let y = y0;
     for (const row of page) {
       if (row.sep && row !== page[0]) y += sepGap;
-      const h = row.lines.length * 9 + rg + extra;
+      const h = rowH(row) + extra;
       const rr = { x: cr.x - 1, y, w: cr.w + 2, h: h - 1 };
       const key = row.it.key;
       const on = lit(key) || lit(`pad:${key}`) || lit(`fig:${row.it.target ?? ""}`) || (!cmdLit && key === cursor);
@@ -997,7 +1063,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       if (on && !fl) fb.fill(rr, PAPER);
       if (fl) fb.box(rr, PAPER);
       const c = on && !fl ? INK : PAPER;
-      const ty = y + 2 + (extra >> 1);
+      const ty = phone ? y + Math.floor((h - 1 - (row.lines.length * 9 - 1)) / 2) : y + 2 + (extra >> 1);
       if (on) fb.text(f, cr.x, ty, "►", c);
       row.lines.forEach((l, j) => fb.text(f, cr.x + 11, ty + j * 9, l, c));
       const hint = HINT[key];
@@ -1006,7 +1072,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         fb.fill({ x: hx - 1, y: ty - 1, w: 10, h: 10 }, c);
         fb.text(f, hx, ty, hint, on && !fl ? PAPER : INK);
       }
-      hits.push({ key, r: rr, label: row.it.label, run: () => press(key, row.it.run) });
+      hits.push({ key, r: phone ? { ...rr, h } : rr, label: row.it.label, run: () => press(key, row.it.run) });
       y += h;
     }
     if (pages.length > 1) {
@@ -1031,22 +1097,25 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       ["F2", "CLASSES", "fkey:classes", ctx.classes.open, () => ctx.classes.toggle()],
       ["F3", "THEME", "fkey:theme", themeMenu, () => { themeMenu = !themeMenu; paint(); }],
     ];
-    let x = r.x + 2;
+    // A phone shares the strip out among the keys, in fewer letters if it must.
+    if (short && keys.reduce((n, k) => n + k[1].length * 8 + 4, 0) + 4 > r.w) { keys[0][1] = "JRNL"; keys[1][1] = "CLASS"; }
+    const share = short ? Math.floor((r.w - 2 - keys.reduce((n, k) => n + k[1].length * 8, 0)) / keys.length) : 0;
+    let x = r.x + (short ? 1 : 2);
     for (const [fk, label, key, open, run] of keys) {
-      const w = (short ? 0 : fk.length * 8 + 4) + label.length * 8 + 6;
-      const kr = { x, y: r.y + 1, w, h: r.h - 2 };
+      const w = short ? label.length * 8 + share - 1 : fk.length * 8 + 4 + label.length * 8 + 6;
+      const kr = short ? { x, y: r.y + 1, w, h: r.h - 2 } : { x, y: r.y + 1, w, h: r.h - 2 };
       const on = lit(key) !== open;
       fb.fill(kr, on ? INK : PAPER);
-      let tx = x + 3;
+      let tx = short ? x + Math.floor((w - label.length * 8) / 2) : x + 3;
       if (!short) {
         fb.fill({ x, y: kr.y, w: fk.length * 8 + 4, h: kr.h }, on ? PAPER : INK);
         fb.text(f, x + 2, kr.y + 1, fk, on ? INK : PAPER);
         tx = x + fk.length * 8 + 7;
       }
-      fb.text(f, tx, kr.y + 1, label, on ? PAPER : INK);
+      fb.text(f, tx, short ? kr.y + Math.floor((kr.h - 8) / 2) : kr.y + 1, label, on ? PAPER : INK);
       if (flashing(key)) fb.invert(kr);
-      hits.push({ key, r: kr, label: `${label.toLowerCase()} (${fk})`, run: () => press(key, run) });
-      x += w + 6;
+      hits.push({ key, r: short ? { ...kr, y: r.y, h: r.h } : kr, label: `${label.toLowerCase()} (${fk})`, run: () => press(key, run) });
+      x += w + (short ? 1 : 6);
     }
     // Right end: the card, and a working light while something is being prepared.
     const st = ctx.status(v);
@@ -1144,9 +1213,11 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const f = font!;
     const r = L!.journal;
     win(r, "Journal", { close: "journal:close" });
-    hits.push({ key: "journal:close", r: { x: r.x + 7, y: r.y + 3, w: 11, h: 9 }, label: "Close the journal", run: () => ctx.journal.toggle() });
+    const phone = L!.mode === "tall";
+    const closeHit: Hit = { key: "journal:close", r: phone ? { x: r.x, y: r.y, w: Math.max(30, rowMin()), h: rowMin() } : { x: r.x + 7, y: r.y + 3, w: 11, h: 9 }, label: "Close the journal", run: () => ctx.journal.toggle() };
+    hits.push(closeHit);
     const cr = inner(r);
-    const tw = cr.w - 12;
+    const tw = cr.w - (phone ? 26 : 12);
     const lines = journalLines(v, Math.floor(tw / 8));
     const vis = Math.floor(cr.h / 10);
     jMax = Math.max(0, lines.length - vis);
@@ -1184,9 +1255,12 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       fb.fill({ x: sx, y: yy, w: 9, h: 10 }, on ? PAPER : INK);
       fb.box({ x: sx, y: yy, w: 9, h: 10 }, PAPER);
       fb.text(f, sx, yy + 1, glyph, on ? INK : PAPER);
-      hits.push({ key, r: { x: sx, y: yy, w: 9, h: 10 }, label: d < 0 ? "Scroll the journal up" : "Scroll the journal down", run: () => scrollJournal(d) });
+      const rm = rowMin();
+      hits.push({ key, r: phone ? { x: cr.x + cr.w - rm, y: d < 0 ? yy : yy + 10 - rm, w: rm, h: rm } : { x: sx, y: yy, w: 9, h: 10 }, label: d < 0 ? "Scroll the journal up" : "Scroll the journal down", run: () => scrollJournal(phone ? d * 2 : d) });
     }
     hits.push({ key: "journal:body", r: { x: cr.x, y: cr.y, w: tw, h: cr.h }, label: "Journal", run: () => undefined, tab: false, wheel: true });
+    // On a phone the text can be dragged, and the close box is big enough to overlap it: it stays on top.
+    if (phone) { hits.splice(hits.indexOf(closeHit), 1); hits.push(closeHit); }
   }
   function scrollJournal(d: number): void {
     jScroll = Math.max(0, Math.min(jMax, jScroll + d));
@@ -1218,6 +1292,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     stage.style.left = `${Math.max(0, Math.floor((rw - L.W * u) / 2))}px`;
     stage.style.top = L.mode === "tall" ? "0px" : `${Math.max(0, Math.floor((rh - L.H * u) / 2))}px`;
     placeOverlays();
+    paintCue();
     hits = [];
     // The desktop: black glass with a sparse dot matrix, so the windows glow out of the dark.
     for (let y = 0; y < fb.h; y++) for (let x = 0; x < fb.w; x++) fb.pix[y * fb.w + x] = (x & 3) === 0 && (y & 3) === ((x >> 1) & 2) ? PAPER : INK;
@@ -1318,6 +1393,18 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     focus = null;
     paint();
   });
+  // A finger on the journal's text scrolls it, a line at a time (it's painted, so the browser can't).
+  let dragY: number | null = null;
+  hitLayer.addEventListener("touchstart", (e) => {
+    dragY = keyOf(e) === "journal:body" ? e.touches[0]!.clientY : null;
+  }, { passive: true });
+  hitLayer.addEventListener("touchmove", (e) => {
+    if (dragY === null) return;
+    e.preventDefault();
+    const dy = dragY - e.touches[0]!.clientY;
+    const lines = Math.trunc(dy / (10 * u));
+    if (lines) { dragY -= lines * 10 * u; scrollJournal(lines); }
+  }, { passive: false });
   hitLayer.addEventListener("wheel", (e) => {
     if (keyOf(e) !== "journal:body") return;
     e.preventDefault();

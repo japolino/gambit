@@ -14,6 +14,8 @@ import { godRays, parchment } from "../../../scene/themes/storybook/textures.js"
 import { archFront } from "../../../stage/themes/storybook/art.js";
 
 const PHONE = 760;
+/** The same test as the view's .pl-phone: a phone gets a plain page, with none of the book's art or light. */
+const isPhone = (W: number, H: number) => W <= PHONE || H <= 480;
 
 /** A candle for the patience bookmark (centred, ~34 tall). */
 const CANDLE = `<g filter="url(#sb-drop)">
@@ -120,23 +122,31 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   const layout = () => {
     const W = root.clientWidth, H = root.clientHeight;
     if (!W || !H) return;
-    const phone = W <= PHONE;
-    const dw = Math.round(phone ? W - 12 : Math.min(W * 0.84, 1800));
-    const dh = Math.round(phone ? Math.max(300, H * 0.5) : Math.max(196, Math.min(330, H * 0.31)));
-    const db = Math.round(phone ? 6 : Math.max(14, H * 0.024));
+    if (isPhone(W, H)) {
+      // The stylesheet lays out the page; drop the frame's heavy art until a larger window asks for it again.
+      if (lastKey) {
+        lastKey = "";
+        dlg.querySelector(".back")!.innerHTML = "";
+        dlg.querySelector(".front")!.innerHTML = "";
+        book.querySelector(".skirt")!.innerHTML = "";
+      }
+      return;
+    }
+    const dw = Math.round(Math.min(W * 0.84, 1800));
+    const dh = Math.round(Math.max(196, Math.min(330, H * 0.31)));
+    const db = Math.round(Math.max(14, H * 0.024));
     const dx = Math.round((W - dw) / 2);
     root.style.setProperty("--dw", `${dw}px`);
     root.style.setProperty("--dh", `${dh}px`);
     root.style.setProperty("--db", `${db}px`);
     root.style.setProperty("--dx", `${dx}px`);
-    root.classList.toggle("sbp-phone", phone);
     const key = `${W}x${H}`;
     if (key === lastKey) return;
     lastKey = key;
     const { back, front } = dialogueFrame(dw, dh);
     dlg.querySelector(".back")!.innerHTML = back;
     dlg.querySelector(".front")!.innerHTML = front;
-    const skH = Math.round(phone ? dh + db + 20 : (dh + db) * 0.72);
+    const skH = Math.round((dh + db) * 0.72);
     book.querySelector(".skirt")!.innerHTML = skirt(W, skH, dx, dx + dw);
   };
   const ro = new ResizeObserver(layout);
@@ -145,7 +155,7 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
 
   // Pointer parallax: the painting drifts, the corners and the cast a little less.
   const onMove = (e: PointerEvent) => {
-    if (reduced) return;
+    if (reduced || isPhone(root.clientWidth, root.clientHeight)) return;
     const r = root.getBoundingClientRect();
     root.style.setProperty("--px", (((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1).toFixed(3));
     root.style.setProperty("--py", (((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1).toFixed(3));
@@ -162,7 +172,7 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     raf = requestAnimationFrame(tick);
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
-    if (!g) return;
+    if (!g || isPhone(root.clientWidth, root.clientHeight)) return;
     const w = (cv.width = cv.clientWidth), h = (cv.height = cv.clientHeight);
     g.clearRect(0, 0, w, h);
     for (const d of dust) {
@@ -204,7 +214,8 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   // A new beat is read from its start: the roll and the tell sit at the top of the page, not under its rim.
   let anchorRaf = 0;
   const anchor = () => {
-    if (!log) return;
+    // On a phone the view opens a turn at its start.
+    if (!log || isPhone(root.clientWidth, root.clientHeight)) return;
     cancelAnimationFrame(anchorRaf);
     anchorRaf = requestAnimationFrame(() => (anchorRaf = requestAnimationFrame(() => {
       const beats = log.querySelectorAll<HTMLElement>(".read");
@@ -225,7 +236,6 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   };
   const mo = new MutationObserver(() => {
     capIt();
-  anchor();
     anchor();
   });
   if (log) mo.observe(log, { childList: true, subtree: true });
@@ -256,15 +266,30 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   countActions();
   // The slips' heading keeps a tally of what is still unplayed.
   const hand = root.querySelector<HTMLElement>(".hand");
+  const journalBtn = root.querySelector<HTMLElement>(".journal-btn");
+  const journal = root.querySelector<HTMLElement>(".journal");
   const tally = () => {
     if (!hand) return;
     const all = hand.querySelectorAll(".fact-card").length;
     const left = hand.querySelectorAll(".fact-card:not(.used)").length;
     hand.dataset.tally = all ? ` · ${left} of ${all} unplayed` : "";
+    if (journalBtn) journalBtn.dataset.n = String(all);
   };
   const ho = new MutationObserver(tally);
   if (hand) ho.observe(hand, { childList: true });
   tally();
+
+  // Phone: the drawer closes when you cite a fact (the line goes to your pen) or tap outside it.
+  const onDrawerTap = (e: Event) => {
+    if (!journal?.classList.contains("open") || !isPhone(root.clientWidth, root.clientHeight)) return;
+    const t = e.target as Element;
+    if (t.closest(".fact-card") || !t.closest(".journal, .journal-btn, .hand, .mode, .moments, .moment")) journal.classList.remove("open");
+  };
+  root.addEventListener("click", onDrawerTap);
+  // Phone: the talk stops above the end card, however tall its reveals make it.
+  const endBox = root.querySelector<HTMLElement>(".foot > .end");
+  const endRo = new ResizeObserver(() => root.style.setProperty("--endh", `${Math.ceil(endBox?.offsetHeight ?? 0) + 4}px`));
+  if (endBox) endRo.observe(endBox);
 
   return {
     update(state) {
@@ -279,6 +304,8 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       mo.disconnect();
       vo.disconnect();
       ho.disconnect();
+      endRo.disconnect();
+      root.removeEventListener("click", onDrawerTap);
       cancelAnimationFrame(anchorRaf);
       cancelAnimationFrame(raf);
       root.removeEventListener("pointermove", onMove);

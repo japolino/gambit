@@ -44,6 +44,7 @@ import * as M from "./models.js";
 import { cleanCutout } from "./chart.js";
 import { journalHtml, narrationHtml, pickerHtml } from "./shared.js";
 import { WEDGE } from "./props3d.js";
+import { phoneActsHtml } from "./phone.js";
 import type { Mode } from "./flat.js";
 import { createPuppetMeshes } from "../../puppet-mesh.js";
 
@@ -79,6 +80,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   <div class="labels np"></div>
   <div class="panel" hidden></div>
   <div class="say" aria-live="polite"></div>
+  <div class="phacts" role="group" aria-label="What you can do here"></div>
   <div class="ovl"></div>
   <div class="lb plate encplate" hidden>${WEDGE}<b></b><small></small></div>
 </div>`;
@@ -87,6 +89,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   const labelsEl = host.querySelector(".labels") as HTMLDivElement;
   const panelEl = host.querySelector(".panel") as HTMLDivElement;
   const say = host.querySelector(".say") as HTMLDivElement;
+  const phacts = host.querySelector(".phacts") as HTMLDivElement;
   const ovl = host.querySelector(".ovl") as HTMLDivElement;
   const encPlate = host.querySelector(".encplate") as HTMLDivElement;
   let destroyed = false;
@@ -114,6 +117,16 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   /** Props drawn inward toward the middle of the counter on a narrow (phone) screen. */
   let squeeze: Object3D[] = [];
 
+  let phoneRatio = 0;
+  let shadowAt = 0;
+  /** Hand the renderer back as the layer had it (another theme, or the corridor, may use it next). */
+  function releasePhoneRender(): void {
+    if (!phoneRatio || !st) return;
+    st.renderer.setPixelRatio(phoneRatio);
+    st.renderer.shadowMap.autoUpdate = true;
+    phoneRatio = 0;
+  }
+
   function place(o: Object3D, x: number, y: number, z: number, ry = 0): Object3D {
     o.position.set(x, y, z);
     o.rotation.y = ry;
@@ -126,6 +139,14 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     const r = s.renderer;
     r.shadowMap.enabled = true;
     r.shadowMap.type = PCFSoftShadowMap;
+    // A phone's GPU pays for every pixel and every shadow, and the words on screen are DOM or Pixi, so they stay sharp:
+    // fewer pixels in the room, its shadows redrawn a few times a second rather than every frame.
+    if (innerWidth <= 760 || innerHeight <= 480) {
+      phoneRatio ||= r.getPixelRatio();
+      r.setPixelRatio(Math.min(1.25, phoneRatio));
+      r.shadowMap.autoUpdate = false;
+      r.shadowMap.needsUpdate = true;
+    }
     r.toneMapping = ACESFilmicToneMapping;
     r.toneMappingExposure = 1.35;
     s.scene.background = new Color(0x080503);
@@ -263,7 +284,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     const key = `${enc.kind}|${aspect.toFixed(3)}`;
     if (key !== encPoseKey || !encPose) {
       encPoseKey = key;
-      encPose = enc.kind === "battle" ? battlePose(aspect) : parleyPose(aspect);
+      encPose = enc.kind === "battle" ? battlePose(aspect) : parleyPose(aspect, aspect >= 0.95 && stageEl.clientHeight < 320);
       poseCamera(encCam, encPose, aspect);
       if (enc.kind === "battle") board().band = measureBand(encCam, aspect, -1.42, 1.32);
       if (encParts) encParts.guestX = guestX(aspect);
@@ -734,7 +755,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
       fire(t.dataset.act!);
       return;
     }
-    if ((e.target as Element).closest(".panel, .say, .ovl, .fg")) return;
+    if ((e.target as Element).closest(".panel, .say, .phacts, .ovl, .fg")) return;
     if (pickOpen) {
       pickOpen = false;
       if (last) render(last);
@@ -750,7 +771,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     const now = performance.now();
     if (now - moveAt < 60) return;
     moveAt = now;
-    if ((e.target as Element).closest(".panel, .say, .ovl, .labels button")) return;
+    if ((e.target as Element).closest(".panel, .say, .phacts, .ovl, .labels button")) return;
     const hit = st.pick(e.clientX, e.clientY, [...items.values()].filter((i) => i.obj.visible).map((i) => i.obj));
     hovered = (hit?.object.userData.item as string | undefined) ?? null;
     dr.style.cursor = hovered ? "pointer" : "";
@@ -768,6 +789,11 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   const labelEls = new Map<string, HTMLElement>();
   function frame(t: number, dt: number): void {
     if (!st || !parts) return;
+    // In a fight the figures' shadows on the backcloth are part of the show: four times a second; otherwise once.
+    if (phoneRatio && t - shadowAt > (enc?.kind === "battle" ? 250 : 1000)) {
+      shadowAt = t;
+      st.renderer.shadowMap.needsUpdate = true;
+    }
     puppets.tick(t, Math.min(0.1, dt));
     const camera = st.camera;
     const bp = basePose();
@@ -1289,6 +1315,11 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
       say.innerHTML = sh;
     }
     say.classList.toggle("open", logOpen);
+    const actsHtml = phoneActsHtml(ctx, v, acts, v.hex && exits.length ? "i:cards" : null);
+    if (phacts.dataset.h !== actsHtml) {
+      phacts.dataset.h = actsHtml;
+      phacts.innerHTML = actsHtml;
+    }
     const ov: string[] = [];
     if (ctx.journal.open) ov.push(journalHtml(ctx, v));
     if (pickOpen) ov.push(pickerHtml(ctx, v));
@@ -1346,6 +1377,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
       host.hidden = true;
       unzoom();
       st?.setUpdate(null);
+      releasePhoneRender();
       parts = null;
     },
     render,
@@ -1376,6 +1408,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     destroy() {
       destroyed = true;
       st?.setUpdate(null);
+      releasePhoneRender();
       dr.removeEventListener("click", onClick);
       dr.removeEventListener("pointermove", onMove);
       dr.removeEventListener("focusin", onFocus);
