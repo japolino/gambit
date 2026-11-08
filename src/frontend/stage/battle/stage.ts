@@ -13,7 +13,8 @@ import { puppetQuality, puppetQualityFrame, puppetRenderScale } from "../../../v
 import { Clock, ease, reducedMotion } from "../anim.js";
 import { ArtStore, paletteFor, type ArtRequest } from "../art.js";
 import { PostFilter } from "../post-filter.js";
-import { SKIN } from "../skin.js";
+import { SKIN, currentBattleTheme } from "../skin.js";
+import type { BattleTheme, StageDecor } from "../themes/types.js";
 import { C } from "../theme.js";
 import { vgrad } from "../ui.js";
 import { ActionMenu, type MenuSkill } from "./action-menu.js";
@@ -62,7 +63,7 @@ export class BattleStage {
   readonly fxLayer = new Container();
   readonly cutLayer = new Container();
   /** The backdrop plate, wrapped so a pixel theme's shader covers it in one pass. */
-  private readonly back = new Container();
+  readonly back = new Container();
   /** Damage numbers and labels, above the effects and never pixelated. */
   readonly floatLayer = new Container();
   /** A pixel theme's picture treatment (skin.ts), on the art layers only. */
@@ -72,8 +73,12 @@ export class BattleStage {
   /** Brighter, for the party busts and timeline chips (small, dark faces vanish in two tones otherwise). */
   private postBust: PostFilter | null = null;
   readonly flash = new Graphics();
-  readonly timeline = new TimelineStrip();
-  readonly menu = new ActionMenu();
+  /** The scene theme's battle (layout, HUD pieces, decoration), fixed for this stage's life. */
+  readonly theme: BattleTheme | null = currentBattleTheme();
+  readonly timeline: TimelineStrip = this.theme?.timeline?.() ?? new TimelineStrip();
+  readonly menu: ActionMenu = this.theme?.actionMenu?.() ?? new ActionMenu();
+  /** The theme's own additions (themes/types.ts decorate). */
+  private decor: StageDecor | null = null;
   readonly floaters: Floaters;
   readonly enemies = new Map<string, EnemyView>();
   readonly cards = new Map<string, PartyCard>();
@@ -101,7 +106,7 @@ export class BattleStage {
     this.clock = new Clock(app.ticker);
     this.art = new ArtStore();
     this.baseResolution = app.renderer.resolution;
-    this.layout = computeLayout(app.screen.width, app.screen.height, this.party().length);
+    this.layout = this.computeLayout(app.screen.width, app.screen.height);
     this.floaters = new Floaters(this.floatLayer, this.clock, () => this.layout.ui, () => this.reduced);
     this.field.sortableChildren = true;
     this.back.addChild(this.plate);
@@ -134,6 +139,12 @@ export class BattleStage {
     this.plate.filters = [this.depthFx];
     this.units = displayFromState(opts.state);
     this.build();
+    if (this.theme?.backdrop === "transparent") {
+      // The theme stages the fight in its 3D scene room, which shows through the canvas.
+      this.back.visible = false;
+      this.bgShade.visible = false;
+    }
+    this.decor = this.theme?.decorate?.(this) ?? null;
     this.menu.onPick = (id) => this.pick(id);
     this.menu.onBack = () => this.cancelTarget();
     this.menu.onConfirm = () => this.confirm();
@@ -177,7 +188,7 @@ export class BattleStage {
       const u = this.units.get(c.id)!;
       const req = this.artRequest(u);
       const pick = this.art.pick(req);
-      const card = new PartyCard(u, pick.source, this.strength(BUST_STRENGTH), pick.cutout);
+      const card = this.theme?.partyCard?.(u, pick.source, this.strength(BUST_STRENGTH), pick.cutout) ?? new PartyCard(u, pick.source, this.strength(BUST_STRENGTH), pick.cutout);
       card.on("pointertap", (e) => { e.stopPropagation(); this.tapTarget(c.id); });
       this.cards.set(c.id, card);
       if (this.postBust) card.portrait.filters = [this.postBust];
@@ -239,7 +250,7 @@ export class BattleStage {
 
   resize(w: number, h: number): void {
     if (this.destroyed) return;
-    this.layout = computeLayout(w, h, this.party().length);
+    this.layout = this.computeLayout(w, h);
     const l = this.layout;
     // The plate covers the screen with its floor line on the stage floor.
     const tex = this.bg.texture;
@@ -263,9 +274,25 @@ export class BattleStage {
     this.menu.place(l.menu, l.ui);
     this.app.stage.hitArea = this.app.screen;
     this.refreshTimeline();
+    this.decor?.resize?.(w, h, this.layout);
+  }
+
+  /** Tell the theme each engine event as it starts playing (a combat log, a scoreboard). */
+  decorEvent(ev: BattleEvent, state: BattleState): void {
+    try {
+      this.decor?.event?.(ev, state);
+    } catch {
+      // A theme's log must not stop the fight.
+    }
+  }
+
+  /** The theme's layout, or the stock one. */
+  private computeLayout(w: number, h: number): StageLayout {
+    return (this.theme?.layout ?? computeLayout)(w, h, this.party().length);
   }
 
   private frame(now: number, dt: number): void {
+    this.decor?.update?.(now, dt);
     for (const v of this.enemies.values()) v.update(now, dt);
     for (const c of this.cards.values()) c.update(now, dt);
     this.timeline.update(dt);
@@ -466,6 +493,11 @@ export class BattleStage {
 
   destroy(): void {
     this.destroyed = true;
+    try {
+      this.decor?.destroy?.();
+    } catch {
+      // A theme's teardown must not keep the stage alive.
+    }
     this.clock.destroy();
     this.art.destroy();
   }

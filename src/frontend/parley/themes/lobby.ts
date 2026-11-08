@@ -1,0 +1,352 @@
+/**
+ * The Lobby theme's Parley: a gacha story scene in the hall's dark-academia gold and ink. The person you talk to
+ * stands tall left of centre in the place's painting, the open astrolabe halo turning behind their head and the
+ * window light falling across them, their name on an obsidian-glass plaque across their chest (as the hall's lead
+ * stands in the scene). The haggle is a brass balance at the top right (their price in coins on one pan, your
+ * purse on the other; the beam tips as the deal moves), with the fare engraved beside it and patience as amber
+ * jewels hanging under it; the deal itself hangs from the balance on chains, as brass plaques. What you know is
+ * a fan of dossier slips over the dialogue (play one to cite it), the moments are prints in brass mounts on the
+ * wall, and the talk runs in a brass-rimmed dialogue box along the bottom with the line you write sealed by a
+ * brass Say.
+ *
+ * The view's side panel, header and footer are dissolved (`display: contents`) so their pieces sit where a story
+ * scene puts them; every control stays the view's own element, reachable by keyboard. Scoped `.pl.th-lobby`.
+ */
+import type { ParleyTheme } from "./types.js";
+import { GARA, CINZ } from "../style.js";
+import { defs as lobbyDefs, halo, rays } from "../../scene/themes/lobby/art.js";
+import { moteSprite, parchment } from "../../scene/themes/lobby/tex.js";
+import { balanceRig, chainBg, choiceBg, crest, dialogFrame, dieBg, jewelBg, loupeIcon, maskIcon, pedestal, printBg, quillBg, sealBg } from "./lobby/art.js";
+
+const SHADOW = "0 2px 4px #000, 0 0 10px #000, 0 0 2px #000";
+const SR = "position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;";
+
+const css = (paper: string) => `
+.pl.th-lobby { display: block; --p-font: 500 18px/1.45 ${GARA}; --p-ui: ${CINZ}; --p-prose: ${GARA};
+  --p-ink: #F3E8D2; --p-dim: #b8a27a; --p-faint: #8a7a5c; --p-soft: #d8c9a8; --p-em: #E3CC8A;
+  --p-accent: #DFC183; --p-accent-ink: #1E160B; --p-hot: #FFE2A8; --p-edge: rgba(200,170,110,.45); --p-rule: rgba(200,170,110,.2);
+  --p-scene: #0E0C0A; --p-well: rgba(8,6,4,.72); --p-bubble: transparent; --p-sunk: rgba(8,6,4,.6); --p-track: #090706;
+  --p-fill: linear-gradient(180deg, #ffe7a8, #d9b464 45%, #8c6224); --p-radius: 0; --p-bubble-radius: 0; --p-text-shadow: ${SHADOW};
+  --p-die: #d9b464; --p-die-ink: #1E160B; --p-die-kept: #FFE2A8;
+  /* The dialogue box, anchored right so a wide window keeps readable lines; the person stands at --hx. */
+  --bxr: 3%; --bxw: min(83%, 1560px); --bxl: calc(100% - var(--bxr) - var(--bxw)); --bxb: 2.4%; --bxh: 30%;
+  --hx: 27%;
+  background: #0E0C0A; font-feature-settings: "lnum"; }
+.th-lobby .side, .th-lobby .head, .th-lobby .foot { display: contents; }
+.th-lobby .scene { position: absolute; inset: 0; }
+
+/* ---------- The place, graded like the hall, and its light ---------- */
+.th-lobby .plate-canvas, .th-lobby .plate-img { filter: saturate(.74) sepia(.22) brightness(.8) contrast(1.06); }
+.th-lobby .vignette { background:
+    linear-gradient(90deg, rgba(8,6,4,.9) 0%, rgba(8,6,4,.3) 10%, rgba(8,6,4,0) 22%),
+    linear-gradient(270deg, rgba(8,6,4,.75) 0%, rgba(8,6,4,0) 16%),
+    linear-gradient(0deg, rgba(6,5,4,.95) 0%, rgba(6,5,4,.72) 22%, rgba(6,5,4,0) 48%),
+    linear-gradient(180deg, rgba(6,5,4,.85) 0%, rgba(6,5,4,0) 18%),
+    radial-gradient(ellipse 50% 70% at var(--hx) 34%, rgba(214,150,80,.14), rgba(0,0,0,0) 70%),
+    radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0) 35%, rgba(8,6,4,.6) 80%, rgba(5,4,3,.9) 100%); }
+.th-lobby .lp-rays { position: absolute; left: -6%; top: 0; width: 70%; height: 100%; pointer-events: none; mix-blend-mode: screen; opacity: .55; animation: lpRays 9s ease-in-out infinite; }
+.th-lobby .art { display: block; width: 100%; height: 100%; overflow: visible; }
+.th-lobby .lp-dust { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; }
+.th-lobby .lp-glow { position: absolute; left: var(--hx); top: -12%; width: 60%; aspect-ratio: 1.1; translate: -50% 0; pointer-events: none; mix-blend-mode: screen; background: radial-gradient(closest-side, rgba(255,214,150,.26), rgba(255,190,110,.07) 55%, rgba(0,0,0,0)); }
+.th-lobby .lp-halo { position: absolute; left: var(--hx); top: -5%; height: 66%; aspect-ratio: 1; translate: -50% 0; pointer-events: none; opacity: .9; }
+.th-lobby .lp-halo .hl1 { transform-origin: 240px 240px; animation: lpSpin 240s linear infinite; }
+.th-lobby .lp-halo .hl2 { transform-origin: 240px 240px; animation: lpSpin 160s linear infinite reverse; }
+.th-lobby .lp-halo .flare { transform-origin: 240px 16px; animation: lpFlare 4s ease-in-out infinite; }
+@keyframes lpSpin { to { transform: rotate(360deg); } }
+@keyframes lpRays { 0%, 100% { opacity: .5; } 50% { opacity: .62; } }
+@keyframes lpFlare { 0%, 100% { opacity: .5; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.1); } }
+
+/* ---------- The person, standing tall left of centre ---------- */
+.th-lobby .figure { left: calc(var(--hx) - 34%); right: auto; width: 68%; height: 97%; bottom: -1%; }
+.th-lobby .face { filter: drop-shadow(-3px -2px 4px rgba(255,214,150,.45)) drop-shadow(0 20px 30px rgba(0,0,0,.85)) saturate(.95) sepia(.06); }
+.th-lobby .fig.framed { height: 90%; margin-bottom: 0; aspect-ratio: 3 / 4; background: none; border-radius: 0; }
+.th-lobby .fig.framed .face { object-fit: cover; object-position: 50% 20%; border-radius: 0; box-shadow: none;
+  filter: drop-shadow(-3px -2px 5px rgba(255,214,150,.4)) saturate(.95) sepia(.06);
+  -webkit-mask-image: radial-gradient(ellipse 50% 58% at 50% 42%, #000 58%, transparent 100%), linear-gradient(180deg, transparent 0, #000 12%, #000 60%, transparent 94%);
+  -webkit-mask-composite: source-in; mask-image: radial-gradient(ellipse 50% 58% at 50% 42%, #000 58%, transparent 100%), linear-gradient(180deg, transparent 0, #000 12%, #000 60%, transparent 94%); mask-composite: intersect; }
+.th-lobby .fig.framed::after { display: none; }
+.th-lobby .silhouette { color: rgba(223,193,131,.6); font-family: ${CINZ}; background: radial-gradient(60% 40% at 50% 22%, rgba(223,193,131,.16), rgba(14,12,10,.85) 70%); }
+
+/* ---------- Their name, across their chest on obsidian glass ---------- */
+.th-lobby .plaque { left: var(--hx); translate: -50% 0; bottom: 37%; z-index: 6; min-width: 420px; max-width: min(640px, 46%); padding: 14px 70px 17px; text-align: center; isolation: isolate; text-shadow: none; }
+.th-lobby .plaque .lp-tab { position: absolute; inset: 0; z-index: -1; }
+.th-lobby .plaque .who { font: 800 32px/1.05 ${CINZ}; letter-spacing: .1em; text-transform: uppercase; color: #F5E8C7; text-shadow: 0 1px 3px #000, 0 0 14px rgba(223,193,131,.35); }
+.th-lobby .plaque .role { margin-top: 7px; font: 700 12.5px/1.3 ${GARA}; letter-spacing: .14em; text-transform: uppercase; color: #DFC183; opacity: 1; }
+.th-lobby .tell { left: 60%; top: 12%; max-width: min(36%, 560px); font: italic 500 24px/1.35 ${GARA}; color: #F5E8C7; text-shadow: ${SHADOW}; }
+
+/* ---------- The dialogue box (its frame drawn by decorate at its real size) ---------- */
+.th-lobby .lp-box { position: absolute; left: var(--bxl); right: var(--bxr); bottom: var(--bxb); height: var(--bxh); z-index: 3; pointer-events: none; }
+.th-lobby .log { position: absolute; z-index: 4; left: calc(var(--bxl) + 46px); right: calc(var(--bxr) + 46px); top: calc(100% - var(--bxb) - var(--bxh) + 26px); bottom: calc(var(--bxb) + 92px); padding: 16px 8px 18px 0 !important; gap: 12px; }
+.th-lobby .setting { font: italic 500 17px/1.4 ${GARA}; color: #a69272; }
+.th-lobby .speaker { font: 800 13px/1.3 ${CINZ}; letter-spacing: .2em; text-transform: uppercase; color: #DFC183; margin-bottom: 3px; }
+.th-lobby .npc .prose { font: 500 22px/1.42 ${GARA}; color: #FFF6E5; text-shadow: 0 1px 2px #000; }
+.th-lobby .npc .prose em { color: #c7b89e; }
+.th-lobby .you { align-self: stretch; max-width: none; position: relative; padding: 0 0 0 44px; background: none; border: 0; }
+.th-lobby .you::before { content: ""; position: absolute; left: 6px; top: 2px; width: 28px; height: 28px; background: ${quillBg()} center / contain no-repeat; }
+.th-lobby .you .speaker { text-align: left; color: #FFE2A8; }
+.th-lobby .you .prose { font: italic 500 19px/1.4 ${GARA}; color: #d8c9a8; }
+.th-lobby .read { border-left: 0; padding: 2px 0 2px 44px; position: relative; }
+.th-lobby .die { width: 46px; height: 46px; clip-path: none; background: ${dieBg(false)} center / contain no-repeat; font: 800 16px/1 ${CINZ}; color: #e8dcc0; text-shadow: 0 1px 2px #000; padding-top: 3px; }
+.th-lobby .die.kept { background-image: ${dieBg(true)}; color: #1E160B; text-shadow: 0 1px 0 rgba(255,246,214,.6); transform: scale(1.12); box-shadow: none; filter: drop-shadow(0 0 8px rgba(255,210,122,.55)); }
+.th-lobby .die.nat20 { background-color: transparent; filter: drop-shadow(0 0 14px rgba(255,226,140,.95)); }
+.th-lobby .die.nat1 { background-color: transparent; color: #ffd6cc; filter: drop-shadow(0 0 8px rgba(196,84,74,.9)); }
+.th-lobby .result { font: 800 14px ${CINZ}; letter-spacing: .2em; }
+.th-lobby .r-crit_success { color: #FFE2A8; } .th-lobby .r-success { color: #c8e0a0; } .th-lobby .r-partial { color: #DFC183; } .th-lobby .r-fail { color: #a8a08e; } .th-lobby .r-crit_fail { color: #f0806c; }
+.th-lobby .imm { font: italic 500 18px/1.4 ${GARA}; color: #E3CC8A; }
+.th-lobby .trn { font: 14px/1.45 ${GARA}; color: #cfc0a0; }
+.th-lobby .tier { border-radius: 0; font: 700 11px ${CINZ}; letter-spacing: .12em; border-color: rgba(200,170,110,.5); }
+.th-lobby .why summary { color: #DFC183; }
+.th-lobby .status { position: absolute; z-index: 5; right: calc(var(--bxr) + 46px); bottom: calc(var(--bxb) + 88px); max-width: 60%; font: italic 500 16px ${GARA}; color: #cfc0a0; text-shadow: ${SHADOW}; }
+.th-lobby .composer { position: absolute; z-index: 5; left: calc(var(--bxl) + 38px); right: calc(var(--bxr) + 38px); bottom: calc(var(--bxb) + 18px); height: 64px; grid-template-columns: 1fr 72px; gap: 18px; align-items: center; }
+.th-lobby .composer textarea { height: 54px; border: 0; border-radius: 0; background: rgba(6,5,4,.55); box-shadow: inset 0 2px 10px rgba(0,0,0,.8), inset 0 -1px 0 rgba(223,193,131,.4); padding: 13px 16px; font: italic 500 19px/1.35 ${GARA}; color: #F5E8C7; }
+.th-lobby .composer textarea:focus { outline: none; box-shadow: inset 0 2px 10px rgba(0,0,0,.8), inset 0 -2px 0 #FFE2A8; }
+.th-lobby .composer textarea::placeholder { color: #8a7a5c; }
+.th-lobby .say { width: 72px; height: 72px; padding: 0; border-radius: 50%; background: ${sealBg()} center / contain no-repeat; font: 800 14px/1 ${CINZ}; letter-spacing: .14em; text-transform: uppercase; color: #1E160B; text-shadow: 0 1px 0 rgba(255,246,214,.6); filter: drop-shadow(0 6px 8px rgba(0,0,0,.7)); transition: transform .15s, filter .15s; }
+.th-lobby .say:hover:not(:disabled), .th-lobby .say:focus-visible { outline: none; transform: scale(1.06) rotate(-6deg); filter: drop-shadow(0 0 12px rgba(255,206,120,.75)); }
+/* Who voices the replies stays for screen readers; the scene does not print it. */
+.th-lobby .hint { ${SR} }
+
+/* ---------- The view mode as two engraved bosses on the box's top rail ---------- */
+.th-lobby .mode { position: static; flex: none; display: flex; gap: 10px; border: 0; border-radius: 0; overflow: visible; }
+.th-lobby .mode button { width: 40px; height: 40px; padding: 0; font-size: 0; color: transparent; background: ${maskIcon()} center / contain no-repeat; filter: brightness(.6) drop-shadow(0 3px 4px #000); transition: filter .15s, transform .15s; }
+.th-lobby .mode button[data-m="transparent"] { background-image: ${loupeIcon()}; }
+.th-lobby .mode button.on { background-color: transparent; filter: drop-shadow(0 0 8px rgba(255,214,140,.85)) drop-shadow(0 3px 4px #000); }
+.th-lobby .mode button:hover, .th-lobby .mode button:focus-visible { outline: none; transform: translateY(-2px); filter: drop-shadow(0 0 10px rgba(255,214,140,.9)); }
+
+/* ---------- Top left: the talk's crest and title ---------- */
+.th-lobby .lp-crest { position: absolute; z-index: 6; left: 28px; top: 20px; width: 100px; height: 100px; pointer-events: none; }
+.th-lobby .title-row { position: absolute; z-index: 5; left: 98px; top: 32px; padding: 10px 90px 10px 30px; display: flex; align-items: center; gap: 22px; max-width: min(900px, 56%); background: linear-gradient(90deg, rgba(14,12,10,.92) 0%, rgba(14,12,10,.7) 55%, rgba(14,12,10,0) 100%); }
+.th-lobby .kind { font: 800 28px/1.08 ${CINZ}; letter-spacing: .04em; text-transform: uppercase; color: #F5E8C7; text-shadow: ${SHADOW}; }
+
+/* ---------- Top right: the balance, the fare, patience as hanging jewels ---------- */
+.th-lobby .meter { position: absolute; z-index: 5; right: 40px; top: 4px; width: 420px; margin: 0; padding: 206px 30px 26px; display: flex; flex-direction: column; align-items: center; gap: 0; isolation: isolate; }
+.th-lobby .lp-scale { position: absolute; left: 50%; top: 0; width: 220px; height: 193px; translate: -50% 0; pointer-events: none; }
+.th-lobby .lp-ped { position: absolute; left: 0; right: 0; top: 186px; bottom: 0; z-index: -1; pointer-events: none; }
+.th-lobby .lp-scale .beam { transition: transform 1.2s cubic-bezier(.3,1.4,.5,1); }
+.th-lobby .lp-scale .pan-l, .th-lobby .lp-scale .pan-r { transition: transform 1.2s cubic-bezier(.3,1.4,.5,1); }
+.th-lobby .meter-label { font: 700 13px/1 ${GARA}; letter-spacing: .3em; text-transform: uppercase; color: #b8a27a; text-shadow: ${SHADOW}; }
+.th-lobby .meter-value { margin-top: 4px; font: 800 42px/1.05 ${CINZ}; color: #FFF6E5; text-shadow: ${SHADOW}, 0 0 18px rgba(255,200,120,.3); white-space: nowrap; }
+.th-lobby .delta { font: 800 16px ${CINZ}; letter-spacing: .06em; }
+.th-lobby .bar { ${SR} }
+.th-lobby .patience { margin-top: 8px; display: flex; align-items: flex-start; gap: 4px; }
+.th-lobby .pl-label { align-self: center; font: 700 12px/1 ${GARA}; letter-spacing: .26em; color: #b8a27a; margin-right: 10px; text-shadow: ${SHADOW}; }
+.th-lobby .pip { width: 26px; height: 39px; border: 0; border-radius: 0; background: ${jewelBg(false)} center top / contain no-repeat; }
+.th-lobby .pip.on { background-image: ${jewelBg(true)}; filter: drop-shadow(0 0 6px rgba(255,170,80,.7)); }
+
+/* ---------- The deal: brass plaques hanging from the balance on chains ---------- */
+.th-lobby .actions { position: absolute; z-index: 6; right: 40px; width: 420px; top: calc(var(--mh, 352px) + 24px); flex-direction: column; align-items: center; gap: 22px; }
+.th-lobby .actions button { position: relative; width: 380px; height: 64px; padding: 0 40px; border: 0; border-radius: 0; background: ${choiceBg(false)} center / 100% 100% no-repeat; font: 800 19px/1 ${CINZ}; letter-spacing: .1em; text-transform: uppercase; color: #F5E8C7; text-shadow: 0 1px 2px #000; filter: drop-shadow(0 8px 10px rgba(0,0,0,.6)); transition: transform .16s cubic-bezier(.22,1,.36,1), filter .16s; transform-origin: 50% -30px; }
+.th-lobby .actions button::before, .th-lobby .actions button::after { content: ""; position: absolute; top: -26px; width: 12px; height: 30px; background: ${chainBg()} center / contain no-repeat; }
+.th-lobby .actions button::before { left: calc(18% - 6px); } .th-lobby .actions button::after { right: calc(18% - 6px); }
+.th-lobby .actions .walk { background-image: ${choiceBg(true)}; color: #f0c8b8; }
+.th-lobby .actions button:hover:not(:disabled), .th-lobby .actions button:focus-visible { outline: none; transform: rotate(-1.5deg); filter: drop-shadow(0 0 14px rgba(255,206,120,.6)); background-image: ${choiceBg(false, true)}; color: #FFE7AE; }
+.th-lobby .actions .walk:hover:not(:disabled), .th-lobby .actions .walk:focus-visible { background-image: ${choiceBg(true, true)}; color: #ffe2d6; }
+.th-lobby .end { position: absolute; z-index: 8; left: 50%; top: 40%; translate: -50% -50%; min-width: 520px; max-width: 80%; padding: 34px 60px 30px; background: rgba(10,8,6,.92); box-shadow: 0 0 0 2px #1c1308, 0 0 0 5px #b68d40, 0 0 0 6px #f5e1a4, 0 30px 80px #000; }
+.th-lobby .end-title { font: 800 34px/1.1 ${CINZ}; letter-spacing: .06em; color: #FFE7AE; text-shadow: ${SHADOW}; }
+.th-lobby .end-sub { font: italic 18px ${GARA}; color: #d8c9a8; }
+.th-lobby .leave { margin-top: 10px; min-width: 300px; height: 60px; border: 0; border-radius: 0; background: ${choiceBg(false)} center / 100% 100% no-repeat; font: 800 18px ${CINZ}; letter-spacing: .14em; text-transform: uppercase; color: #F5E8C7; padding: 0 50px; }
+.th-lobby .leave:hover, .th-lobby .leave:focus-visible { outline: none; background-image: ${choiceBg(false, true)}; color: #FFE7AE; }
+
+/* ---------- What you know: dossier slips fanned over the dialogue ---------- */
+.th-lobby .journal-btn, .th-lobby .journal { display: none !important; }
+.th-lobby .hand { position: absolute; z-index: 2; display: flex; justify-content: flex-end; align-items: flex-end; right: calc(var(--bxr) + 40px); bottom: calc(var(--bxb) + var(--bxh) - 16px); max-width: 52%; padding: 0 0 0 24px; }
+.th-lobby .fact-card { position: relative; flex: 0 0 auto; width: 216px; min-height: 104px; margin: 0 -5px; padding: 14px 16px 12px 20px; text-align: left; border: 0; border-radius: 0; cursor: pointer;
+  font: 500 15px/1.3 ${GARA}; color: #2b1d0e; background: linear-gradient(180deg, rgba(242,232,213,.55), rgba(184,166,142,.35)), url("${paper}") center / 256px;
+  box-shadow: inset 0 0 0 6px rgba(0,0,0,0), inset 0 0 0 7px rgba(94,67,25,.45), 0 0 0 1px #6a4a14, 0 0 0 3px rgba(28,19,8,.9), 0 12px 22px rgba(0,0,0,.75); transform: rotate(var(--tilt, 0deg)) translateY(-10px); transition: transform .18s cubic-bezier(.22,1,.36,1), margin .18s; }
+.th-lobby .fact-card::before { content: ""; position: absolute; right: -3px; top: -3px; width: 26px; height: 26px; background: linear-gradient(225deg, #fff2c2, #d9b464 40%, #8c6224); clip-path: polygon(0 0, 100% 0, 100% 100%, 78% 100%, 78% 22%, 0 22%); filter: drop-shadow(0 1px 1px #000); }
+.th-lobby .fact-card:hover, .th-lobby .fact-card:focus-visible { outline: none; z-index: 2; margin: 0 6px; transform: rotate(0deg) translateY(-30px) scale(1.05); box-shadow: 0 0 0 1px #DFC183, 0 0 0 3px rgba(28,19,8,.9), 0 0 18px rgba(255,206,120,.55), 0 16px 26px rgba(0,0,0,.8); }
+.th-lobby .fact-card.used { color: rgba(43,29,14,.42); filter: sepia(.4) brightness(.72); transform: rotate(var(--tilt, 0deg)) translateY(2px); }
+.th-lobby .fact-card.used::after { content: "Played"; position: absolute; left: -4px; top: 8px; padding: 3px 14px 3px 10px; font: 800 10px/1 ${CINZ}; letter-spacing: .2em; text-transform: uppercase; color: #ffe2c8; background: linear-gradient(180deg, #8f2219, #4a0d08); clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 50%, 100% 100%, 0 100%); }
+
+/* ---------- Moments: prints in brass mounts on the wall ---------- */
+.th-lobby .moment { z-index: 20; }
+.th-lobby .moments { z-index: 4; left: 50%; right: auto; top: 0; bottom: auto; padding-top: 17vh; flex-direction: row; gap: 34px; }
+.th-lobby .moments button { position: relative; width: 168px; height: 118px; padding: 8px; border: 0; border-radius: 0; overflow: visible; background: #120e0a; box-shadow: inset 0 0 0 2px #3a2a14, 0 14px 22px rgba(0,0,0,.75); transform: rotate(-4deg); transition: transform .18s; }
+.th-lobby .moments button:nth-child(2n) { transform: rotate(3deg) translateY(12px); }
+.th-lobby .moments button::after { content: ""; position: absolute; inset: -4px; background: ${printBg()} center / 100% 100% no-repeat; pointer-events: none; }
+.th-lobby .moments button:hover, .th-lobby .moments button:focus-visible { outline: none; transform: rotate(0) scale(1.06); }
+.th-lobby .moments button::before { content: ""; position: absolute; left: 50%; bottom: calc(100% - 2px); width: 3px; height: 40vh; translate: -50% 0; background: linear-gradient(90deg, #6a4a14, #f5e1a4 50%, #6a4a14); box-shadow: 0 0 2px #000; }
+.th-lobby .moments img { filter: sepia(.2) contrast(1.05); }
+.th-lobby .moment .cap { font: italic 500 30px/1.3 ${GARA}; color: #F5E8C7; left: 8%; right: 8%; bottom: 8%; text-align: center; }
+.th-lobby .moment::before { background: linear-gradient(transparent 58%, rgba(10,8,6,.92)); }
+
+/* ---------- Phones: the person clear in the middle, the box below ---------- */
+@media (min-aspect-ratio: 2/1) { .pl.th-lobby { --bxw: 72%; --hx: 23%; } }
+@media (min-width: 761px) and (max-height: 960px) { .pl.th-lobby { --bxh: 34%; } }
+@media (max-width: 760px) {
+  .pl.th-lobby { --bxr: 2%; --bxw: 96%; --bxb: 1%; --bxh: 40%; --hx: 50%; }
+  .th-lobby .figure { left: 0; width: 100%; height: 49%; bottom: auto; top: 13%; }
+  .th-lobby .lp-halo { top: 12%; height: 28%; }
+  .th-lobby .lp-glow { width: 120%; top: -4%; }
+  .th-lobby .lp-crest { left: 6px; top: 6px; width: 44px; height: 44px; }
+  .th-lobby .title-row { left: 36px; right: 8px; top: 10px; padding: 4px 8px 4px 18px; max-width: none; gap: 8px; justify-content: space-between; }
+  .th-lobby .kind { font-size: 12px; line-height: 1.15; }
+  .th-lobby .meter { right: 6px; top: 48px; width: auto; padding: 6px 84px 7px 14px; align-items: flex-end; background: rgba(14,11,8,.92); box-shadow: 0 0 0 1px #c89d54, 0 0 0 3px rgba(14,11,8,.9), inset 0 0 0 3px rgba(14,11,8,.92), inset 0 0 0 4px rgba(200,157,84,.4), 0 6px 14px rgba(0,0,0,.6); }
+  .th-lobby .lp-scale { left: auto; right: 4px; top: 2px; translate: none; width: 76px; height: 66px; }
+  .th-lobby .meter-label { font-size: 9px; letter-spacing: .2em; }
+  .th-lobby .meter-value { font-size: 20px; margin-top: 2px; }
+  .th-lobby .patience { margin-top: 2px; gap: 1px; }
+  .th-lobby .pl-label { display: none; }
+  .th-lobby .pip { width: 13px; height: 20px; }
+  .th-lobby .plaque { bottom: calc(var(--bxb) + var(--bxh) - 18px); min-width: 0; max-width: 92%; padding: 8px 34px 10px; }
+  .th-lobby .plaque .who { font-size: 15px; white-space: nowrap; }
+  .th-lobby .plaque .role { display: none; }
+  .th-lobby .tell { left: 50%; top: 40%; max-width: 86%; font-size: 17px; }
+  .th-lobby .log { left: calc(var(--bxl) + 18px); right: calc(var(--bxr) + 16px); top: calc(100% - var(--bxb) - var(--bxh) + 40px); bottom: calc(var(--bxb) + 72px); gap: 10px; }
+  .th-lobby .npc .prose { font-size: 17px; }
+  .th-lobby .you { padding-left: 32px; } .th-lobby .you::before { width: 22px; height: 22px; left: 2px; }
+  .th-lobby .you .prose { font-size: 16px; }
+  .th-lobby .read { padding-left: 32px; }
+  .th-lobby .imm { font-size: 15px; }
+  .th-lobby .composer { left: calc(var(--bxl) + 14px); right: calc(var(--bxr) + 12px); bottom: calc(var(--bxb) + 12px); height: 54px; grid-template-columns: 1fr 56px; gap: 10px; }
+  .th-lobby .composer textarea { height: 48px; padding: 10px 12px; font-size: 16px; }
+  .th-lobby .say { width: 56px; height: 56px; font-size: 11px; }
+  .th-lobby .status { right: calc(var(--bxr) + 16px); bottom: calc(var(--bxb) + 68px); font-size: 14px; }
+  .th-lobby .mode { gap: 4px; }
+  .th-lobby .mode button { width: 26px; height: 26px; }
+  .th-lobby .actions { left: 2%; right: 2%; top: auto; bottom: calc(var(--bxb) + var(--bxh) + 32px); flex-direction: row; justify-content: space-between; gap: 8px; }
+  .th-lobby .actions { width: auto; }
+  .th-lobby .actions button { width: auto; min-width: 0; flex: 1; height: 46px; padding: 0 20px; font-size: 11.5px; letter-spacing: .05em; }
+  .th-lobby .actions button::before, .th-lobby .actions button::after { display: none; }
+  .th-lobby .hand { z-index: 5; left: 2%; right: 2%; max-width: none; bottom: calc(var(--bxb) + var(--bxh) + 84px); justify-content: center; padding: 14px 0 4px 45px; gap: 0; }
+  .th-lobby .fact-card { width: 130px; min-height: 0; height: 64px; margin: 0 0 0 -45px; padding: 8px 10px; font-size: 11px; line-height: 1.2; overflow: hidden; transform: none; }
+  .th-lobby .fact-card.used { transform: translateY(6px); }
+  .th-lobby .fact-card:hover, .th-lobby .fact-card:focus-visible { margin: 0 0 0 -45px; transform: translateY(-8px); }
+  .th-lobby .fact-card::before { width: 16px; height: 16px; }
+  .th-lobby .lp-ped { display: none; }
+  .th-lobby .moments { padding-top: 0; }
+  .th-lobby .moments button::before { display: none; }
+  .th-lobby .moments { left: 8px; right: auto; top: 58px; flex-direction: column; gap: 10px; }
+  .th-lobby .moments button { width: 60px; height: 44px; padding: 4px; }
+  .th-lobby .moments button:nth-child(2n) { transform: rotate(3deg); }
+  .th-lobby .end { min-width: 0; width: 88%; padding: 22px 20px; }
+  .th-lobby .end-title { font-size: 22px; }
+  .th-lobby .leave { min-width: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .th-lobby .lp-rays, .th-lobby .lp-halo .hl1, .th-lobby .lp-halo .hl2, .th-lobby .lp-halo .flare { animation: none; }
+  .th-lobby .lp-scale .beam, .th-lobby .lp-scale .pan-l, .th-lobby .lp-scale .pan-r { transition: none; }
+}
+`;
+
+/** Floating dust in the window light (a canvas over the place). */
+function dust(canvas: HTMLCanvasElement, reduced: boolean): () => void {
+  const g = canvas.getContext("2d");
+  if (!g) return () => {};
+  const mote = moteSprite();
+  let s = 7;
+  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const motes = Array.from({ length: 40 }, () => ({ x: r(), y: r(), z: 0.3 + r() * 0.7, p: r() * 6.28, v: 0.004 + r() * 0.01 }));
+  let raf = 0;
+  const draw = (ms: number) => {
+    const t = reduced ? 0 : ms / 1000;
+    const W = (canvas.width = Math.max(1, Math.round(canvas.clientWidth / 2)));
+    const H = (canvas.height = Math.max(1, Math.round(canvas.clientHeight / 2)));
+    g.clearRect(0, 0, W, H);
+    for (const m of motes) {
+      const x = ((m.x + Math.sin(t * 0.13 + m.p) * 0.02 + t * m.v * 0.25) % 1) * W;
+      const y = ((m.y - t * m.v * 0.5 + 10) % 1) * H;
+      const lit = Math.max(0.15, 1 - (x / W) * 0.9 - (y / H) * 0.3);
+      const size = (4 + m.z * 9) * (0.6 + 0.4 * Math.sin(t * 0.8 + m.p));
+      g.globalAlpha = 0.5 * lit * m.z;
+      g.drawImage(mote, x - size / 2, y - size / 2, size, size);
+    }
+    g.globalAlpha = 1;
+    if (!reduced) raf = requestAnimationFrame(draw);
+  };
+  raf = requestAnimationFrame(draw);
+  return () => cancelAnimationFrame(raf);
+}
+
+/** The obsidian-glass name plaque (the scene's lead nameplate, with its gold-leaf scrolls). */
+function glassTab(): string {
+  const d = "M30 3 H390 L417 39 L390 75 H30 L3 39Z";
+  const scroll = (x: number, s: number) => `<g transform="translate(${x} 39) scale(${s} 1)"><path d="M0 0 c-12 -1 -20 -12 -11 -21 c6 -6 14 -2 12 5 c-1 4 -6 4 -6 0" fill="none" stroke="#1c1308" stroke-width="5" stroke-linecap="round"/><path d="M0 0 c-12 -1 -20 -12 -11 -21 c6 -6 14 -2 12 5 c-1 4 -6 4 -6 0" fill="none" stroke="url(#lb-brass)" stroke-width="2.8" stroke-linecap="round"/><path d="M0 0 c-12 1 -20 12 -11 21 c6 6 14 2 12 -5" fill="none" stroke="url(#lb-brass)" stroke-width="2" stroke-linecap="round"/></g>`;
+  return `<svg viewBox="-34 0 488 78" class="art" aria-hidden="true" preserveAspectRatio="none"><g filter="url(#lb-sh2)">
+${scroll(4, 1)}${scroll(416, -1)}
+<path d="${d}" fill="#0c0a08" fill-opacity=".92" stroke="#1c1308" stroke-width="3"/>
+<path d="M32 7 H388 L412 39 L388 71 H32 L8 39Z" fill="none" stroke="#DFC183" stroke-width="1.2"/>
+<path d="M35 11 H385 L407 39 L385 67 H35 L13 39Z" fill="none" stroke="#DFC183" stroke-width=".7" opacity=".55"/>
+<path d="M36 10 H384" stroke="#fff" stroke-width="5" opacity=".06"/>
+<path d="M160 71 H260" stroke="#DFC183" stroke-width="1.2"/><path d="M210 66 L215 71 L210 76 L205 71Z" fill="#DFC183"/>
+</g></svg>`;
+}
+
+export const theme: ParleyTheme = {
+  css: css(parchment()),
+  decorate(ctx) {
+    const { root, scene, scenario } = ctx;
+    const mk = (cls: string, html = "", tag = "div") => {
+      const e = document.createElement(tag);
+      e.className = cls;
+      e.setAttribute("aria-hidden", "true");
+      e.innerHTML = html;
+      return e;
+    };
+    root.insertAdjacentHTML("afterbegin", lobbyDefs());
+    // The place's light: a glow and the halo behind the person, shafts and dust in front of the painting.
+    const figure = scene.querySelector(".figure");
+    scene.insertBefore(mk("lp-glow"), figure);
+    scene.insertBefore(mk("lp-halo", halo()), figure);
+    const dustEl = mk("lp-dust", "", "canvas") as HTMLCanvasElement;
+    scene.querySelector(".vignette")?.after(mk("lp-rays", rays()), dustEl);
+    const stopDust = dust(dustEl, ctx.reducedMotion);
+    scene.querySelector(".plaque")?.prepend(mk("lp-tab", glassTab()));
+    root.append(mk("lp-crest", crest()));
+    // The view modes are engraved bosses beside the title; name them for the pointer.
+    root.querySelectorAll<HTMLButtonElement>(".mode button").forEach((b) => (b.title = b.dataset.m === "transparent" ? "Show the dice maths" : "Immersive: the story only"));
+    // The balance, tipping with the deal.
+    const scale = mk("lp-scale", balanceRig());
+    const meterEl = root.querySelector<HTMLElement>(".meter");
+    meterEl?.prepend(scale, mk("lp-ped", pedestal()));
+    // The deal hangs from the pedestal's rings, however tall the meter grows.
+    const hang = () => {
+      if (meterEl) root.style.setProperty("--mh", `${Math.round(meterEl.offsetTop + meterEl.offsetHeight)}px`);
+    };
+    const beam = scale.querySelector<SVGGElement>(".beam");
+    const panL = scale.querySelector<SVGGElement>(".pan-l");
+    const panR = scale.querySelector<SVGGElement>(".pan-r");
+    const c = scenario.contest;
+    const tip = (value: number) => {
+      const span = Math.max(1, c.start - c.hardFloor);
+      const q = Math.max(0, Math.min(1, (value - c.hardFloor) / span));
+      const deg = (0.5 - q) * 24;
+      const a = (deg * Math.PI) / 180;
+      if (beam) beam.style.transform = `rotate(${deg.toFixed(2)}deg)`;
+      panL?.setAttribute("transform", `translate(${(120 - 98 * Math.cos(a)).toFixed(2)} ${(46 - 98 * Math.sin(a)).toFixed(2)})`);
+      panR?.setAttribute("transform", `translate(${(120 + 98 * Math.cos(a)).toFixed(2)} ${(46 + 98 * Math.sin(a)).toFixed(2)})`);
+    };
+    tip(ctx.state.value);
+    // The dialogue box, drawn at its real size.
+    const box = mk("lp-box");
+    root.append(box);
+    let lastKey = "";
+    const draw = () => {
+      const w = Math.round(box.clientWidth);
+      const h = Math.round(box.clientHeight);
+      const composer = root.querySelector(".composer") as HTMLElement | null;
+      const inputTop = composer && composer.offsetParent ? composer.getBoundingClientRect().top - box.getBoundingClientRect().top - 10 : h - 86;
+      const key = `${w}x${h}:${Math.round(inputTop)}`;
+      if (key === lastKey || w < 10) return;
+      lastKey = key;
+      box.innerHTML = dialogFrame(w, h, inputTop);
+    };
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(draw) : null;
+    ro?.observe(box);
+    requestAnimationFrame(() => {
+      draw();
+      hang();
+    });
+    return {
+      update(state) {
+        tip(state.value);
+        draw();
+        hang();
+      },
+      destroy() {
+        ro?.disconnect();
+        stopDust();
+      },
+    };
+  },
+};

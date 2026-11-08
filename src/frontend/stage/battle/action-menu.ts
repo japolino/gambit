@@ -24,8 +24,8 @@ export type MenuSkill = {
 type Mode = { kind: "skills"; actor: string; skills: MenuSkill[] } | { kind: "target"; skill: string; hint: string; confirm: boolean } | { kind: "wait"; text: string };
 
 class Button extends Container {
-  private g = new Graphics();
-  private hovered = false;
+  protected g = new Graphics();
+  protected hovered = false;
   constructor(private w: number, private h: number, private ui: number, private enabled: boolean, private accent: number, onTap: () => void) {
     super();
     this.addChild(this.g);
@@ -36,7 +36,7 @@ class Button extends Container {
     this.on("pointertap", () => { if (this.enabled) onTap(); });
     this.draw();
   }
-  private draw(): void {
+  protected draw(): void {
     const g = this.g;
     g.clear();
     const hot = this.hovered && this.enabled;
@@ -55,11 +55,11 @@ export class ActionMenu extends Container {
   onPick: (skillId: string) => void = () => {};
   onBack: () => void = () => {};
   onConfirm: () => void = () => {};
-  private bg = new Graphics();
-  private content = new Container();
-  private rect: Rect = { x: 0, y: 0, w: 300, h: 200 };
-  private ui = 1;
-  private mode: Mode = { kind: "wait", text: "" };
+  protected bg = new Graphics();
+  protected content = new Container();
+  protected rect: Rect = { x: 0, y: 0, w: 300, h: 200 };
+  protected ui = 1;
+  protected mode: Mode = { kind: "wait", text: "" };
 
   constructor() {
     super();
@@ -90,7 +90,7 @@ export class ActionMenu extends Container {
     this.render();
   }
 
-  private header(title: string, sub: string): number {
+  protected header(title: string, sub: string): number {
     const ui = this.ui;
     const pad = 12 * ui;
     const t = new Text({ text: caps(title), style: T.name(Math.round(16 * ui)) });
@@ -102,7 +102,7 @@ export class ActionMenu extends Container {
     return pad + t.height + 10 * ui;
   }
 
-  private render(): void {
+  protected render(): void {
     for (const c of this.content.removeChildren()) c.destroy({ children: true });
     const ui = this.ui;
     const pad = 12 * ui;
@@ -141,7 +141,7 @@ export class ActionMenu extends Container {
     });
   }
 
-  private addButton(x: number, y: number, w: number, h: number, label: string, sub: string, enabled: boolean, signature: boolean, accent: number, onTap: () => void, subIsReason = false): void {
+  protected addButton(x: number, y: number, w: number, h: number, label: string, sub: string, enabled: boolean, signature: boolean, accent: number, onTap: () => void, subIsReason = false): void {
     const ui = this.ui;
     const b = new Button(w, h, ui, enabled, accent, onTap);
     b.position.set(x, y);

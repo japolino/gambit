@@ -7,28 +7,62 @@
 
 /** Where an effect and a sound play, with the file-name words the import uses to fill an empty slot. */
 export const SLOTS = {
-  /** The screen shuts before a signature cut-in. */
-  "cutin.shut": ["shut", "close", "tv", "swoosh", "whoosh"],
-  /** The black cracking before it shatters. */
-  "cutin.crack": ["crack", "fracture", "lightning", "spark"],
-  /** The screen shatters and the picture slams in. */
-  "cutin.shatter": ["shatter", "glass", "break", "burst", "explosion"],
-  /** Loops on the move while the picture holds. */
+  /** A signature cut-in starts: the screen cuts to a grey flash, then black. */
+  "cutin.shut": ["shut", "close", "tv", "sceneswitch", "swoosh", "whoosh"],
+  /** Electricity crawling over the black, then the cracks webbing out. */
+  "cutin.crack": ["crack", "fracture", "lightning", "electron", "electric", "spark"],
+  /** The black shatters (the sheet's first frames flash at the break). */
+  "cutin.shatter": ["shatter", "glass", "break", "burst", "explosion", "super"],
+  /** The picture rushes in through the break (a whoosh). */
+  "cutin.rush": ["rush", "whoosh", "swing", "large"],
+  /** The picture locks into place. */
+  "cutin.slam": ["slam", "heavy", "punch", "blow"],
+  /** The speed-line backdrop behind the picture (frames cycled while it holds). */
+  "cutin.speed": ["speedline", "speed", "lines", "rush"],
+  /** Loops quietly under the picture while it holds. */
   "cutin.aura": ["aura", "charge", "flame", "magic", "energy", "glow"],
   /** Each word of the skill name lands. */
-  "cutin.stamp": ["stamp", "hit", "punch", "impact", "slam"],
+  "cutin.stamp": ["stamp", "text", "impact", "hit", "slam"],
+  /** A shimmer runs over the name while the picture holds. */
+  "cutin.glint": ["glint", "shakin", "kira", "shine", "sparkle"],
   /** The whiteout at the end of the cut-in. */
-  "cutin.whiteout": ["flash", "whiteout", "shine", "light"],
+  "cutin.whiteout": ["lightburst", "whiteout", "flash", "shine", "light"],
+  /** The energy release under the whiteout (layered with its sound). */
+  "cutin.burst": ["burst", "release", "flame", "explosion"],
+  /** A regular (panel) cut-in snaps open. */
+  "cutin.panel": ["panel", "cutin", "switch", "swoosh"],
   /** A physical hit on a target. */
   "hit.slash": ["slash", "sword", "cut", "claw"],
   /** A blunt or generic hit. */
   "hit.impact": ["impact", "punch", "hit", "strike", "blow"],
-  /** A magic hit. */
-  "hit.magic": ["magic", "spell", "fire", "ice", "thunder", "dark", "holy"],
+  /** A magic hit with no element slot of its own. */
+  "hit.magic": ["magic", "spell", "swirl"],
+  /** Element hits; an empty one falls back to hit.magic. */
+  "hit.fire": ["fire", "flame", "burn"],
+  "hit.frost": ["frost", "ice", "freeze", "water"],
+  "hit.storm": ["storm", "thunder", "electron", "electric", "bolt"],
+  "hit.shadow": ["shadow", "dark", "blood", "curse", "claw"],
+  "hit.light": ["holy", "light", "flare", "shine"],
   /** A critical hit, on top of the hit itself. */
-  "hit.crit": ["crit", "critical", "heavy", "big"],
-  /** A heal or a buff landing. */
-  "hit.heal": ["heal", "cure", "buff", "recover", "sparkle"],
+  "hit.crit": ["crit", "critical", "cross", "heavy", "big"],
+  /** A heal landing. */
+  "hit.heal": ["heal", "cure", "recover"],
+  /** A buff or a shield landing. */
+  "hit.buff": ["buff", "statusup", "shield", "barrier"],
+  /** A harmful status landing. */
+  "hit.debuff": ["debuff", "curse", "poison", "statusdown"],
+  /** A miss: the swing whiffs. */
+  "hit.miss": ["miss", "dodge", "whiff", "swing"],
+  /** A hit taken fully by a shield. */
+  "hit.guard": ["guard", "block", "parry", "clash"],
+  /** A foe's poise breaks. */
+  "hit.break": ["break", "stagger", "shatter"],
+  /** A foe falls. */
+  "hit.defeat": ["defeat", "ko", "down", "collapse"],
+  /** An enemy winds up a move. */
+  "use.enemy": ["windup", "roar", "growl"],
+  /** A party member's turn begins (empty unless a pack has a fitting cue). */
+  "turn.start": ["turn", "cursor", "ready"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type FxSlot = keyof typeof SLOTS;
@@ -61,6 +95,7 @@ export interface FxManifest {
   version: 1;
   effects: Record<string, FxSheet>;
   sounds: Record<string, FxSound>;
-  /** Effect and sound ids per slot; null is empty, "none" is switched off. */
-  slots: Record<string, { fx: string | null; sound: string | null }>;
+  /** Effect and sound ids per slot; null is empty, "none" is switched off. `tint` ("#rrggbb") recolours the sheet and
+   * `scale` resizes it for this slot only, so one sheet can serve two slots. */
+  slots: Record<string, { fx: string | null; sound: string | null; tint?: string; scale?: number }>;
 }

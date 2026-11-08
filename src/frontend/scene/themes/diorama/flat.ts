@@ -17,7 +17,7 @@
  * haze with dust motes, the people, the counter and its props, the box's
  * frame, then light, narration and overlays.
  */
-import { esc, seedOf, type MenuItem, type SceneView, type ThemeCtx } from "../contract.js";
+import { esc, seedOf, type MenuItem, type SceneView, type ThemeCtx, type EncounterView } from "../contract.js";
 import * as A from "./art.js";
 import * as P from "./props3d.js";
 import { cleanCutout, drawChart } from "./chart.js";
@@ -31,6 +31,8 @@ export interface Mode {
   deactivate(): void;
   render(v: SceneView): void;
   key(e: KeyboardEvent, v: SceneView): boolean;
+  /** Stage a fight or a talk in this renderer's room (the 3D shop only); false when it can't. */
+  encounter?(e: EncounterView | null): boolean;
   destroy(): void;
 }
 

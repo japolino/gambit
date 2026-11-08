@@ -19,7 +19,9 @@ import type { ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
 import { figureStats, usableExpression } from "../art/key-background.js";
 import { prepareArtFresh as prepareArt } from "../art/prepare.js";
 import { paintBackground } from "../stage/placeholder.js";
-import { PARLEY_CSS } from "./style.js";
+import { parleyCss } from "./style.js";
+import { PARLEY_THEMES } from "./themes/index.js";
+import type { ParleyDecor } from "./themes/types.js";
 import { createPuppetDom } from "../scene/puppet-dom.js";
 import { PUPPET_ACT } from "./acting.js";
 import type { ThemeId } from "../../shared/scene-view.js";
@@ -135,6 +137,8 @@ export function mountParley(
     theme?: ThemeId;
     /** The Table theme's hand of fact cards (same as `theme: "table"`; kept for older callers). */
     table?: boolean;
+    /** The scene staged this talk in its 3D room (the scene stays visible under the view). */
+    inRoom?: boolean;
   },
   cb: ParleyCallbacks,
 ): ParleyView {
@@ -152,11 +156,14 @@ export function mountParley(
   const blocks = new Map<number, { npc: HTMLElement; read: HTMLElement; ready: boolean }>();
 
   ensureFonts();
+  const theme: ThemeId | undefined = where.theme ?? (where.table ? "table" : undefined);
+  const look = theme ? PARLEY_THEMES[theme] : undefined;
   const style = el("style");
-  style.textContent = PARLEY_CSS;
+  style.textContent = parleyCss(look?.css ?? "");
   const wrap = el("div", "pl");
   wrap.dataset.mode = viewMode;
-  const theme: ThemeId | undefined = where.theme ?? (where.table ? "table" : undefined);
+  // A theme that stages the talk in its 3D scene room: no backdrop of our own, the room shows through.
+  if (look?.inRoom && where.inRoom) wrap.classList.add("in-room");
   if (theme) wrap.classList.add(`th-${theme}`);
   // The Table theme (6.1): a game across a table, with what you know as a hand of cards.
   if (where.table || theme === "table") wrap.classList.add("table");
@@ -303,6 +310,12 @@ export function mountParley(
   side.append(head, log, foot);
   wrap.append(scene, side);
   root.append(style, wrap);
+  let decor: ParleyDecor | null = null;
+  try {
+    decor = look?.decorate?.({ root: wrap, scene, side, scenario, state: initial, reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches }) ?? null;
+  } catch (e) {
+    console.warn("[gambit] parley theme decoration failed", e);
+  }
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -586,9 +599,11 @@ export function mountParley(
       paintHead();
       paintFoot();
       if (rewound || !log.querySelector(".you") || next.exchanges.some((e, i) => !blocks.has(i))) rebuild();
+      decor?.update?.(state, [...known]);
     },
     exchange(next, ex, narrated) {
       state = next;
+      decor?.update?.(next, [...known]);
       lastExchangeAt = Date.now();
       hideMoment();
       const from = shownValue;
@@ -682,6 +697,11 @@ export function mountParley(
       paintFoot();
     },
     destroy() {
+      try {
+        decor?.destroy?.();
+      } catch {
+        // The view goes regardless.
+      }
       if (momentTimer) clearTimeout(momentTimer);
       puppets.destroy();
       objectUrls.forEach((u) => URL.revokeObjectURL(u));

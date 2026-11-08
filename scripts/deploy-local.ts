@@ -30,5 +30,10 @@ mkdirSync(join(host, "data", "extensions", "gambit", "storage"), { recursive: tr
 if (existsSync("assets")) {
   cpSync("assets", join(target, "assets"), { recursive: true });
   cpSync("assets", join(host, "data", "extensions", "gambit", "storage", "assets"), { recursive: true });
+  // The local-only demo set (assets/demo/, git-ignored): its manifest covers the main files plus the demo ones.
+  if (existsSync("assets/demo/manifest.json")) {
+    cpSync("assets/demo/manifest.json", join(target, "assets", "manifest.json"));
+    cpSync("assets/demo/manifest.json", join(host, "data", "extensions", "gambit", "storage", "assets", "manifest.json"));
+  }
 }
 console.log(`Deployed to ${target}`);

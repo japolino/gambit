@@ -125,57 +125,57 @@
   "sounds": {
     "soundeffect_lab_aura1": {
       "file": "sfx/soundeffect-lab/aura1.mp3",
-      "volume": 0.8,
+      "volume": 0.45,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_large_sword_slash1": {
       "file": "sfx/soundeffect-lab/large-sword-slash1.mp3",
-      "volume": 0.8,
+      "volume": 0.7,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_magic_cure1": {
       "file": "sfx/soundeffect-lab/magic-cure1.mp3",
-      "volume": 0.8,
+      "volume": 0.6,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_magic_electron1": {
       "file": "sfx/soundeffect-lab/magic-electron1.mp3",
-      "volume": 0.8,
+      "volume": 0.6,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_magic_flame1": {
       "file": "sfx/soundeffect-lab/magic-flame1.mp3",
-      "volume": 0.8,
+      "volume": 0.6,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_punch_heavy1": {
       "file": "sfx/soundeffect-lab/punch-heavy1.mp3",
-      "volume": 0.8,
+      "volume": 0.85,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_sceneswitch1": {
       "file": "sfx/soundeffect-lab/sceneswitch1.mp3",
-      "volume": 0.8,
+      "volume": 0.7,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_shakin1": {
       "file": "sfx/soundeffect-lab/shakin1.mp3",
-      "volume": 0.8,
+      "volume": 0.6,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_super_arts_hit1": {
       "file": "sfx/soundeffect-lab/super-arts-hit1.mp3",
-      "volume": 0.8,
+      "volume": 0.95,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_sword_slash3": {
       "file": "sfx/soundeffect-lab/sword-slash3.mp3",
-      "volume": 0.8,
+      "volume": 0.6,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     },
     "soundeffect_lab_text_impact1": {
       "file": "sfx/soundeffect-lab/text-impact1.mp3",
-      "volume": 0.8,
+      "volume": 0.75,
       "source": "効果音ラボ (Sound Effect Lab), https://soundeffect-lab.info/ - free sound effect, terms https://soundeffect-lab.info/agreement/"
     }
   },
@@ -185,36 +185,82 @@
       "sound": "soundeffect_lab_sceneswitch1"
     },
     "cutin.crack": {
-      "fx": "pipoya_crack_lightning_5x3",
+      "fx": "none",
       "sound": "soundeffect_lab_magic_electron1"
     },
     "cutin.shatter": {
       "fx": "pipoya_shatter_flash_2x8",
       "sound": "soundeffect_lab_super_arts_hit1"
     },
+    "cutin.rush": {
+      "fx": "none",
+      "sound": "soundeffect_lab_large_sword_slash1"
+    },
+    "cutin.slam": {
+      "fx": "none",
+      "sound": "soundeffect_lab_punch_heavy1"
+    },
+    "cutin.speed": {
+      "fx": null,
+      "sound": "none"
+    },
     "cutin.aura": {
-      "fx": "pipoya_aura_arcane_3x10",
+      "fx": "none",
       "sound": "soundeffect_lab_aura1"
     },
     "cutin.stamp": {
-      "fx": "pipoya_stamp_spark_5x2",
+      "fx": "none",
       "sound": "soundeffect_lab_text_impact1"
+    },
+    "cutin.glint": {
+      "fx": "none",
+      "sound": "soundeffect_lab_shakin1"
     },
     "cutin.whiteout": {
       "fx": "pipoya_whiteout_flare_3x3",
-      "sound": "soundeffect_lab_shakin1"
+      "sound": "soundeffect_lab_magic_cure1"
+    },
+    "cutin.burst": {
+      "fx": "none",
+      "sound": "soundeffect_lab_magic_flame1"
+    },
+    "cutin.panel": {
+      "fx": "none",
+      "sound": "soundeffect_lab_sceneswitch1"
     },
     "hit.slash": {
       "fx": "pipoya_slash_4x4",
       "sound": "soundeffect_lab_sword_slash3"
     },
     "hit.impact": {
-      "fx": "pipoya_impact_burst_5x2",
+      "fx": "pipoya_stamp_spark_5x2",
       "sound": "soundeffect_lab_punch_heavy1"
     },
     "hit.magic": {
       "fx": "pipoya_magic_swirl_5x2",
       "sound": "soundeffect_lab_magic_flame1"
+    },
+    "hit.fire": {
+      "fx": "pipoya_stamp_spark_5x2",
+      "sound": "soundeffect_lab_magic_flame1",
+      "tint": "#ff8a3a",
+      "scale": 2.6
+    },
+    "hit.frost": {
+      "fx": "pipoya_magic_swirl_5x2",
+      "sound": "soundeffect_lab_shakin1"
+    },
+    "hit.storm": {
+      "fx": "pipoya_impact_burst_5x2",
+      "sound": "soundeffect_lab_magic_electron1"
+    },
+    "hit.shadow": {
+      "fx": "pipoya_aura_arcane_3x10",
+      "sound": null
+    },
+    "hit.light": {
+      "fx": "pipoya_whiteout_flare_3x3",
+      "sound": "soundeffect_lab_shakin1"
     },
     "hit.crit": {
       "fx": "pipoya_crit_cross_slash_2x5",
@@ -223,6 +269,38 @@
     "hit.heal": {
       "fx": "pipoya_heal_cross_5x2",
       "sound": "soundeffect_lab_magic_cure1"
+    },
+    "hit.buff": {
+      "fx": "none",
+      "sound": "soundeffect_lab_shakin1"
+    },
+    "hit.debuff": {
+      "fx": "pipoya_crack_lightning_5x3",
+      "sound": null
+    },
+    "hit.miss": {
+      "fx": "none",
+      "sound": "soundeffect_lab_sword_slash3"
+    },
+    "hit.guard": {
+      "fx": "pipoya_stamp_spark_5x2",
+      "sound": "soundeffect_lab_sword_slash3"
+    },
+    "hit.break": {
+      "fx": "pipoya_shatter_flash_2x8",
+      "sound": "soundeffect_lab_text_impact1"
+    },
+    "hit.defeat": {
+      "fx": "none",
+      "sound": "soundeffect_lab_super_arts_hit1"
+    },
+    "use.enemy": {
+      "fx": null,
+      "sound": null
+    },
+    "turn.start": {
+      "fx": null,
+      "sound": null
     }
   }
 }

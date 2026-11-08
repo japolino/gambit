@@ -15,7 +15,7 @@ import type { Action, BattleEvent, BattleState } from "../../engine/types.js";
 import { reducedMotion } from "./anim.js";
 import { BattleStage, type ArtOptions, type StepResult } from "./battle/stage.js";
 import type { ThemeId } from "../../shared/scene-view.js";
-import { applyStageSkin, loadSkinFonts } from "./skin.js";
+import { applyStageSkin, currentBattleTheme, loadSkinFonts } from "./skin.js";
 import { C, hex } from "./theme.js";
 
 export type BattleStageOptions = {
@@ -47,7 +47,8 @@ export function mountBattleStage(root: HTMLElement, opts: BattleStageOptions): B
   const host = document.createElement("div");
   host.setAttribute("data-gambit-stage", "battle");
   if (opts.theme) applyStageSkin(opts.theme);
-  host.style.cssText = `position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:${hex(C.ink)};`;
+  const seeThrough = currentBattleTheme()?.backdrop === "transparent";
+  host.style.cssText = `position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:${seeThrough ? "transparent" : hex(C.ink)};`;
   root.appendChild(host);
 
   const app = new Application();
@@ -69,6 +70,7 @@ export function mountBattleStage(root: HTMLElement, opts: BattleStageOptions): B
       preference: "webgl",
       antialias: true,
       background: C.ink,
+      backgroundAlpha: seeThrough ? 0 : 1,
       resolution: Math.min(2, globalThis.devicePixelRatio || 1),
       autoDensity: true,
     });

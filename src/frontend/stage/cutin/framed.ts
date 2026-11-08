@@ -1,35 +1,47 @@
 /**
- * The framed cut-in (docs/DESIGN.md, 5.4) for a painted action splash (Inlay
- * paints one with its own backdrop). About 2.45 s; a tap or click skips it.
- *   0.00  the screen shuts like an old set turning off: black shutters slam to a white slit that snaps shut;
- *   0.16  cracks race out from the action point in three steps, tapering, light leaking from a hot core;
- *   0.46  the black shatters into tumbling shards that fly past the camera over a white burst, and the
- *         picture slams in from 155% with its colour channels split, the camera shaking;
- *   0.54  a black wedge cuts into the lower corner and the skill name stamps onto it word by word (the
- *         key word largest), the fighter's tag last;
- *   hold  the picture fills the screen (a blurred, tinted echo of it fills any sides it leaves), trembling
- *         and pushing in, in a tunnel of flickering speed ribbons, energy arcs sweeping across it, embers
- *         and bokeh streaming through, a flare and lens cross on the action; a pulse at mid-hold;
- *   1.95  an accent impact frame, then pure white with black spikes converging on the action, the name
- *         burned in black; the white clears back to the battle as the words split apart.
- * Colours come from the picture itself (its dominant saturated hue), so the effects match the painting.
- * Inlay's cut-in guideline puts the face in the upper-left third and the move reaching out right of centre,
- * which is where the focus and the flare sit by default.
+ * The framed cut-in (docs/DESIGN.md, 5.4) for a painted action splash on an ultimate. About 4.3 s; a tap or click
+ * skips it. Beats (seconds), each with its slot's sheet and sound from assets/ (fx-library.ts, src/shared/fx.ts):
+ *   0.00  hard cut to a grey flash with thin needles raining down the middle; it drains to black by 0.33
+ *         (cutin.shut);
+ *   0.45  a forked bolt crawls up from the bottom edge (cutin.crack); 0.72 a blue lightning web flashes over the
+ *         whole black in three steps, densest across the middle, white-hot at its joints, and holds, flickering
+ *         (cutin.crack again, cut short at the break);
+ *   1.38  the black breaks into chunks blown past the camera, a star flash on the break (cutin.shatter, with the
+ *         cutin.glint sound for the glassy top); behind them a blue speed-line backdrop (cutin.speed sheet, else
+ *         drawn) races at -15 deg;
+ *   1.42  the picture bursts through from 185% with its colour channels split and a smear (cutin.rush), locking
+ *         at 1.74 (cutin.slam) under a quiet aura bed (cutin.aura); lines and needles stream over it;
+ *   1.69  the skill name slams down the left as one stacked block landing on the lock, words 1.5 frames apart, each
+ *         with a cyan/magenta split snapping shut (cutin.stamp, on the lock); then the fighter's name slams across
+ *         the bottom with a lingering chromatic split (cutin.glint);
+ *   hold  the picture trembles and pushes in slowly; a flare pulses on the action;
+ *   3.72  the picture whips toward the camera, blurring, into a white burst (cutin.whiteout and cutin.burst, then
+ *         cutin.shut softly under it); the name blows out with it; black needles strobe through the white, which
+ *         clears back to the battle by 4.27.
+ * The web and the lines stay blue (the house look of the move); the flare takes the picture's own dominant hue.
+ * Inlay's cut-in guideline puts the face in the upper-left third and the move reaching out right of centre, which
+ * is where the flare sits by default. With no assets loaded every beat still plays from code, silently.
  */
 import { BlurFilter, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { ease } from "../anim.js";
-import { FONT_DISPLAY, FONT_UI, mixColor, textStyle } from "../theme.js";
-import { THEME_FONTS_CSS } from "../../scene/fonts.js";
+import { FONT_UI, mixColor, textStyle } from "../theme.js";
 import { buildFx, resolveFx, type FxContext } from "./fx.js";
 import type { CutInOptions } from "./cutin.js";
+import { fxLibrary, type SoundHandle } from "../fx-library.js";
+import type { FxSlot } from "../../../shared/fx.js";
 
-export const FRAMED_SECONDS = 2.45;
+/** The beats (seconds from the start). */
+const T = {
+  grey: 0.1, black: 0.33, bolt: 0.45, web: 0.72, shatter: 1.38, slam: 1.42, lock: 1.74,
+  stamp: 1.69, wordGap: 0.05, exit: 3.72, white: 3.94, clear: 4.04, end: 4.27,
+};
+export const FRAMED_SECONDS = T.end;
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-const inQuad = (t: number): number => t * t;
-const inExpo = (t: number): number => (t <= 0 ? 0 : 2 ** (10 * t - 10));
 const span = (t: number, a: number, b: number): number => clamp01((t - a) / (b - a));
-const TITLE_FONT = `"Gambit Cinzel", ${FONT_DISPLAY}`;
+const HEAVY = `"Arial Black", "Segoe UI Black", "Helvetica Neue", Impact, ${FONT_UI}, sans-serif`;
+/** The move's house colours: the lightning web and the speed lines. */
+const BLUE = { wide: 0x1144ff, body: 0x2277ff, deep: 0x000a24, lines: [0x0055cc, 0x00aaff, 0x66ffff, 0xffffff] };
 
 /** A deterministic random stream (the same cut-in looks the same each time). */
 function rng(seed: number): () => number {
@@ -91,25 +103,10 @@ export function paletteFromArt(tex: Texture): CutinPalette {
   return p;
 }
 
-/** The theme fonts on the page (@font-face is ignored inside a shadow root), loaded before the name is set. */
-async function titleFont(px: number): Promise<void> {
-  if (!document.getElementById("gambit-pixel-font") && !document.getElementById("gambit-cutin-fonts")) {
-    const st = document.createElement("style");
-    st.id = "gambit-cutin-fonts";
-    st.textContent = THEME_FONTS_CSS;
-    document.head.append(st);
-  }
-  try {
-    await Promise.race([document.fonts.load(`800 ${Math.round(px)}px "Gambit Cinzel"`), new Promise((r) => setTimeout(r, 300))]);
-  } catch {
-    // Falls back to the display serif.
-  }
-}
-
 const canvasTextures = new Map<string, Texture>();
-/** White textures drawn once: the picture's mask (a soft, wide left edge; `right` is the right edge's ramp) or a soft radial glow. */
-function softTexture(kind: "feather" | "glow", right = 0.025): Texture {
-  const key = kind === "feather" ? `feather-${right.toFixed(3)}` : kind;
+/** White textures drawn once: the picture's mask (soft left edge, `right` ramp on the right), a radial glow, a vertical smear. */
+function softTexture(kind: "feather" | "glow" | "smear", right = 0.025, left = 0.16, lean = 0): Texture {
+  const key = kind === "feather" ? `feather-${right.toFixed(3)}-${left.toFixed(2)}-${lean.toFixed(3)}` : kind;
   let t = canvasTextures.get(key);
   if (t) return t;
   const c = document.createElement("canvas");
@@ -124,6 +121,21 @@ function softTexture(kind: "feather" | "glow", right = 0.025): Texture {
     r.addColorStop(1, "rgba(255,255,255,0)");
     g.fillStyle = r;
     g.fillRect(0, 0, 256, 256);
+  } else if (kind === "smear") {
+    // A tall streak: bright core fading up and down, with fine vertical striations.
+    const v = g.createLinearGradient(0, 0, 0, 256);
+    v.addColorStop(0, "rgba(255,255,255,0)");
+    v.addColorStop(0.35, "rgba(255,255,255,0.85)");
+    v.addColorStop(0.5, "rgba(255,255,255,1)");
+    v.addColorStop(0.65, "rgba(255,255,255,0.85)");
+    v.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = v;
+    g.fillRect(0, 0, 256, 256);
+    g.globalCompositeOperation = "destination-out";
+    for (let x = 0; x < 256; x += 3) {
+      g.fillStyle = `rgba(0,0,0,${(Math.sin(x * 12.9898) * 0.5 + 0.5) * 0.3})`;
+      g.fillRect(x, 0, 1 + (x % 2), 256);
+    }
   } else {
     const img = g.createImageData(256, 256);
     const sm = (a: number) => a * a * (3 - 2 * a);
@@ -131,7 +143,9 @@ function softTexture(kind: "feather" | "glow", right = 0.025): Texture {
       for (let x = 0; x < 256; x++) {
         const u = (x + 0.5) / 256;
         const v = (y + 0.5) / 256;
-        const a = clamp01(u / 0.16) * clamp01((1 - u) / right) * clamp01(Math.min(v, 1 - v) / 0.025);
+        // `lean` slants the right edge across the height, so that once the sprite is skewed it stands upright.
+        const edge = 1 - Math.abs(lean) / 2 + lean * (v - 0.5);
+        const a = clamp01(u / left) * clamp01((edge - u) / right) * clamp01(Math.min(v, 1 - v) / 0.025);
         const i = (y * 256 + x) * 4;
         img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
         img.data[i + 3] = Math.round(255 * sm(a));
@@ -144,128 +158,122 @@ function softTexture(kind: "feather" | "glow", right = 0.025): Texture {
   return t;
 }
 
-const inks = new WeakMap<object, { poster: Texture; ink: Texture } | null>();
-/**
- * The picture as ink for the impact frames: `poster` is three tones (shadows black, highlights white, the rest
- * clear so the flash colour shows through) and `ink` is the shadows alone. Null when the picture cannot be read.
- */
-function inkOf(tex: Texture): { poster: Texture; ink: Texture } | null {
-  const key = tex.source as object;
-  if (inks.has(key)) return inks.get(key)!;
-  let out: { poster: Texture; ink: Texture } | null = null;
-  try {
-    const res = (tex.source as { resource?: CanvasImageSource }).resource;
-    if (res) {
-      const W = Math.min(640, tex.width);
-      const H = Math.round((W / tex.width) * tex.height);
-      const src = document.createElement("canvas");
-      src.width = W;
-      src.height = H;
-      const g = src.getContext("2d", { willReadFrequently: true })!;
-      g.drawImage(res, 0, 0, W, H);
-      const d = g.getImageData(0, 0, W, H);
-      const poster = new ImageData(W, H);
-      const ink = new ImageData(W, H);
-      for (let i = 0; i < d.data.length; i += 4) {
-        const l = (0.299 * d.data[i]! + 0.587 * d.data[i + 1]! + 0.114 * d.data[i + 2]!) / 255;
-        if (l < 0.3) {
-          poster.data[i] = 8;
-          poster.data[i + 1] = 2;
-          poster.data[i + 2] = 10;
-          poster.data[i + 3] = 255;
-          ink.data[i + 3] = 255;
-        } else if (l > 0.72) {
-          poster.data[i] = poster.data[i + 1] = poster.data[i + 2] = 255;
-          poster.data[i + 3] = 255;
-        }
-      }
-      const mk = (img: ImageData) => {
-        const c = document.createElement("canvas");
-        c.width = W;
-        c.height = H;
-        c.getContext("2d")!.putImageData(img, 0, 0);
-        return Texture.from(c);
-      };
-      out = { poster: mk(poster), ink: mk(ink) };
+/** A jagged polyline from a to b (midpoint displacement), as a flat [x, y, ...] list. */
+function bolt(ax: number, ay: number, bx: number, by: number, rough: number, depth: number, r: () => number): number[] {
+  let pts = [ax, ay, bx, by];
+  let amp = rough;
+  for (let d = 0; d < depth; d++) {
+    const next: number[] = [];
+    for (let i = 0; i < pts.length - 2; i += 2) {
+      const x0 = pts[i]!, y0 = pts[i + 1]!, x1 = pts[i + 2]!, y1 = pts[i + 3]!;
+      const dx = x1 - x0, dy = y1 - y0;
+      const l = Math.hypot(dx, dy) || 1;
+      const off = (r() - 0.5) * 2 * amp;
+      next.push(x0, y0, (x0 + x1) / 2 + (-dy / l) * off, (y0 + y1) / 2 + (dx / l) * off);
     }
-  } catch {
-    out = null;
+    next.push(pts[pts.length - 2]!, pts[pts.length - 1]!);
+    pts = next;
+    amp *= 0.55;
   }
-  inks.set(key, out);
+  return pts;
+}
+
+type WebEdge = { pts: number[]; ring: number; weight: number };
+/**
+ * A lightning web over the whole screen: nodes scattered densely around the action point and thinly to the edges,
+ * each joined to its nearest neighbours by jagged bolts, with spurs off the screen. `ring` (0..2) is the reveal step.
+ */
+function webEdges(cx: number, cy: number, w: number, h: number, r: () => number): WebEdge[] {
+  const nodes: { x: number; y: number; d: number }[] = [];
+  const diag = Math.hypot(w, h);
+  for (let i = 0; i < 110; i++) {
+    // Nearly half the nodes fill the middle of the screen (where the eye is), the rest scatter out from the centre.
+    let x: number, y: number;
+    if (i < 48) {
+      x = w * (0.22 + r() * 0.56);
+      y = h * (0.2 + r() * 0.6);
+    } else {
+      const a = r() * Math.PI * 2;
+      const k = Math.pow(r(), 0.6);
+      x = cx + Math.cos(a) * k * w * 0.7;
+      y = cy + Math.sin(a) * k * h * 0.7;
+    }
+    nodes.push({ x, y, d: Math.hypot(x - cx, y - cy) / (diag * 0.5) });
+  }
+  nodes.push({ x: cx, y: cy, d: 0 });
+  const out: WebEdge[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i]!;
+    const near = nodes.map((m, j) => ({ j, d: Math.hypot(m.x - n.x, m.y - n.y) })).filter((e) => e.j !== i).sort((a, b) => a.d - b.d).slice(0, 3);
+    for (const e of near) {
+      const key = i < e.j ? `${i}-${e.j}` : `${e.j}-${i}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const m = nodes[e.j]!;
+      const ring = Math.min(2, Math.floor(((n.d + m.d) / 2) * 3.2));
+      out.push({ pts: bolt(n.x, n.y, m.x, m.y, e.d * 0.13, 3, r), ring, weight: 1 - Math.min(1, (n.d + m.d) / 2) * 0.6 });
+    }
+  }
+  // Long chords straight across the middle, so no big dark cell is left where the eye sits.
+  for (let i = 0; i < 8; i++) {
+    const ax = w * (0.18 + r() * 0.17), ay = h * (0.2 + r() * 0.6);
+    const bx = w * (0.65 + r() * 0.17), by = h * (0.2 + r() * 0.6);
+    out.push({ pts: bolt(ax, ay, bx, by, Math.hypot(bx - ax, by - ay) * 0.1, 4, r), ring: 1, weight: 0.75 });
+  }
+  // Spurs from the outer nodes off past the edges.
+  for (const n of nodes) {
+    if (n.d < 0.45 || r() < 0.35) continue;
+    const a = Math.atan2(n.y - cy, n.x - cx) + (r() - 0.5) * 0.8;
+    const len = diag * (0.15 + r() * 0.2);
+    out.push({ pts: bolt(n.x, n.y, n.x + Math.cos(a) * len, n.y + Math.sin(a) * len, len * 0.2, 4, r), ring: 2, weight: 0.4 });
+  }
   return out;
 }
 
-/** Jagged branches from a point to past the screen edges (midpoint displacement), with forks. */
-function crackPaths(x0: number, y0: number, reach: number, r: () => number): { pts: number[]; depth: number }[] {
-  const out: { pts: number[]; depth: number }[] = [];
-  const branch = (ax: number, ay: number, ang: number, len: number, depth: number, segs: number) => {
-    const pts = [ax, ay];
-    let x = ax;
-    let y = ay;
-    for (let i = 1; i <= segs; i++) {
-      const a = ang + (r() - 0.5) * 0.9;
-      x += Math.cos(a) * (len / segs);
-      y += Math.sin(a) * (len / segs);
-      pts.push(x, y);
-      if (depth === 0 && i > 3 && i < segs - 3 && r() < 0.22) branch(x, y, ang + (r() < 0.5 ? -1 : 1) * (0.52 + r() * 0.35), len * (0.2 + r() * 0.25), 1, 10);
-    }
-    out.push({ pts, depth });
-  };
-  const n = 8;
-  for (let i = 0; i < n; i++) branch(x0, y0, (i / n) * Math.PI * 2 + r() * 0.5, reach * (0.75 + r() * 0.5), 0, 28);
-  return out;
+/** A polyline drawn as one tapered filled strip (so joints never double up under an additive blend). */
+function taper(g: Graphics, pts: number[], w0: number, w1: number, color: number, alpha: number): void {
+  const n = pts.length / 2;
+  if (n < 2) return;
+  const left: number[] = [];
+  const right: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const x = pts[i * 2]!, y = pts[i * 2 + 1]!;
+    const j = Math.min(n - 1, i + 1), k0 = Math.max(0, i - 1);
+    const dx = pts[j * 2]! - pts[k0 * 2]!, dy = pts[j * 2 + 1]! - pts[k0 * 2 + 1]!;
+    const dl = Math.hypot(dx, dy) || 1;
+    const u = i / (n - 1);
+    const half = (w0 + (w1 - w0) * u) / 2;
+    left.push(x - (dy / dl) * half, y + (dx / dl) * half);
+    right.unshift(x + (dy / dl) * half, y - (dx / dl) * half);
+  }
+  g.poly([...left, ...right]).fill({ color, alpha });
 }
 
 type Line = { y: number; len: number; speed: number; phase: number; thick: number; color: number; alpha: number };
 /** Tapered wedges streaming along x, flickering in thickness every other frame. */
-function drawLines(g: Graphics, list: Line[], t: number, width: number, dir: number, ui: number, alpha: number, frame: number, r: () => number): void {
+function drawLines(g: Graphics, list: Line[], t: number, width: number, dir: number, alpha: number, frame: number, r: () => number): void {
   g.clear();
   if (alpha <= 0.01) return;
   for (const s of list) {
     const p = (s.phase + t * s.speed) % 1;
     const len = s.len * width;
     const x = dir > 0 ? width * 0.7 - p * width * 1.9 : -width * 0.7 + p * width * 1.9 - len;
-    const flick = frame % 2 === 0 ? 0.6 + r() * 0.8 : 1;
-    const half = (s.thick * ui * flick) / 2;
+    const flick = frame % 2 === 0 ? 0.5 + r() * 1 : 1;
+    const half = (s.thick * flick) / 2;
     g.poly([x, s.y, x + len * 0.55, s.y - half, x + len, s.y, x + len * 0.55, s.y + half]).fill({ color: s.color, alpha: alpha * s.alpha });
   }
-}
-
-/** A tapered strip along a quadratic curve, between u0 and u1 (0..1); width peaks mid-window. */
-function strip(g: Graphics, p0: number[], p1: number[], p2: number[], u0: number, u1: number, width: number, color: number, alpha: number, teeth = 0, seed = 0): void {
-  const n = teeth ? 34 : 22;
-  const top: number[] = [];
-  const bot: number[] = [];
-  for (let i = 0; i <= n; i++) {
-    const u = u0 + (u1 - u0) * (i / n);
-    const a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, c = u * u;
-    const x = a * p0[0]! + b * p1[0]! + c * p2[0]!;
-    const y = a * p0[1]! + b * p1[1]! + c * p2[1]!;
-    const dx = 2 * (1 - u) * (p1[0]! - p0[0]!) + 2 * u * (p2[0]! - p1[0]!);
-    const dy = 2 * (1 - u) * (p1[1]! - p0[1]!) + 2 * u * (p2[1]! - p1[1]!);
-    const dl = Math.hypot(dx, dy) || 1;
-    const jag = teeth ? (i % 2 ? 1 + teeth : 1 - teeth * 0.6) * (0.75 + 0.5 * (Math.sin(i * 12.9898 + seed * 78.233) * 0.5 + 0.5)) : 1;
-    const half = (width / 2) * Math.sin(Math.PI * (i / n)) * jag;
-    top.push(x - (dy / dl) * half, y + (dx / dl) * half);
-    bot.unshift(x + (dy / dl) * half, y - (dx / dl) * half);
-  }
-  g.poly([...top, ...bot]).fill({ color, alpha });
 }
 
 export async function playFramed(o: CutInOptions): Promise<void> {
   const { w, h, ui, clock } = o;
   const pal = paletteFromArt(o.portrait);
-  const night = mixColor(pal.deep, 0x000000, 0.55);
   const dir = o.enemy ? -1 : 1;
-  const total = FRAMED_SECONDS;
-  const T = { shut: 0.14, dark: 0.18, shatter: 0.46, slamEnd: 0.74, wedge: 0.54, stamp: 0.58, pulse: 1.35, impact: 1.95, white: 1.99, clear: 2.12 };
+  const total = T.end;
+  const diag = Math.hypot(w, h);
+  const portrait = h > w * 1.05;
   const r = rng(o.skillName.length * 977 + o.actorName.length * 31);
-
-  // --- Title sizes (decided first: the font is loaded before anything is drawn) -----------------------------
-  const words = o.skillName.split(/\s+/).filter(Boolean);
-  const heroIdx = words.length <= 1 ? 0 : words.reduce((best, wd, i) => (i > 0 && wd.length > (words[best]!.length) ? i : best), 1);
-  const sizeOf = (i: number) => h * (i === heroIdx ? 0.15 : i === 0 && words.length > 1 ? 0.085 : 0.105);
-  await titleFont(sizeOf(heroIdx));
+  const sx = (v: number) => (dir > 0 ? v : w - v);
 
   const root = new Container();
   root.eventMode = "static";
@@ -275,59 +283,114 @@ export async function playFramed(o: CutInOptions): Promise<void> {
   // --- The picture's placement ------------------------------------------------------------------------------
   const tw = o.portrait.width;
   const th = o.portrait.height;
-  const k = Math.max((w * 0.72) / tw, (h * 1.22) / th);
+  const k = Math.max((w * 0.72) / tw, (h * 1.18) / th);
   const artW = tw * k;
   const artH = th * k;
   const focus = o.face ?? { x: 0.42, y: 0.32 };
   let artCX: number;
   if (artW >= w) artCX = Math.max(w - artW / 2, Math.min(artW / 2, w * 0.5 - (focus.x - 0.5) * artW));
   else artCX = dir > 0 ? Math.min(w * 0.6, w - 30 * ui - artW / 2) : Math.max(w * 0.4, 30 * ui + artW / 2);
-  const artCY = artH >= h ? Math.max(h - artH / 2, Math.min(artH / 2, h * 0.54)) : h * 0.54;
-  // The action point: right of centre in Inlay's composition (mirrored for the other side).
+  const artCY = artH >= h ? Math.max(h - artH / 2, Math.min(artH / 2, h * 0.52)) : h * 0.52;
   const actionU = dir > 0 ? 0.62 : 0.38;
   const fp = { x: artCX + (actionU - 0.5) * artW, y: artCY };
 
-  // --- The cut-in scene (revealed when the black shatters) ---------------------------------------------------
+  // --- 1. The cover: grey flash draining to black ----------------------------------------------------------
+  const cover = new Graphics().rect(-w * 0.1, -h * 0.1, w * 1.2, h * 1.2).fill({ color: 0xffffff });
+  // Needles raining down the middle third: white on the dark, white and black over the picture, black on the white.
+  type Needle = { x: number; len: number; v: number; phase: number; wid: number; a: number; dark: boolean };
+  const needles: Needle[] = Array.from({ length: 34 }, () => ({
+    x: w * (0.3 + r() * 0.4), len: h * (0.08 + r() * 0.34), v: h * (2.2 + r() * 2.4), phase: r(), wid: (0.8 + r() * 1.8) * ui, a: 0.35 + r() * 0.6, dark: r() < 0.5,
+  }));
+  const rain = new Graphics();
+  const drawRain = (t: number, alpha: number, mixed: boolean) => {
+    rain.clear();
+    if (alpha <= 0.01) return;
+    for (const n of needles) {
+      if (r() < 0.25) continue;
+      const y = (((n.phase * (h + n.len) + t * n.v) % (h + n.len)) + h + n.len) % (h + n.len) - n.len;
+      rain.poly([n.x, y, n.x + n.wid, y + n.len * 0.5, n.x, y + n.len, n.x - n.wid, y + n.len * 0.5]).fill({ color: mixed && n.dark ? 0x101018 : 0xffffff, alpha: n.a * alpha });
+    }
+  };
+
+  // --- 2. The web: a precursor bolt, then the full web in three steps ---------------------------------------
+  const webBox = new Container();
+  const webGlow = [new Graphics(), new Graphics(), new Graphics()];
+  const webMid = [new Graphics(), new Graphics(), new Graphics()];
+  const webCore = [new Graphics(), new Graphics(), new Graphics()];
+  const edges = webEdges((fp.x + w / 2) / 2, (fp.y + h / 2) / 2, w, h, r);
+  for (const e of edges) {
+    taper(webGlow[e.ring]!, e.pts, 11 * ui * e.weight + 3 * ui, 3 * ui, BLUE.wide, 0.65);
+    taper(webMid[e.ring]!, e.pts, 3.6 * ui * e.weight + 1 * ui, 1 * ui, BLUE.body, 0.9);
+    taper(webCore[e.ring]!, e.pts, 1.5 * ui * e.weight + 0.5 * ui, 0.4 * ui, 0xffffff, 1);
+  }
+  const glowBox = new Container();
+  glowBox.addChild(...webGlow);
+  glowBox.filters = [new BlurFilter({ strength: 8 * ui, quality: 3 })];
+  glowBox.blendMode = "add";
+  const coreBox = new Container();
+  coreBox.addChild(...webMid, ...webCore);
+  coreBox.blendMode = "add";
+  // White-hot stars where the main bolts meet.
+  const nodes = edges.filter((e) => e.ring <= 1 && e.weight > 0.55).slice(0, 18).map((e) => {
+    const s = new Sprite(softTexture("glow"));
+    s.anchor.set(0.5);
+    s.position.set(e.pts[0]!, e.pts[1]!);
+    s.tint = 0x88ccff;
+    s.blendMode = "add";
+    s.width = s.height = diag * (0.03 + r() * 0.025);
+    return { s, ring: e.ring, phase: r() * 6 };
+  });
+  const hot = new Sprite(softTexture("glow"));
+  hot.anchor.set(0.5);
+  hot.position.set(fp.x, fp.y);
+  hot.blendMode = "add";
+  hot.tint = BLUE.body;
+  const crawl = new Graphics();
+  crawl.blendMode = "add";
+  const crawlGlow = new Graphics();
+  crawlGlow.blendMode = "add";
+  crawlGlow.filters = [new BlurFilter({ strength: 4 * ui, quality: 2 })];
+  const crawlPts = bolt(sx(w * 0.5), h + 4 * ui, sx(w * 0.48), h * 0.55, h * 0.06, 5, r);
+  const crawlForks = [0.3, 0.5, 0.65, 0.8].map((u) => {
+    const i = Math.floor((crawlPts.length / 2 - 1) * u) * 2;
+    const a = -Math.PI / 2 + (r() < 0.5 ? -1 : 1) * (0.6 + r() * 0.6);
+    const len = h * (0.04 + r() * 0.06);
+    return { u, pts: bolt(crawlPts[i]!, crawlPts[i + 1]!, crawlPts[i]! + Math.cos(a) * len, crawlPts[i + 1]! + Math.sin(a) * len, len * 0.3, 3, r) };
+  });
+  webBox.addChild(glowBox, coreBox, ...nodes.map((n) => n.s), hot, crawlGlow, crawl);
+
+  // --- 3. The scene behind the break: speed-line backdrop, the picture, its flare ---------------------------
   const scene = new Container();
-  const voidBg = new Graphics().rect(-w * 0.1, -h * 0.1, w * 1.2, h * 1.2).fill({ color: night });
-  // A blurred, tinted echo of the picture fills the sides with its colour.
-  const echo = new Sprite(o.portrait);
-  echo.anchor.set(0.5);
-  echo.scale.set(Math.max((w * 1.15) / tw, (h * 1.15) / th));
-  echo.position.set(w / 2, h / 2);
-  echo.tint = mixColor(pal.mid, 0x000000, 0.2);
-  echo.alpha = 0.5;
-  echo.blendMode = "add";
-  echo.filters = [new BlurFilter({ strength: 32 * ui, quality: 4 })];
-  // Speed ribbons at -18 deg, and two wide counter-diagonal ribbons on the flanks.
+  const navy = new Graphics().rect(-w * 0.1, -h * 0.1, w * 1.2, h * 1.2).fill({ color: BLUE.deep });
   const tunnel = new Container();
   tunnel.position.set(w / 2, h / 2);
-  tunnel.rotation = -0.31 * dir;
+  tunnel.rotation = -0.26 * dir;
+  const speed = fxLibrary.sheet("cutin.speed");
+  const speedSprite = (alpha: number, blend: "normal" | "add", tint: number) => {
+    if (!speed) return null;
+    const s = new Sprite(speed.frames[0]!);
+    s.anchor.set(0.5);
+    s.width = diag * 1.25;
+    s.height = diag * 1.25 * 0.62;
+    s.blendMode = blend;
+    s.tint = tint;
+    s.alpha = alpha;
+    return s;
+  };
+  // The sheet's white core band reads as a wash at full size: pull it toward the deep blue of the reference look.
+  const speedBack = speedSprite(1, "normal", 0x6a8cff);
+  const speedScaleY = speedBack?.scale.y ?? 1;
+  if (speedBack) tunnel.addChild(speedBack);
   const lines = new Graphics();
   lines.blendMode = "add";
   tunnel.addChild(lines);
-  const diag = Math.hypot(w, h);
-  const lineList: Line[] = [
-    ...Array.from({ length: 21 }, () => ({ y: (r() - 0.5) * diag, len: 0.4 + r() * 0.5, speed: 1.3 + r() * 1.6, phase: r(), thick: 8 + r() * 20, color: r() < 0.6 ? pal.mid : pal.outer, alpha: 0.35 + r() * 0.3 })),
-    ...Array.from({ length: 65 }, () => ({ y: (r() - 0.5) * diag, len: 0.15 + r() * 0.45, speed: 2 + r() * 2.6, phase: r(), thick: 2 + r() * 3, color: r() < 0.55 ? pal.hi : 0xffffff, alpha: 0.5 + r() * 0.4 })),
-  ];
-  const flanks = new Graphics();
-  flanks.blendMode = "add";
-  // Energy arcs sweeping across the picture, a bright window running along each.
-  const arcs = Array.from({ length: 3 }, (_, i) => {
-    const sx = (v: number) => (dir > 0 ? v : w - v);
-    return {
-      p0: [sx(w * (0.22 + i * 0.06)), h * 1.12], p1: [sx(w * (0.35 + i * 0.12)), h * (0.35 - i * 0.12)], p2: [sx(w * (0.96 - i * 0.03)), h * (0.08 + i * 0.1)],
-      speed: 0.9 + i * 0.35, phase: i * 0.33, width: (16 + i * 6) * ui,
-    };
-  });
-  const arcGlow = new Graphics();
-  arcGlow.blendMode = "add";
-  arcGlow.filters = [new BlurFilter({ strength: 6 * ui, quality: 2 })];
-  const arcCore = new Graphics();
-  arcCore.blendMode = "add";
+  const lineList: Line[] = Array.from({ length: speedBack ? 34 : 80 }, () => ({
+    y: (r() - 0.5) * diag, len: 0.3 + r() * 0.6, speed: 2.2 + r() * 2.6, phase: r(), thick: (1 + r() * (speedBack ? 4 : 12)) * ui,
+    color: BLUE.lines[Math.floor(r() * BLUE.lines.length)]!, alpha: speedBack ? 0.4 + r() * 0.4 : 0.45 + r() * 0.45,
+  }));
 
-  // The picture: colour channels as three additive copies (split on the slam), masked by a soft-edged sheet.
+  // The picture: colour channels as two additive copies (split on the slam), masked by a soft-edged sheet whose
+  // wide left ramp lets the speed lines through behind the name.
   const art = new Container();
   art.position.set(artCX, artCY);
   const pivot = { x: (focus.x - 0.5) * artW, y: (focus.y - 0.5) * artH };
@@ -344,7 +407,12 @@ export async function playFramed(o: CutInOptions): Promise<void> {
   });
   const picBase = new Graphics().rect(-artW / 2 - 4, -artH / 2 - 4, artW + 8, artH + 8).fill({ color: 0x000000 });
   pic.addChild(picBase, ...chan);
-  const feather = new Sprite(softTexture("feather", Math.round(Math.min(0.15, Math.max(0.03, (90 * ui) / artW)) * 200) / 200));
+  const smear = new BlurFilter({ strengthX: 0, strengthY: 0, quality: 3 });
+  pic.filters = [smear];
+  // The mask is skewed with the lines; its right edge is slanted back in the texture so it lands upright on screen,
+  // inside the picture's own (upright) edge, and fades softly there instead of showing a hard seam.
+  const lean = portrait ? 0 : Math.round(Math.sin(0.32) * (artH / artW) * 100) / 100;
+  const feather = new Sprite(softTexture("feather", portrait ? Math.round(Math.min(0.15, Math.max(0.03, (90 * ui) / artW)) * 200) / 200 : 0.08, portrait ? 0.12 : 0.34, lean));
   feather.anchor.set(0.5);
   feather.width = artW * 1.04;
   feather.height = artH * 1.04;
@@ -352,7 +420,7 @@ export async function playFramed(o: CutInOptions): Promise<void> {
   if (dir < 0) feather.scale.x *= -1;
   art.addChild(pic, feather);
   art.mask = feather;
-  // Flare on the action: violet haze, crimson burst, a white lens cross.
+  // The flare on the action: a pulsing haze and burst, a white core and a turning lens cross.
   const flare = new Container();
   flare.position.set((actionU - 0.5) * artW, 0);
   const haze = new Sprite(softTexture("glow"));
@@ -365,242 +433,168 @@ export async function playFramed(o: CutInOptions): Promise<void> {
   }
   const cross = new Graphics();
   cross.blendMode = "add";
-  cross.rotation = -0.21;
-  cross.poly([-w * 0.275, 0, 0, -3 * ui, w * 0.275, 0, 0, 3 * ui]).fill({ color: 0xffffff, alpha: 0.95 });
-  cross.poly([0, -h * 0.175, 2 * ui, 0, 0, h * 0.175, -2 * ui, 0]).fill({ color: 0xffffff, alpha: 0.95 });
+  cross.poly([-w * 0.2, 0, 0, -2.5 * ui, w * 0.2, 0, 0, 2.5 * ui]).fill({ color: 0xffffff, alpha: 0.9 });
+  cross.poly([0, -h * 0.13, 1.6 * ui, 0, 0, h * 0.13, -1.6 * ui, 0]).fill({ color: 0xffffff, alpha: 0.9 });
+  cross.poly([-w * 0.07, -w * 0.07, w * 0.003, -w * 0.003, w * 0.07, w * 0.07, -w * 0.003, w * 0.003]).fill({ color: 0xffffff, alpha: 0.45 });
   flare.addChild(haze, burst, core, cross);
+  art.addChild(flare);
+  // Lines streak over the picture too, so it sits inside the motion: the sheet faintly, and drawn streaks.
+  const fgTunnel = new Container();
+  fgTunnel.position.set(w / 2, h / 2);
+  fgTunnel.rotation = tunnel.rotation;
+  const speedOver = speedSprite(0.26, "add", 0x9fb8ff);
+  if (speedOver) fgTunnel.addChild(speedOver);
+  const fgLines = new Graphics();
+  fgLines.blendMode = "add";
+  fgTunnel.addChild(fgLines);
+  const fgList: Line[] = Array.from({ length: 14 }, () => ({
+    y: (r() - 0.5) * diag, len: 0.2 + r() * 0.35, speed: 3 + r() * 2.5, phase: r(), thick: (1 + r() * 2.5) * ui, color: r() < 0.5 ? 0xffffff : BLUE.lines[2]!, alpha: 0.35 + r() * 0.3,
+  }));
+  scene.addChild(navy, tunnel, art, fgTunnel);
 
-  // Embers and bokeh, behind and in front.
-  type Mote = { x: number; y: number; v: number; size: number; front: boolean; big: boolean };
-  // Rising at 65 degrees, drifting toward the far side.
-  const vx = Math.cos(65 * (Math.PI / 180)) * dir;
-  const vy = -Math.sin(65 * (Math.PI / 180));
-  const motes: Mote[] = [
-    ...Array.from({ length: 6 }, () => ({ x: r() * w, y: r() * h, v: (500 + r() * 200) * ui, size: (24 + r() * 24) * ui, front: true, big: true })),
-    ...Array.from({ length: 29 }, () => ({ x: r() * w, y: r() * h, v: (180 + r() * 260) * ui, size: (6 + r() * 10) * ui, front: r() < 0.5, big: false })),
-  ];
-  const motesBack = new Graphics();
-  const motesFront = new Graphics();
-  const bokeh = new Graphics();
-  motesBack.blendMode = motesFront.blendMode = bokeh.blendMode = "add";
-  bokeh.filters = [new BlurFilter({ strength: 6 * ui, quality: 2 })];
-  const drawMotes = (t: number, alpha: number) => {
-    motesBack.clear();
-    motesFront.clear();
-    bokeh.clear();
-    if (alpha <= 0.01) return;
-    for (const m of motes) {
-      const x = (((m.x + vx * m.v * t) % (w * 1.2)) + w * 1.2) % (w * 1.2) - w * 0.1;
-      const y = (((m.y + vy * m.v * t) % (h * 1.2)) + h * 1.2) % (h * 1.2) - h * 0.1;
-      const L = m.size;
-      const W = m.size * (m.big ? 0.22 : 0.18);
-      const nx = -vy, ny = vx;
-      const pts = [x - vx * L, y - vy * L, x + nx * W, y + ny * W, x + vx * L, y + vy * L, x - nx * W, y - ny * W];
-      if (m.big) bokeh.poly(pts).fill({ color: pal.mid, alpha: 0.7 * alpha });
-      else {
-        const g = m.front ? motesFront : motesBack;
-        g.poly(pts.map((v, i) => (i % 2 === 0 ? x + (v - x) * 1.8 : y + (v - y) * 1.8))).fill({ color: pal.mid, alpha: 0.45 * alpha });
-        g.poly(pts).fill({ color: 0xffffff, alpha: 0.9 * alpha });
-      }
+  // --- 4. The shards: the black breaking into chunks blown past the camera ---------------------------------
+  const shardBox = new Container();
+  shardBox.filters = [new BlurFilter({ strength: 2 * ui, quality: 2 })];
+  const shards = Array.from({ length: portrait ? 50 : 70 }, () => {
+    const mid = r() < 0.3;
+    const size = mid ? diag * (0.035 + r() * 0.035) : diag * (0.015 + r() * r() * 0.06);
+    const g = new Graphics();
+    const n = r() < 0.5 ? 3 : r() < 0.7 ? 4 : 5;
+    const pts: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + (r() - 0.5) * 1.1;
+      const rr = size * (0.45 + r() * 0.55);
+      pts.push(Math.cos(a) * rr, Math.sin(a) * rr);
     }
-  };
+    g.poly(pts).fill({ color: 0x050814 });
+    g.poly(pts).stroke({ color: 0x2255aa, width: Math.max(1, 1.2 * ui), alpha: 0.6 });
+    const x0 = mid ? w * (0.35 + r() * 0.3) : fp.x + (r() - 0.5) * w * 0.9;
+    const y0 = mid ? h * (0.35 + r() * 0.3) : fp.y + (r() - 0.5) * h * 0.9;
+    const a = Math.atan2(y0 - fp.y, x0 - fp.x) + (r() - 0.5) * 0.4;
+    g.position.set(x0, y0);
+    return { g, x0, y0, vx: Math.cos(a), vy: Math.sin(a), v: diag * (0.7 + r() * 0.9), spin: (r() - 0.5) * 10, tumble: 8 + r() * 14, grow: 1.2 + r() * 1.8, phase: r() * 6 };
+  });
+  for (const s of shards) shardBox.addChild(s.g);
 
-  // The wedge (doubled edge) and the name stamped on it.
-  const sx = (v: number) => (dir > 0 ? v : w - v);
-  const wedge = new Graphics();
-  const A = [sx(0), h * 0.12];
-  const B = [sx(w * 0.46), h];
-  wedge.poly([A[0]!, A[1]!, B[0]!, B[1]!, sx(0), h]).fill({ color: 0x000000, alpha: 0.97 });
-  {
-    const ex = B[0]! - A[0]!, ey = B[1]! - A[1]!;
-    const el = Math.hypot(ex, ey);
-    // Outward normal (away from the wedge, toward the picture).
-    let nx = ey / el, ny = -ex / el;
-    if (nx * dir < 0) { nx = -nx; ny = -ny; }
-    const line = (off: number, width: number, color: number) => {
-      wedge.moveTo(A[0]! + nx * off - (ex / el) * 40 * ui, A[1]! + ny * off - (ey / el) * 40 * ui).lineTo(B[0]! + nx * off + (ex / el) * 40 * ui, B[1]! + ny * off + (ey / el) * 40 * ui).stroke({ color, width });
-    };
-    line(2.5 * ui, 5 * ui, pal.mid);
-    line(9.75 * ui, 1.5 * ui, 0xffffff);
-  }
+  // --- 5. The name: the skill's words slammed as one stacked block on the left, the fighter's name across the
+  //        bottom, both over a soft ink corner (the lines show through it).
+  const words = o.skillName.split(/\s+/).filter(Boolean);
+  const heroIdx = words.length <= 1 ? 0 : words.reduce((best, wd, i) => (i > 0 && wd.length > words[best]!.length ? i : best), 1);
+  const sizeOf = (i: number) => Math.min(h * (i === heroIdx ? 0.165 : 0.12), w * (portrait ? 0.2 : 0.115));
+  const ink = new Sprite(softTexture("glow"));
+  ink.anchor.set(0.5);
+  ink.tint = 0x000000;
+  ink.width = w * (portrait ? 1.8 : 1.1);
+  ink.height = h * 1.3;
+  ink.position.set(sx(w * (portrait ? 0.1 : 0.04)), h * 0.98);
+  const stampStyle = (size: number) => textStyle(`cutin-stamp-${Math.round(size)}`, {
+    fontFamily: HEAVY, fontSize: Math.round(size), fontWeight: "900", fill: 0xffffff, letterSpacing: size * 0.01,
+    stroke: { color: 0x000000, width: Math.max(6, size * 0.14), join: "round" },
+    dropShadow: { color: 0x000000, alpha: 0.9, blur: Math.max(4, size * 0.08), distance: Math.max(3, size * 0.05), angle: Math.PI / 3 },
+  });
   const stamps = words.map((word, i) => {
-    const size = sizeOf(i);
-    const t = new Text({
-      text: word.toUpperCase(),
-      style: textStyle(`cutin-w-${Math.round(size)}-${i === 0 && words.length > 1 ? 1 : 0}-${pal.deep}`, {
-        fontFamily: TITLE_FONT, fontSize: Math.round(size), fontWeight: "800", fill: 0xffffff, letterSpacing: i === 0 && words.length > 1 ? 3 * ui : 0.5 * ui,
-        stroke: { color: 0x000000, width: Math.max(5, size * 0.12), join: "round" },
-        dropShadow: { color: mixColor(pal.deep, 0x000000, 0.3), alpha: 1, blur: 0, distance: Math.max(3, size * 0.07), angle: Math.PI / 4 },
-      }),
-    });
+    const t = new Text({ text: word.toUpperCase(), style: stampStyle(sizeOf(i)) });
     t.anchor.set(dir > 0 ? 0 : 1, 0.5);
-    t.skew.x = -0.18 * dir;
-    t.rotation = -0.07 * dir;
+    t.skew.x = -0.1 * dir;
     return t;
   });
-  // Fit the widest word to the wedge.
   const widest = Math.max(1, ...stamps.map((s) => s.width));
-  const fit = Math.min(1, (w * 0.44) / widest);
+  const fit = Math.min(1, (w * (portrait ? 0.84 : 0.42)) / widest);
   for (const s of stamps) s.scale.set(fit);
-  const rest = stamps.map(() => fit);
-  // Stack from the bottom up, indented to follow the wedge.
-  let y = h - sizeOf(words.length - 1) * fit * 0.62;
+  const subSize = Math.round(Math.max(15 * ui, Math.min(h * 0.095, w * (portrait ? 0.1 : 0.058))));
+  const subY = h - subSize * 1.0;
+  let y = portrait ? h * 0.8 : subY - subSize * 0.7 - sizeOf(words.length - 1) * fit * 0.5;
   const ys: number[] = [];
   for (let i = words.length - 1; i >= 0; i--) {
     ys[i] = y;
-    if (i > 0) y -= (sizeOf(i) * 0.5 + sizeOf(i - 1) * 0.5) * fit * 1.02;
+    if (i > 0) y -= (sizeOf(i) * 0.5 + sizeOf(i - 1) * 0.5) * fit * 0.94;
   }
-  stamps.forEach((s, i) => {
-    const indent = w * (i === words.length - 1 && words.length > 2 ? 0.085 : i === heroIdx ? 0.04 : 0.045);
-    s.position.set(sx(indent), ys[i]!);
+  stamps.forEach((s, i) => s.position.set(sx(w * (portrait ? 0.05 : 0.03) + i * w * 0.012), ys[i]!));
+  // Each word lands from a tall smear, with a white ghost expanding off it.
+  const smears = stamps.map((s) => {
+    const m = new Sprite(softTexture("smear"));
+    m.anchor.set(dir > 0 ? 0 : 1, 0.5);
+    m.width = s.width * 0.92;
+    m.height = h * 0.7;
+    m.position.set(s.x, s.y);
+    m.alpha = 0;
+    return m;
   });
-  const baseX = stamps.map((s) => s.x);
-  const tagSize = Math.round(Math.max(11 * ui, Math.min(h * 0.026, 24)));
-  const tag = new Text({ text: o.actorName.toUpperCase(), style: textStyle(`cutin-tag-${tagSize}`, { fontFamily: FONT_UI, fontSize: tagSize, fontWeight: "800", fill: 0xffffff, letterSpacing: tagSize * 0.3 }) });
-  tag.anchor.set(dir > 0 ? 0 : 1, 0.5);
-  const tagBox = new Graphics();
-  const tagY = (ys[0] ?? h * 0.8) - sizeOf(0) * fit * 0.62 - tagSize * 0.9;
-  const tagX = sx(w * 0.045);
-  const tagW = tag.width + tagSize * 1.4;
-  const tagH = tagSize * 1.7;
-  const tx0 = dir > 0 ? tagX : tagX - tagW;
-  tagBox.poly([tx0 + tagH * 0.3, tagY - tagH / 2, tx0 + tagW + tagH * 0.3, tagY - tagH / 2, tx0 + tagW, tagY + tagH / 2, tx0, tagY + tagH / 2]).fill({ color: pal.mid });
-  const tagBaseX = tagX + dir * tagSize * 0.75;
-  tag.position.set(tagBaseX, tagY);
+  // Each word lands with a cyan and a magenta copy split either side of it, snapping together.
+  const ghosts = stamps.map((s) => [0x00ffff, 0xff0055].map((tint) => {
+    const g = new Text({ text: s.text, style: s.style });
+    g.anchor.copyFrom(s.anchor);
+    g.skew.x = s.skew.x;
+    g.position.copyFrom(s.position);
+    g.tint = tint;
+    g.blendMode = "add";
+    g.alpha = 0;
+    return g;
+  }));
+  // The fighter's name across the bottom: slammed whole, with a chromatic split that lingers.
+  const subStyle = textStyle(`cutin-sub-${subSize}`, {
+    fontFamily: HEAVY, fontSize: subSize, fontWeight: "900", fill: 0xffffff, letterSpacing: subSize * 0.12,
+    stroke: { color: 0x000000, width: Math.max(5, subSize * 0.17), join: "round" },
+  });
+  const subText = o.actorName.toUpperCase();
+  const sub = new Text({ text: subText, style: subStyle });
+  sub.anchor.set(0.5);
+  const subX = portrait ? w / 2 : sx(w * 0.56);
+  sub.position.set(subX, subY);
+  const subFit = Math.min(1, (w * 0.8) / Math.max(1, sub.width));
+  sub.scale.set(subFit);
+  const shimmer = [0x00ffff, 0xff00ff].map((tint) => {
+    const c = new Text({ text: subText, style: subStyle });
+    c.anchor.set(0.5);
+    c.scale.set(subFit);
+    c.position.copyFrom(sub.position);
+    c.tint = tint;
+    c.blendMode = "add";
+    c.alpha = 0;
+    return c;
+  });
+  const subGlow = new Text({ text: subText, style: subStyle });
+  subGlow.anchor.set(0.5);
+  subGlow.position.copyFrom(sub.position);
+  subGlow.blendMode = "add";
+  subGlow.alpha = 0;
+  const subAt = T.stamp + Math.max(0, words.length - 1) * T.wordGap + 0.03;
   const nameBox = new Container();
-  nameBox.addChild(tagBox, tag, ...stamps);
+  nameBox.pivot.set(w / 2, h / 2);
+  nameBox.position.set(w / 2, h / 2);
+  nameBox.addChild(...smears, ...ghosts.flat(), ...stamps, ...shimmer, sub, subGlow);
 
-  const fx = new Container();
-  scene.addChild(voidBg, echo, flanks, tunnel, motesBack, art, arcGlow, arcCore, motesFront, bokeh, fx, wedge);
-  art.addChild(flare);
-  flare.position.set((actionU - 0.5) * artW, (0.5 - 0.5) * artH);
-
-  // --- Pre-roll: shutters, cracks, shards -----------------------------------------------------------------
-  const pre = new Container();
-  const shutTop = new Graphics().rect(0, 0, w, h / 2 + 2).fill({ color: 0x000000 });
-  const shutBot = new Graphics().rect(0, 0, w, h / 2 + 2).fill({ color: 0x000000 });
-  const slit = new Graphics();
-  slit.rect(-w / 2, -14 * ui, w, 28 * ui).fill({ color: pal.mid, alpha: 0.45 });
-  slit.rect(-w / 2, -6 * ui, w, 12 * ui).fill({ color: pal.hi, alpha: 0.6 });
-  slit.rect(-w / 2, -2 * ui, w, 4 * ui).fill({ color: 0xffffff });
-  const cast = new Graphics().rect(0, 0, w, h).fill({ color: pal.mid });
-  cast.blendMode = "multiply";
-  slit.position.set(w / 2, h / 2);
-  slit.blendMode = "add";
-  const black = new Graphics().rect(0, 0, w, h).fill({ color: 0x000000 });
-  const cracks = crackPaths(fp.x, fp.y, diag * 0.8, r);
-  const maxR = diag * 0.8;
-  const crackGlow = new Graphics();
-  crackGlow.filters = [new BlurFilter({ strength: 8 * ui, quality: 3 })];
-  crackGlow.blendMode = "add";
-  const crackCore = new Graphics();
-  const hot = new Sprite(softTexture("glow"));
-  hot.anchor.set(0.5);
-  hot.position.set(fp.x, fp.y);
-  hot.blendMode = "add";
-  hot.tint = pal.hi;
-  /** A branch as one filled shape, tapering from `w0` to a point, so joints never double up. */
-  const taper = (g: Graphics, pts: number[], n: number, w0: number, color: number, alpha: number) => {
-    const left: number[] = [];
-    const right: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const x = pts[i * 2]!, y = pts[i * 2 + 1]!;
-      const j = Math.min(n - 1, i + 1), k0 = Math.max(0, i - 1);
-      const dx = pts[j * 2]! - pts[k0 * 2]!, dy = pts[j * 2 + 1]! - pts[k0 * 2 + 1]!;
-      const dl = Math.hypot(dx, dy) || 1;
-      const u = i / Math.max(1, n - 1);
-      const half = (w0 * (1 - u) ** 1.6 + 0.25 * ui) / 2;
-      left.push(x - (dy / dl) * half, y + (dx / dl) * half);
-      right.unshift(x + (dy / dl) * half, y - (dx / dl) * half);
-    }
-    g.poly([...left, ...right]).fill({ color, alpha });
-  };
-  const drawCracks = (reveal: number, pulse: number) => {
-    crackGlow.clear();
-    crackCore.clear();
-    for (const c of cracks) {
-      const n = Math.max(2, Math.floor((c.pts.length / 2) * reveal));
-      const startF = 1 - Math.min(1, Math.hypot(c.pts[0]! - fp.x, c.pts[1]! - fp.y) / maxR);
-      const w0 = (c.depth ? 4 * startF + 1 : 14) * ui;
-      taper(crackGlow, c.pts, n, w0 * 2.6, pal.mid, 0.85 * pulse);
-      taper(crackCore, c.pts, n, w0, 0xffffff, Math.min(1, pulse));
-    }
-  };
-  const darkLayer = new Container();
-  darkLayer.addChild(black, crackGlow, crackCore, hot);
-  // The burst behind the shards, and the shards: a fan around the action point with a hole in the middle.
-  const burstWhite = new Graphics().rect(-w * 0.1, -h * 0.1, w * 1.2, h * 1.2).fill({ color: 0xffffff });
-  const shardBox = new Container();
-  const shardCount = 26;
-  const R = diag * 1.2;
-  const hole = h * 0.06;
-  const shards = Array.from({ length: shardCount }, (_, i) => {
-    const a0 = (i / shardCount) * Math.PI * 2 + (r() - 0.5) * 0.08;
-    const a1 = ((i + 1) / shardCount) * Math.PI * 2 + (r() - 0.5) * 0.08;
-    const mid = (a0 + a1) / 2;
-    const g = new Graphics();
-    const i0 = [Math.cos(a0) * hole, Math.sin(a0) * hole];
-    const i1 = [Math.cos(a1) * hole, Math.sin(a1) * hole];
-    g.poly([i0[0]!, i0[1]!, Math.cos(a0) * R, Math.sin(a0) * R, Math.cos(a1) * R, Math.sin(a1) * R, i1[0]!, i1[1]!]).fill({ color: 0x050208 });
-    // The edges burn: an accent glow under an accent rim, the inner edge white-hot.
-    const outline = [i0[0]!, i0[1]!, Math.cos(a0) * R, Math.sin(a0) * R, Math.cos(a1) * R, Math.sin(a1) * R, i1[0]!, i1[1]!];
-    g.poly(outline).stroke({ color: pal.mid, width: 10 * ui, alpha: 0.45, join: "miter" });
-    g.poly(outline).stroke({ color: pal.mid, width: 3 * ui, join: "miter" });
-    g.moveTo(i0[0]!, i0[1]!).lineTo(i1[0]!, i1[1]!).stroke({ color: 0xffffff, width: 3 * ui });
-    // Tumble about the shard's own middle, not the action point.
-    const cxm = (i0[0]! + i1[0]! + Math.cos(a0) * R * 0.5 + Math.cos(a1) * R * 0.5) / 4;
-    const cym = (i0[1]! + i1[1]! + Math.sin(a0) * R * 0.5 + Math.sin(a1) * R * 0.5) / 4;
-    g.pivot.set(cxm, cym);
-    g.position.set(fp.x + cxm, fp.y + cym);
-    return { g, ang: mid, cx: cxm, cy: cym, spin: (r() - 0.5) * 3, speed: 1 + r() * 0.8, tumble: 6 + r() * 10 };
-  });
-  for (const s of shards) shardBox.addChild(s.g);
-  pre.addChild(cast, darkLayer, burstWhite, shardBox, shutTop, shutBot, slit);
-
-  // --- The ending: impact frame, white, spikes ------------------------------------------------------------
-  const impact = new Container();
-  impact.addChild(new Graphics().rect(-w * 0.1, -h * 0.1, w * 1.2, h * 1.2).fill({ color: pal.mid }));
-  const inked = inkOf(o.portrait);
-  /** The ink as the picture sits at the end of its push, with the picture's own soft edges. */
-  const inkSprite = (tex: Texture, alpha: number) => {
-    const box = new Container();
-    box.position.set(artCX - (focus.x - 0.5) * artW * 0.08, artCY - (focus.y - 0.5) * artH * 0.08);
-    const s = new Sprite(tex);
-    s.anchor.set(0.5);
-    s.width = artW * 1.08;
-    s.height = artH * 1.08;
-    const m = new Sprite(feather.texture);
-    m.anchor.set(0.5);
-    m.width = artW * 1.12;
-    m.height = artH * 1.12;
-    m.skew.x = feather.skew.x;
-    if (dir < 0) m.scale.x *= -1;
-    box.addChild(s, m);
-    box.mask = m;
-    box.alpha = alpha;
-    return box;
-  };
-  if (inked) impact.addChild(inkSprite(inked.poster, 1));
-  const whiteInk = inked ? inkSprite(inked.ink, 0.15) : null;
+  // --- 6. The ending: white, black needles -----------------------------------------------------------------
   const white = new Graphics().rect(-w * 0.1, -h * 0.1, w * 1.2, h * 1.2).fill({ color: 0xffffff });
-  const spikes = new Graphics();
-  const spikeList = Array.from({ length: 44 }, (_, i) => {
-    const a = (i / 44) * Math.PI * 2 + (r() - 0.5) * 0.12;
-    const d0 = diag * (0.06 + r() * 0.14);
-    return { a, d0, d1: d0 + diag * (0.3 + r() * 0.2), wid: (i % 2 ? 2 + r() * 2 : 8 + r() * 14) * ui };
-  });
+  white.alpha = 0;
+  const endRain = new Graphics();
+
+  const sheets = new Container();
   const top = new Container();
-  root.addChild(scene, pre, impact, white, ...(whiteInk ? [whiteInk] : []), spikes, nameBox, top);
+  root.addChild(cover, scene, webBox, rain, shardBox, sheets, ink, nameBox, white, endRain, top);
   o.layer.addChild(root);
 
   const fxCtx: FxContext = {
-    w, h, ui, band: { cx: w / 2, cy: h / 2, angle: -0.31 * dir, len: diag, thick: h }, palette: [pal.deep, pal.mid, pal.hi], slam: T.shatter, total,
-    face: { x: fp.x, y: fp.y }, portrait: { texture: o.portrait, sprite: chan[0]! }, under: fx, over: fx, top,
+    w, h, ui, band: { cx: w / 2, cy: h / 2, angle: tunnel.rotation, len: diag, thick: h }, palette: [pal.deep, pal.mid, pal.hi], slam: T.slam, total,
+    face: { x: fp.x, y: fp.y }, portrait: { texture: o.portrait, sprite: chan[0]! }, under: sheets, over: sheets, top,
   };
   const layers = buildFx(resolveFx(o.visual?.fx), fxCtx);
 
   let skipped = false;
   root.on("pointertap", () => { skipped = true; });
+  // One-shot beats: each slot's sound (and sheet, where given), once.
+  const fired = new Set<string>();
+  const once = (key: string, fn: () => void) => {
+    if (fired.has(key)) return;
+    fired.add(key);
+    fn();
+  };
+  const sheetAt = (slot: FxSlot, x: number, y: number, size: number, extra: { frames?: [number, number]; speed?: number; blend?: "add" | "normal" | "screen"; silent?: boolean; alpha?: number } = {}) =>
+    void fxLibrary.play(slot, { layer: sheets, clock, x, y, ui: 1, scale: size, flip: dir < 0, ...extra });
+  /** A sheet's scale that covers the screen (its frames are drawn for 640x480). */
+  const cover640 = Math.max(w / 640, h / 480);
+  let aura: SoundHandle | null = null;
+  let crackle: SoundHandle | null = null;
   const start = clock.now;
   let frame = 0;
   await new Promise<void>((resolve) => {
@@ -612,145 +606,215 @@ export async function playFramed(o: CutInOptions): Promise<void> {
         resolve();
         return;
       }
-      // 1. Shutters slam shut; the slit ignites as they meet and snaps closed.
-      const sh = ease.inCubic(span(t, 0, T.shut));
-      shutTop.y = -h / 2 - 2 + sh * (h / 2 + 2);
-      shutBot.y = h - sh * (h / 2 + 2);
-      shutTop.visible = shutBot.visible = t < T.dark;
-      cast.visible = t < T.dark;
-      cast.alpha = 0.65 * sh;
-      slit.visible = t >= T.shut - 0.005 && t < T.dark + 0.03;
-      slit.scale.x = 1 - ease.inCubic(span(t, T.shut + 0.01, T.dark + 0.03));
-      // 2. Cracks in three steps, pulsing, a hot core leaking light.
-      darkLayer.visible = t >= T.shut && t < T.shatter;
-      if (darkLayer.visible) {
-        const reveal = t < T.dark ? 0 : t < 0.24 ? 0.34 : t < 0.3 ? 0.67 : 1;
-        drawCracks(reveal, 0.85 + 0.25 * Math.sin(t * 47));
-        const g = span(t, T.dark, T.shatter);
-        hot.width = hot.height = (20 + 120 * g * g) * ui * 2 * (1 + (r() - 0.5) * 0.5);
-        hot.alpha = 0.6 + 0.4 * g;
+      // --- Sounds and sheets on the beats.
+      once("shut", () => fxLibrary.sound("cutin.shut"));
+      if (t >= T.bolt) once("crack", () => fxLibrary.sound("cutin.crack", 0.8));
+      if (t >= T.web) once("web", () => { crackle = fxLibrary.sound("cutin.crack", 1); });
+      if (t >= T.shatter) once("trim", () => crackle?.stop(90));
+      if (t >= T.shatter) {
+        once("shatter", () => {
+          sheetAt("cutin.shatter", fp.x, fp.y, cover640 * 0.75, { frames: [0, 5], speed: 1.6, blend: "add", alpha: 0.7 });
+          // The glassy top end of the break.
+          fxLibrary.sound("cutin.glint", 0.6);
+        });
       }
-      // 3. Shatter: shards fly out (tumbling) over a white burst; the scene is behind.
-      const sp = span(t, T.shatter, T.shatter + 0.3);
+      if (t >= T.slam) once("rush", () => fxLibrary.sound("cutin.rush"));
+      if (t >= T.lock) once("slam", () => fxLibrary.sound("cutin.slam"));
+      if (t >= T.lock + 0.04) once("aura", () => { aura = fxLibrary.sound("cutin.aura", 0.9); });
+      if (t >= T.lock) once("stamp", () => fxLibrary.sound("cutin.stamp"));
+      if (t >= subAt) once("glint", () => fxLibrary.sound("cutin.glint", 0.85));
+      if (t >= T.exit) {
+        once("exit", () => {
+          aura?.stop(200);
+          fxLibrary.sound("cutin.burst");
+          sheetAt("cutin.whiteout", w / 2, h / 2, cover640 * 1.15, { speed: 1.5 });
+        });
+      }
+      if (t >= T.exit + 0.07) once("out", () => fxLibrary.sound("cutin.shut", 0.5));
+
+      // --- 1. Grey flash draining to black; needles raining (then over the picture while it holds).
+      const g = t < T.grey ? 0.62 : t < T.black ? 0.62 * (1 - span(t, T.grey, T.black)) ** 1.5 : 0;
+      cover.tint = mixColor(0x000000, 0xffffff, g);
+      cover.visible = t < T.shatter + 0.12;
+      cover.alpha = 1 - span(t, T.shatter, T.shatter + 0.12);
+      const holdRain = t >= T.lock ? 0.55 * span(t, T.lock, T.lock + 0.2) * (1 - span(t, T.exit, T.exit + 0.1)) : 0;
+      const preRain = t < T.shatter ? 1 : 1 - span(t, T.shatter, T.shatter + 0.2);
+      drawRain(t, Math.max(preRain, holdRain), t >= T.lock);
+      rain.visible = t < T.exit + 0.1;
+
+      // --- 2. Crawl, then the web in three steps, flickering, fading through the break.
+      crawl.clear();
+      crawlGlow.clear();
+      if (t >= T.bolt && t < T.web + 0.1) {
+        const p = span(t, T.bolt, T.web - 0.05);
+        const n = Math.max(2, Math.floor((crawlPts.length / 2) * p));
+        const part = crawlPts.slice(0, n * 2);
+        const blink = frame % 3 === 0 ? 0.55 : 1;
+        taper(crawlGlow, part, 8 * ui, 2 * ui, 0x4466ff, 0.7);
+        taper(crawl, part, 2.5 * ui, 0.8 * ui, 0xffffff, blink);
+        for (const f of crawlForks) {
+          if (p < f.u) continue;
+          taper(crawlGlow, f.pts, 5 * ui, 1 * ui, 0x4466ff, 0.6);
+          taper(crawl, f.pts, 1.4 * ui, 0.3 * ui, 0xffffff, blink);
+        }
+      }
+      webBox.visible = t >= T.bolt && t < T.shatter + 0.3;
+      if (webBox.visible) {
+        const steps = t < T.web ? 0 : t < T.web + 0.067 ? 1 : t < T.web + 0.133 ? 2 : 3;
+        for (let i = 0; i < 3; i++) webGlow[i]!.visible = webMid[i]!.visible = webCore[i]!.visible = i < steps;
+        const flick = frame % 2 === 0 ? 0.8 + r() * 0.2 : 1;
+        const out = 1 - span(t, T.shatter, T.shatter + 0.28);
+        coreBox.alpha = flick * out * (frame % 7 === 0 && t > T.shatter ? 0.3 : 1);
+        glowBox.alpha = (0.85 + 0.25 * Math.sin(t * 40)) * out;
+        const jit = t >= T.web ? 1.5 * ui : 0;
+        coreBox.position.set((r() - 0.5) * jit, (r() - 0.5) * jit);
+        glowBox.position.copyFrom(coreBox.position);
+        for (const nd of nodes) {
+          nd.s.visible = nd.ring < steps;
+          nd.s.alpha = out * (0.6 + 0.4 * Math.sin(t * 30 + nd.phase));
+          nd.s.position.x += 0;
+        }
+        const gk = span(t, T.web, T.shatter);
+        hot.visible = t >= T.web;
+        hot.width = hot.height = h * (0.3 + 0.4 * gk * gk) * (1 + (r() - 0.5) * 0.3);
+        hot.alpha = (0.4 + 0.35 * gk) * out;
+      }
+
+      // --- 3. The scene: speed lines from the break; the picture bursting through it.
+      scene.visible = t >= T.shatter && t < T.white + 0.08;
+      if (scene.visible) {
+        const fi = speed ? Math.floor(t * speed.sheet.fps) % speed.frames.length : 0;
+        for (const s of [speedBack, speedOver]) {
+          if (!s || !speed) continue;
+          s.texture = speed.frames[fi]!;
+          // A flick of thickness every other frame, the way hand-drawn lines strobe.
+          s.scale.y = speedScaleY * (frame % 2 === 0 ? 1 : 1.05);
+          s.x = -dir * ((t * diag * 0.9) % (diag * 0.05));
+        }
+        drawLines(lines, lineList, t, diag, dir, 1, frame, r);
+        const picIn = span(t, T.slam, T.slam + 0.05);
+        art.visible = t >= T.slam;
+        art.alpha = picIn;
+        const over = picIn * (1 - span(t, T.exit, T.exit + 0.1));
+        fgTunnel.alpha = over;
+        drawLines(fgLines, fgList, t, diag, dir, over, frame, r);
+        // Slam 185% -> 100% as the shards clear, smear and channel split decaying; tremble and a slow push while it
+        // holds; then a violent whip toward the camera on the way out.
+        const slamK = ease.outCubic(span(t, T.slam, T.lock));
+        const push = span(t, T.lock, T.exit);
+        const whip = ease.inCubic(span(t, T.exit, T.white));
+        pic.scale.set((1.85 - 0.85 * slamK + 0.06 * push) * (1 + 1.4 * whip));
+        const split = (t < T.slam ? 0 : t < T.lock ? 18 * (1 - slamK) + 2 : 2 * Math.exp(-(t - T.lock) * 6)) * ui + whip * 25 * ui;
+        const jit = split > 0.5 * ui ? (r() - 0.5) * 4 * ui * Math.min(1, split / (16 * ui)) : 0;
+        chan[0]!.position.set(-split * dir + jit, split * 0.3);
+        chan[1]!.position.set(split * dir - jit, -split * 0.3);
+        smear.strengthX = 16 * (1 - slamK) * ui + whip * 24 * ui;
+        smear.strengthY = whip * 24 * ui;
+        smear.enabled = smear.strengthX > 0.3 || smear.strengthY > 0.3;
+        const holding = t >= T.lock && t < T.exit;
+        const trem = holding ? 2.5 * ui : 0;
+        art.x = artCX + (r() - 0.5) * 2 * trem;
+        art.y = artCY - 10 * ui * push + (r() - 0.5) * 2 * trem;
+        // The flare pulses at 15 Hz and its cross turns.
+        const flareK = (1 + 0.7 * (1 - slamK)) * (1 + 0.2 * Math.sin(t * Math.PI * 2 * 15));
+        haze.width = haze.height = h * 0.75 * (1 + 0.7 * (1 - slamK));
+        haze.alpha = 0.35 + 0.15 * Math.sin(t * 9);
+        burst.width = burst.height = h * 0.34 * flareK;
+        burst.alpha = 0.5 + 0.3 * (0.5 + 0.5 * Math.sin(t * Math.PI * 2 * 7.5));
+        core.width = core.height = h * 0.12 * flareK;
+        cross.rotation = -0.21 + t * 1.05;
+        cross.scale.set(flareK, flareK);
+        flare.alpha = 1 - whip;
+      }
+
+      // --- 4. Shards blown past the camera, tumbling, gone within 0.4 s.
+      const sp = span(t, T.shatter, T.shatter + 0.4);
       shardBox.visible = t >= T.shatter && sp < 1;
-      burstWhite.visible = shardBox.visible;
-      burstWhite.alpha = 0.95 * (1 - ease.outCubic(span(t, T.shatter + 0.03, T.shatter + 0.12)));
       if (shardBox.visible) {
+        const e = t - T.shatter;
+        const d0 = ease.outExpo(sp);
         for (const s of shards) {
-          const d = (0.5 * sp + 0.9 * sp * sp) * R * 0.8 * s.speed;
-          s.g.x = fp.x + s.cx + Math.cos(s.ang) * d;
-          s.g.y = fp.y + s.cy + Math.sin(s.ang) * d;
-          s.g.rotation = s.spin * sp;
-          s.g.scale.set((0.35 + 0.65 * Math.abs(Math.cos(sp * s.tumble))) * (1 + 0.6 * sp), 1 + 0.6 * sp);
+          const d = s.v * 0.55 * d0 + s.v * e * 0.6;
+          s.g.x = s.x0 + s.vx * d;
+          s.g.y = s.y0 + s.vy * d;
+          s.g.rotation = s.spin * e;
+          const z = 1 + s.grow * sp;
+          s.g.scale.set(z * (0.25 + 0.75 * Math.abs(Math.cos(e * s.tumble + s.phase))), z);
+          s.g.alpha = 1 - span(sp, 0.55, 1);
         }
       }
-      scene.visible = t >= T.shatter;
-      // The picture: slam 155% -> 100%, split channels decaying, then a trembling push to 108%; a pulse mid-hold.
-      const slamK = ease.outExpo(span(t, T.shatter, T.slamEnd));
-      const push = span(t, T.slamEnd, T.impact);
-      pic.scale.set(1.55 - 0.55 * slamK + 0.08 * push);
-      const pulse = t >= T.pulse ? Math.exp(-(t - T.pulse) * 14) : 0;
-      const split = (t < T.shatter ? 0 : Math.exp(-(t - T.shatter) * 14) * 24 + pulse * 6) * ui;
-      const jit = split > 0.5 * ui ? (r() - 0.5) * 5 * ui * Math.min(1, split / (20 * ui)) : 0;
-      chan[0]!.position.set(-split * dir * 0.97 + jit, split * 0.25);
-      chan[1]!.position.set(split * dir * 0.97 - jit, -split * 0.25);
-      const holding = t >= T.slamEnd && t < T.impact;
-      art.x = artCX + (holding ? (r() - 0.5) * 6 * ui : 0);
-      art.y = artCY - 10 * ui * push + (holding ? (r() - 0.5) * 6 * ui : 0);
-      const flareK = (1 + 0.8 * (1 - slamK)) * (1 + 0.8 * pulse);
-      haze.width = haze.height = h * 0.9 * flareK;
-      haze.alpha = 0.45;
-      burst.width = burst.height = h * 0.44 * flareK * (1 + 0.18 * Math.sin(t * Math.PI * 2 * 20));
-      burst.alpha = 0.85;
-      core.width = core.height = h * 0.16 * flareK;
-      cross.scale.set((0.9 + 0.1 * Math.sin(t * 31)) * flareK, flareK);
-      flare.alpha = t < T.shatter ? 0 : 1;
-      // Echo, tunnel, flanks, arcs, motes.
-      const live = t < T.shatter ? 0 : 1 - span(t, T.impact, T.white);
-      echo.alpha = 0.5 * live;
-      drawLines(lines, lineList, t, diag, dir, ui, live, frame, r);
-      flanks.clear();
-      if (live > 0) {
-        for (const fx0 of [0.12, 0.9]) {
-          const cx = sx(w * fx0) + dir * -(t * 40 * ui);
-          const fw = w * 0.14;
-          const ang = 55 * (Math.PI / 180) * dir;
-          const dx = Math.cos(ang) * h, dy = Math.sin(ang) * h;
-          const nx = -Math.sin(ang) * fw / 2, ny = Math.cos(ang) * fw / 2;
-          flanks.poly([cx - dx + nx, h / 2 - dy + ny, cx + dx + nx, h / 2 + dy + ny, cx + dx - nx, h / 2 + dy - ny, cx - dx - nx, h / 2 - dy - ny]).fill({ color: pal.mid, alpha: 0.18 * live });
-        }
-      }
-      arcGlow.clear();
-      arcCore.clear();
-      const arcIn = span(t, T.shatter + 0.1, T.slamEnd + 0.1);
-      if (live > 0 && arcIn > 0) {
-        for (const a of arcs) {
-          const u0 = ((a.phase + t * a.speed) % 1.6) - 0.35;
-          const u1 = u0 + 0.38;
-          const lo = Math.max(0, u0), hi = Math.min(1, u1);
-          if (hi - lo < 0.02) continue;
-          const seed = Math.floor(t * 30);
-          strip(arcGlow, a.p0, a.p1, a.p2, lo, hi, a.width * 2.2, pal.outer, 0.6 * live * arcIn);
-          strip(arcCore, a.p0, a.p1, a.p2, lo, hi, a.width * 1.1, pal.mid, 0.85 * live * arcIn, 0.55, seed);
-          strip(arcCore, a.p0, a.p1, a.p2, lo, hi, 7 * ui, 0xffffff, 0.95 * live * arcIn, 0.4, seed + 1);
-          strip(arcCore, a.p0, a.p1, a.p2, 0, 1, a.width * 0.35, pal.outer, 0.12 * live * arcIn);
-        }
-      }
-      drawMotes(t, live);
-      // The wedge slides in; the words stamp (220% -> 100%), the tag slides in with a flicker.
-      wedge.x = -dir * w * 0.35 * (1 - ease.outCubic(span(t, T.wedge, T.wedge + 0.12)));
-      wedge.visible = t >= T.wedge;
+
+      // --- 5. Name: the block slams (words two frames apart), then the fighter's name.
+      ink.visible = t >= T.stamp - 0.04;
+      ink.alpha = 0.78 * ease.outCubic(span(t, T.stamp - 0.04, T.stamp + 0.1));
       nameBox.visible = t >= T.stamp;
-      let landed = -1;
+      let bump = 0;
       stamps.forEach((s, i) => {
-        const at = T.stamp + i * 0.08;
-        const p = span(t, at, at + 0.07);
-        s.alpha = t < at ? 0 : 1;
-        s.scale.set(rest[i]! * (2.2 - 1.2 * inQuad(p)));
-        if (p >= 1) landed = i;
+        const at = T.stamp + i * T.wordGap;
+        const p = span(t, at, at + 0.1);
+        const e = ease.outBack(p);
+        s.visible = t >= at;
+        s.alpha = Math.min(1, p * 3);
+        s.scale.set(fit * (1.6 - 0.6 * e), fit * (2.4 - 1.4 * e));
+        const m = smears[i]!;
+        const ms = span(t, at, at + 0.13);
+        m.visible = t >= at && ms < 1;
+        m.alpha = 0.7 * (1 - ms);
+        m.scale.y = (h * 0.7 / 256) * (1 - 0.75 * ms);
+        // The split copies ride the slam (same scale) and close from 9 px to nothing over ~5 frames.
+        const gp = span(t, at, at + 0.17);
+        ghosts[i]!.forEach((gh, k) => {
+          gh.visible = t >= at && gp < 1;
+          gh.alpha = 0.7 * (1 - ease.outCubic(gp)) * Math.min(1, p * 3);
+          gh.scale.copyFrom(s.scale);
+          gh.x = s.x + (k === 0 ? -1 : 1) * 9 * ui * (1 - ease.outExpo(gp));
+        });
       });
-      const tagAt = T.stamp + words.length * 0.08 + 0.03;
-      const tp = span(t, tagAt, tagAt + 0.12);
-      tagBox.alpha = tag.alpha = tp;
-      tag.x = tagBaseX + (tp > 0 && tp < 1 ? Math.sin(t * 90) * 10 * ui * (1 - tp) : 0);
-      // Shake: the slam, and a bump as each word lands.
-      let shake = 0;
-      if (t >= T.shatter && t < T.shatter + 0.25) shake = 9 * (1 - (t - T.shatter) / 0.25) ** 2;
-      for (let i = 0; i <= landed; i++) {
-        const at = T.stamp + i * 0.08 + 0.07;
-        if (t >= at && t < at + 0.07) shake = Math.max(shake, 4 * (1 - (t - at) / 0.07));
-      }
+      const lockAt = T.stamp + Math.max(0, words.length - 1) * T.wordGap + 0.1;
+      if (t >= lockAt && t < lockAt + 0.12) bump = 6 * (1 - (t - lockAt) / 0.12);
+      // The fighter's name: in from 150%, its cyan and magenta copies split wide and pull in, then keep a small
+      // live split while the picture holds.
+      const sp2 = span(t, subAt, subAt + 0.12);
+      sub.visible = t >= subAt;
+      sub.alpha = Math.min(1, sp2 * 3);
+      sub.scale.set(subFit * (1.5 - 0.5 * ease.outCubic(sp2)));
+      const live = t >= subAt ? 1 - span(t, T.exit, T.exit + 0.1) : 0;
+      shimmer.forEach((c, i) => {
+        c.visible = live > 0;
+        const off = (i === 0 ? -1 : 1) * ((14 * (1 - ease.outCubic(span(t, subAt, subAt + 0.35)))) + 2.5 + Math.sin(t * 23 + i) * 1.2) * ui;
+        c.x = sub.x + off;
+        c.scale.copyFrom(sub.scale);
+        c.alpha = live * (0.35 + 0.5 * (1 - span(t, subAt, subAt + 0.4)));
+      });
+      const gp = span(t, subAt + 0.1, subAt + 0.45);
+      subGlow.visible = t >= subAt + 0.1 && gp < 1;
+      subGlow.scale.set(sub.scale.x * (1 + 0.15 * gp));
+      subGlow.alpha = 0.7 * (1 - gp);
+      // Shake: the break, the lock, and the name block landing.
+      let shake = bump;
+      if (t >= T.lock && t < T.lock + 0.25) shake = Math.max(shake, 10 * (1 - (t - T.lock) / 0.25) ** 2);
+      if (t >= T.shatter && t < T.shatter + 0.15) shake = Math.max(shake, 8 * (1 - (t - T.shatter) / 0.15));
       root.x = shake ? (r() - 0.5) * 2 * shake * ui : 0;
       root.y = shake ? (r() - 0.5) * 2 * shake * ui : 0;
-      // The end: an accent impact frame, pure white with black spikes converging on the action, the name burned
-      // in black; then the white clears as the words split apart.
-      impact.visible = t >= T.impact && t < T.white;
-      if (whiteInk) whiteInk.alpha = t >= T.white && t < T.clear ? 0.15 : 0;
-      white.alpha = t < T.white ? 0 : 1 - ease.outCubic(span(t, T.clear, total));
-      scene.visible = scene.visible && t < T.white;
-      spikes.clear();
-      if (t >= T.impact && t < T.clear) {
-        for (const s of spikeList) {
-          if (r() < 0.3) continue;
-          const ca = Math.cos(s.a), sa = Math.sin(s.a);
-          const nx = -sa * s.wid / 2, ny = ca * s.wid / 2;
-          const x0 = fp.x + ca * s.d0, y0 = fp.y + sa * s.d0;
-          const x1 = fp.x + ca * s.d1, y1 = fp.y + sa * s.d1;
-          // Sharp toward the action, thick at the outside.
-          spikes.poly([x0, y0, x1 + nx, y1 + ny, x1 - nx, y1 - ny]).fill({ color: t < T.white ? 0xffffff : 0x000000 });
+
+      // --- 6. Exit: white floods in (over the burst sheet), needles strobe on it, the name ghosts out; then clear.
+      white.alpha = t < T.clear ? ease.inCubic(span(t, T.exit + 0.05, T.white)) : 1 - ease.outCubic(span(t, T.clear, total));
+      // The name is blown past the camera with the picture, gone before the white is full.
+      const ghost = span(t, T.exit, T.exit + 0.1);
+      nameBox.alpha = (1 - ghost) ** 2;
+      nameBox.scale.set(1 + 0.8 * ease.inCubic(ghost));
+      ink.alpha *= 1 - ghost;
+      endRain.visible = t >= T.exit + 0.1 && t < T.clear + 0.06;
+      if (endRain.visible) {
+        endRain.clear();
+        for (const n of needles) {
+          if (r() < 0.15) continue;
+          const yy = (((n.phase * h + t * n.v * 0.6) % (h + n.len)) + h + n.len) % (h + n.len) - n.len;
+          endRain.poly([n.x, yy, n.x + n.wid * 1.3, yy + n.len * 0.9, n.x, yy + n.len * 1.8, n.x - n.wid * 1.3, yy + n.len * 0.9]).fill({ color: 0x0a0a0a, alpha: n.a * (1 - span(t, T.clear - 0.02, T.clear + 0.06)) });
         }
       }
-      const burned = t >= T.white;
-      for (const s of stamps) s.tint = burned ? 0x111111 : 0xffffff;
-      tagBox.tint = burned ? 0x111111 : 0xffffff;
-      if (t >= T.clear - 0.06) {
-        const out = ease.inCubic(span(t, T.clear - 0.06, T.clear + 0.02));
-        stamps.forEach((s, i) => {
-          s.x = baseX[i]! + (i % 2 === 0 ? 1 : -1) * 220 * ui * out;
-        });
-        nameBox.alpha = 1 - span(t, T.clear - 0.03, T.clear + 0.02);
-      }
-      root.alpha = 1 - span(t, total - 0.12, total);
+      sheets.alpha = 1 - span(t, T.clear, total);
+      root.alpha = 1 - span(t, total - 0.06, total);
       for (const l of layers) l.update(t);
       if (t >= total) {
         stop();
@@ -758,6 +822,8 @@ export async function playFramed(o: CutInOptions): Promise<void> {
       }
     });
   });
+  (aura as SoundHandle | null)?.stop(140);
+  (crackle as SoundHandle | null)?.stop(140);
   if (skipped) await clock.tween(140, (k2) => { root.alpha = 1 - k2; });
   root.destroy({ children: true });
 }

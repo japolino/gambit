@@ -16,7 +16,7 @@
  * canvas: a perspective-painted counter, angled props and parallax layers.
  */
 import { BOARD_SKINS } from "../board-skins.js";
-import type { SceneView, ThemeCtx, ThemeFactory, ThemeRenderer } from "./contract.js";
+import type { EncounterView, SceneView, ThemeCtx, ThemeFactory, ThemeRenderer } from "./contract.js";
 import * as A from "./diorama/art.js";
 import { flatDiorama, type Mode } from "./diorama/flat.js";
 import { room3d } from "./diorama/room3d.js";
@@ -52,6 +52,16 @@ export const diorama: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         cur = want;
       }
       want.render(v);
+    },
+    // A fight or a talk is staged in the 3D shop (diorama/encounter3d.ts); without WebGL, or in a delve, the host
+    // hides the scene and the encounter draws its own backdrop.
+    encounter(e: EncounterView | null) {
+      if (!e) {
+        room?.encounter?.(null);
+        return false;
+      }
+      if (!room || cur !== room || !ctx.stage3d()) return false;
+      return room.encounter?.(e) ?? false;
     },
     key(e: KeyboardEvent, v: SceneView) {
       return cur?.key(e, v) ?? false;

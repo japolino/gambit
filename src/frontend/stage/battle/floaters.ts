@@ -53,7 +53,7 @@ export class Floaters {
     t.anchor.set(0.5, 1);
     c.addChild(t);
     if (tag) {
-      const tt = new Text({ text: tag, style: tagStyle(Math.round(9 * ui), tagColor) });
+      const tt = new Text({ text: tag, style: tagStyle(Math.round((o.crit ? 13 : 10) * ui), tagColor) });
       tt.anchor.set(0.5, 1);
       tt.y = -t.height + 2 * ui;
       c.addChild(tt);
@@ -63,8 +63,11 @@ export class Floaters {
     const rise = (o.kind === "damage" ? 34 : 26) * ui;
     const reduced = this.reduced();
     void this.clock.tween(reduced ? 700 : 900, (k) => {
-      const pop = reduced ? 1 : k < 0.18 ? ease.outBack(k / 0.18) : 1;
-      c.scale.set((o.crit ? 1.25 : 1) * (reduced ? 1 : 0.6 + 0.4 * pop) * (o.crit && k < 0.25 && !reduced ? 1.2 - k * 0.8 : 1));
+      // Damage slams down from large (a hit lands); heals and the rest swell up from small.
+      const slam = o.kind === "damage";
+      const pop = reduced ? 1 : k < 0.18 ? (slam ? ease.outCubic(k / 0.18) : ease.outBack(k / 0.18)) : 1;
+      const grow = reduced ? 1 : slam ? 1.7 - 0.7 * pop : 0.6 + 0.4 * pop;
+      c.scale.set((o.crit ? 1.25 : 1) * grow * (o.crit && k < 0.25 && !reduced ? 1.2 - k * 0.8 : 1));
       c.y = y - rise * ease.outCubic(Math.min(1, k * 1.6));
       c.x = x + drift * k;
       c.alpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;

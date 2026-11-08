@@ -264,6 +264,11 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 .gs > .mw .mw-dots i { background: rgba(242,207,122,.25); } .gs > .mw .mw-dots i.on { background: #f2cf7a; box-shadow: 0 0 8px #ff8a24; }
 .gs > .mw .mw-hint { font: 800 12px/1 "Gambit Cinzel", serif; letter-spacing: .3em; color: #b8a47c; }
 
+/* A fight or a talk staged at the table: only the room stays; the encounter draws its own hand over it. */
+.tb.enc > :not(.wl):not(.vig) { display: none !important; }
+.tb.enc .vig { background:
+  linear-gradient(90deg, rgba(3,2,5,.8) 0, rgba(3,2,5,0) 12%, rgba(3,2,5,0) 88%, rgba(3,2,5,.8) 100%),
+  radial-gradient(ellipse 80% 85% at 50% 42%, rgba(8,5,10,0) 52%, rgba(3,2,5,.75) 100%); }
 /* The 3D table: the WebGL stage replaces the drawn table, props, people and board. */
 .tb.x3 .tl, .tb.x3 .ol, .tb.x3 .gl, .tb.x3 .pl, .tb.x3 .sh, .tb.x3 .ol2, .tb.x3 .board { display: none !important; }
 .tb.x3 .wl > .world { inset: 0; filter: none; }

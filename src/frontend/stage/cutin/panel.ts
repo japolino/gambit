@@ -3,12 +3,14 @@
  * drops to dark, a slanted panel snaps open from a line and the picture fills it, pushing in slowly toward the
  * action; speed lines stream behind, the skill name slams across the panel's lower edge, and the panel shuts
  * back to a line. About 1.9 s; a tap or click skips it. The full-screen version (framed.ts) is for ultimates.
+ * Sounds from assets/ (fx-library.ts): cutin.panel as it snaps open, cutin.stamp as the name slams.
  */
 import { Container, Graphics, Sprite, Text } from "pixi.js";
 import { ease } from "../anim.js";
 import { C, FONT_DISPLAY, FONT_UI, mixColor, parsePalette, textStyle } from "../theme.js";
 import { buildFx, resolveFx, type FxContext } from "./fx.js";
 import type { CutInOptions } from "./cutin.js";
+import { fxLibrary } from "../fx-library.js";
 
 export const PANEL_SECONDS = 1.9;
 
@@ -103,6 +105,8 @@ export async function playPanel(o: CutInOptions): Promise<void> {
   let skipped = false;
   root.on("pointertap", () => { skipped = true; });
   const start = clock.now;
+  let named = false;
+  fxLibrary.sound("cutin.panel", 0.85);
   await new Promise<void>((resolve) => {
     const stop = clock.onFrame((now) => {
       const t = now - start;
@@ -110,6 +114,10 @@ export async function playPanel(o: CutInOptions): Promise<void> {
         stop();
         resolve();
         return;
+      }
+      if (!named && t >= slam) {
+        named = true;
+        fxLibrary.sound("cutin.stamp", 0.8);
       }
       const inK = ease.outCubic(Math.min(1, t / 0.14));
       const outK = ease.inCubic(Math.max(0, Math.min(1, (t - (total - 0.22)) / 0.22)));

@@ -41,6 +41,12 @@ Bun.serve({
       const f = Bun.file(join(process.env.GAMBIT_PREVIEW_ART, local.replace(/[^\w.-]/g, "")));
       return (await f.exists()) ? new Response(f, { headers: { "cache-control": "max-age=3600" } }) : new Response("not found", { status: 404 });
     }
+    // Frames from the cut-in harness's capture mode (preview/cutin.ts), saved for a video.
+    if (url.pathname.startsWith("/capture/") && req.method === "POST" && process.env.GAMBIT_CAPTURE_DIR) {
+      const name = url.pathname.slice(9).replace(/[^\w.-]/g, "");
+      await Bun.write(join(process.env.GAMBIT_CAPTURE_DIR, name), await req.arrayBuffer());
+      return new Response("ok");
+    }
     // The repo's effect sheets and sounds (fx-library.ts loadFrom).
     if (url.pathname.startsWith("/assets/")) {
       const rel = decodeURIComponent(url.pathname.slice(8));

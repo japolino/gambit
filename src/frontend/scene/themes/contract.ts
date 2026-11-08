@@ -190,8 +190,26 @@ export interface ThemeCtx {
   rerender(): void;
 }
 
+/**
+ * A fight or a talk starting in this scene. A theme with a room of its own (Table, Diorama) may stage it there:
+ * the battle stage or the Parley view is then drawn see-through on top of the scene (their own theme files,
+ * ../../stage/themes/<id>.ts with `backdrop: "transparent"` and ../../parley/themes/<id>.ts with `inRoom`), and the
+ * scene stays visible underneath. The theme frames the encounter (camera, who sits or stands where, lights),
+ * hides its own scene UI, and keeps rendering until `encounter(null)`.
+ * `art` keys are the scene's art keys where the scene knows them (ctx art lookups), else the battle's own.
+ */
+export type EncounterView =
+  | { kind: "battle"; enemies: { id: string; name: string; art?: string }[]; party: { id: string; name: string; art?: string }[] }
+  | { kind: "parley"; personId?: string; name: string; art?: string };
+
 export interface ThemeRenderer {
   render(v: SceneView): void;
+  /**
+   * Stage a fight or a talk in the theme's room, or end it (null). Return true when it is staged here (the host
+   * then keeps the scene visible under the see-through battle or talk); false or absent: the host hides the
+   * scene and the encounter draws its own backdrop. Only return true when the room can render (WebGL).
+   */
+  encounter?(e: EncounterView | null): boolean;
   /** How the expedition board (a shared overlay, ../board.ts) looks over this theme. */
   boardSkin?: BoardSkin;
   /** Theme keys (numbers, letters). Return true when handled. Delve arrows/WASD are the host's. */

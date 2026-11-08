@@ -11,6 +11,7 @@
  * state, the delve keys, the "Meanwhile…" montage and a pointer tracker;
  * the theme owns every pixel.
  */
+import type { EncounterView } from "./themes/contract.js";
 import type { Hotspot } from "../../engine/world/places.js";
 import { fightLabel } from "../../engine/world/places.js";
 import type { DelveMove } from "../../engine/world/delve.js";
@@ -53,6 +54,8 @@ export interface SceneHandle {
   setArt(key: string, url: string, cutout?: boolean, face?: [number, number, number, number] | null): void;
   hide(): void;
   show(): void;
+  /** Ask the current theme to stage a fight or talk in its room (true: staged; keep the scene visible). */
+  encounter(e: EncounterView | null): boolean;
   destroy(): void;
   /** "Meanwhile…": null opens the montage; the vignettes then play in turn. */
   meanwhile(day: number, items: MeanwhileItem[] | null): void;
@@ -716,6 +719,15 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       mw!.items = items;
       mw!.i = 0;
       paintMeanwhile();
+    },
+    encounter(e) {
+      if (destroyed || !current?.r.encounter) return false;
+      try {
+        return current.r.encounter(e) === true;
+      } catch (err) {
+        console.warn("[gambit] theme could not stage the encounter", err);
+        return false;
+      }
     },
     hide() {
       hidden = true;

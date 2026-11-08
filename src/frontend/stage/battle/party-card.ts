@@ -17,26 +17,26 @@ export class PartyCard extends Container {
   readonly id: string;
   readonly portrait = new Container();
   bust: PuppetFigure;
-  private frame = new Graphics();
-  private portraitMask = new Graphics();
-  private shade = new Graphics();
-  private info = new Graphics();
-  private glow = new Graphics();
+  protected frame = new Graphics();
+  protected portraitMask = new Graphics();
+  protected shade = new Graphics();
+  protected info = new Graphics();
+  protected glow = new Graphics();
   readonly flash = new Graphics();
-  private nameText: Text;
-  private hpText: Text;
-  private resText: Text;
+  protected nameText: Text;
+  protected hpText: Text;
+  protected resText: Text;
   rect: Rect = { x: 0, y: 0, w: 100, h: 100 };
-  private unit: DisplayUnit;
-  private ui = 1;
-  private ghost = 1;
-  private ghostHoldUntil = 0;
-  private shownHp = 1;
-  private now = 0;
-  private active = false;
-  private targetable = false;
+  protected unit: DisplayUnit;
+  protected ui = 1;
+  protected ghost = 1;
+  protected ghostHoldUntil = 0;
+  protected shownHp = 1;
+  protected now = 0;
+  protected active = false;
+  protected targetable = false;
   /** Lift while active (eased). */
-  private lift = 0;
+  protected lift = 0;
 
   constructor(unit: DisplayUnit, bust: FigureSource, strength: number, cutout = true) {
     super();
@@ -97,7 +97,7 @@ export class PartyCard extends Container {
     old.destroy({ children: true });
   }
 
-  private fitBust(bust: PuppetFigure, w: number, ph: number, pad: number): void {
+  protected fitBust(bust: PuppetFigure, w: number, ph: number, pad: number): void {
     if (bust.framed) {
       // An opaque picture: cover the window, kept to its upper part.
       const k = Math.max((w - 2 * pad) / bust.imageW, ph / bust.imageH);
@@ -135,7 +135,7 @@ export class PartyCard extends Container {
     this.redraw();
   }
 
-  private redraw(): void {
+  protected redraw(): void {
     const u = this.unit;
     const { w, h } = this.rect;
     const ui = this.ui;

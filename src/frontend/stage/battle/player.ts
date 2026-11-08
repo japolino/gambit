@@ -7,7 +7,7 @@
  * with each hit; the stage syncs to the final state afterwards.
  */
 import { Graphics } from "pixi.js";
-import type { BattleEvent, BattleState } from "../../../engine/types.js";
+import type { BattleEvent, BattleState, Element } from "../../../engine/types.js";
 import { ease } from "../anim.js";
 import { playCutIn } from "../cutin/cutin.js";
 import { C, ELEMENT_COLOR, STATUS_STYLE, parsePalette } from "../theme.js";
@@ -75,9 +75,42 @@ function streak(stage: BattleStage, from: Point, to: Point, color: number): void
 }
 
 /** An effect from assets/ at a point on the field (only its sound under reduced motion). */
-function playFx(stage: BattleStage, slot: FxSlot, at: { x: number; y: number }, side: number, scale = 1): void {
-  if (stage.reduced) return fxLibrary.sound(slot);
-  void fxLibrary.play(slot, { layer: stage.fxLayer, clock: stage.clock, x: at.x, y: at.y, ui: stage.layout.ui, scale, flip: side < 0 });
+function playFx(stage: BattleStage, slot: FxSlot, at: { x: number; y: number }, side: number, scale = 1, gain = 1, extra: { frames?: [number, number]; speed?: number } = {}): void {
+  if (stage.reduced) {
+    fxLibrary.sound(slot, gain);
+    return;
+  }
+  void fxLibrary.play(slot, { layer: stage.fxLayer, clock: stage.clock, x: at.x, y: at.y, ui: stage.layout.ui, scale, flip: side < 0, gain, ...extra });
+}
+
+/** Each element's own slot; an element slot missing its sheet or its sound borrows hit.magic's. */
+const ELEMENT_SLOT: Partial<Record<Element, FxSlot>> = {
+  fire: "hit.fire", frost: "hit.frost", water: "hit.frost", storm: "hit.storm", shadow: "hit.shadow", blood: "hit.shadow", light: "hit.light", earth: "hit.impact",
+};
+
+/** When the last hit's sound started (stage clock): a multi-hit chain plays its later hits softer. */
+let lastHitSound = -1;
+/** When the last heal or buff sound started: a party-wide one plays it once. */
+let lastSupportSound = -1;
+
+/** The hit's sheet and sound: physical by slash (else impact), elements by their own slot, falling back to hit.magic. */
+function hitFx(stage: BattleStage, element: Element, at: Point, side: number, scale: number): void {
+  const now = stage.clock.now;
+  const gain = now - lastHitSound < 0.3 ? 0.6 : 1;
+  lastHitSound = now;
+  if (element === "physical") {
+    // The slash sheet plays a touch fast: one cut, not a flurry; the body blow lands under the blade a beat later.
+    playFx(stage, fxLibrary.has("hit.slash") ? "hit.slash" : "hit.impact", at, side, scale, gain, { speed: 1.35 });
+    void stage.clock.wait(50).then(() => fxLibrary.sound("hit.impact", 0.45 * gain));
+    return;
+  }
+  const own = ELEMENT_SLOT[element] ?? "hit.magic";
+  const sheetSlot: FxSlot = fxLibrary.hasSheet(own) ? own : "hit.magic";
+  const soundSlot: FxSlot = fxLibrary.hasSound(own) ? own : "hit.magic";
+  fxLibrary.sound(soundSlot, gain);
+  // Ice lands with weight: a soft body blow under the crystal ring.
+  if (own === "hit.frost") fxLibrary.sound("hit.impact", 0.45 * gain);
+  if (!stage.reduced) void fxLibrary.play(sheetSlot, { layer: stage.fxLayer, clock: stage.clock, x: at.x, y: at.y, ui: stage.layout.ui, scale, flip: side < 0, silent: true, speed: sheetSlot === "hit.shadow" ? 1.6 : sheetSlot === "hit.fire" ? 0.8 : 1 });
 }
 
 function hitReaction(stage: BattleStage, ev: Extract<BattleEvent, { kind: "hit" }>): void {
@@ -110,15 +143,24 @@ function hitReaction(stage: BattleStage, ev: Extract<BattleEvent, { kind: "hit" 
     void stage.clock.tween(320, (k) => { g.alpha = 0.45 * (1 - k); }, ease.outCubic);
   }
   if (to) stage.floaters.spark(to.x, to.y, color, power * (0.8 + frac));
-  // Effect sheets and sounds from assets/ (fx-library.ts): the hit by element, a crit on top.
+  // Effect sheets and sounds from assets/ (fx-library.ts): the hit by element, a crit on top; a hit the shield took
+  // whole is a guard.
   if (to && !ev.absorbed) {
-    const slot: FxSlot = ev.element === "physical"
-      ? fxLibrary.has("hit.slash") ? "hit.slash" : "hit.impact"
-      : fxLibrary.has("hit.magic") ? "hit.magic" : "hit.impact";
-    playFx(stage, slot, to, side, 0.9 + frac * 0.8 * power);
-    if (ev.crit) playFx(stage, "hit.crit", to, side, 1.2);
+    // On a foe the sheet sits on the chest (a little below the face) and a size up: the figures are tall.
+    const at = e ? { x: to.x, y: to.y + (e.y + e.body.y - to.y) * 0.28 } : to;
+    const big = e ? 1.3 : 1;
+    if (ev.shieldTaken > 0 && ev.amount === 0) playFx(stage, "hit.guard", at, side, 0.8 * big, 0.8);
+    else {
+      hitFx(stage, ev.element, at, side, (0.9 + frac * 0.8 * power) * big);
+      if (ev.crit) playFx(stage, "hit.crit", at, side, 1.2 * big);
+    }
   }
-  if (ev.crit && !stage.reduced) void shake(stage.field, stage.clock, 6 * stage.layout.ui, 220);
+  if (ev.crit) {
+    // A crit lights the whole screen for a beat.
+    const l = stage.layout;
+    void screenFlash(stage.flash, stage.clock, l.w, l.h, 0xfff6dc, stage.reduced ? 0.12 : 0.32, 200);
+    if (!stage.reduced) void shake(stage.field, stage.clock, 6 * l.ui, 220);
+  }
 }
 
 async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | undefined, final: BattleState): Promise<number> {
@@ -128,6 +170,7 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       stage.advanceOrder(ev.actor);
       for (const [id, v] of stage.enemies) v.setActive(id === ev.actor);
       for (const [id, c] of stage.cards) c.setActive(id === ev.actor);
+      if (stage.cards.has(ev.actor)) fxLibrary.sound("turn.start", 0.7);
       return 120;
     }
     case "use": {
@@ -151,6 +194,7 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       void stage.floaters.banner(l.banner.x, l.banner.y, ev.name, actor.name, enemy ? C.enemy : C.gold, 650);
       const from = anchorOf(stage, ev.actor);
       if (enemy) {
+        fxLibrary.sound("use.enemy");
         stage.enemies.get(ev.actor)?.figure.lookAt(0);
         await enemyLunge(stage, ev.actor);
       } else {
@@ -183,6 +227,14 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
     case "miss": {
       const spot = numberSpot(stage, ev.target);
       if (spot) stage.floaters.number(spot.x, spot.y, { amount: 0, kind: "miss" });
+      fxLibrary.sound("hit.miss", 0.7);
+      // The swing cuts the air beside the target: two quick white streaks grazing past.
+      const at = anchorOf(stage, ev.target);
+      if (at) {
+        const u = 60 * l.ui;
+        streak(stage, { x: at.x - u * 1.6, y: at.y - u * 1.2 }, { x: at.x + u * 0.4, y: at.y + u * 1.3 }, 0xffffff);
+        streak(stage, { x: at.x - u * 1.2, y: at.y - u * 1.5 }, { x: at.x + u * 0.8, y: at.y + u * 1.0 }, 0xbfe4ff);
+      }
       stage.enemies.get(ev.target)?.figure.gesture("step_back", 1.2);
       stage.cards.get(ev.target)?.bust.gesture("step_back", 1.2);
       return 240;
@@ -194,7 +246,12 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       const spot = numberSpot(stage, ev.target);
       if (spot) stage.floaters.number(spot.x, spot.y, { amount: ev.amount, kind: ev.kind });
       const healAt = anchorOf(stage, ev.target);
-      if (healAt && ev.kind === "heal") playFx(stage, "hit.heal", healAt, 1);
+      // A run of heals or shields (a party-wide one) plays its sound once; the sheet shows on each.
+      if (healAt) {
+        const quiet = stage.clock.now - lastSupportSound < 0.4;
+        if (!quiet) lastSupportSound = stage.clock.now;
+        playFx(stage, ev.kind === "heal" ? "hit.heal" : "hit.buff", healAt, 1, ev.kind === "heal" ? 1.3 : 0.9, quiet ? 0 : ev.kind === "heal" ? 0.9 : 0.75);
+      }
       const c = stage.cards.get(ev.target);
       if (c) {
         const g = c.flash;
@@ -211,6 +268,10 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       const spot = numberSpot(stage, ev.target);
       const style = STATUS_STYLE[ev.status];
       if (spot) stage.floaters.label(spot.x, spot.y - 22 * l.ui, style.label, style.color);
+      if (stage.clock.now - lastSupportSound >= 0.4) {
+        lastSupportSound = stage.clock.now;
+        fxLibrary.sound(style.harmful ? "hit.debuff" : "hit.buff", 0.6);
+      }
       return next?.kind === "status_on" ? 80 : 160;
     }
     case "status_off": {
@@ -244,6 +305,7 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       }
       void screenFlash(stage.flash, stage.clock, l.w, l.h, C.break, stage.reduced ? 0.15 : 0.35, 300);
       if (!stage.reduced) void shake(stage.field, stage.clock, 8 * l.ui, 260);
+      playFx(stage, "hit.break", at, 1, 0.7, 1, { frames: [0, 8], speed: 1.4 });
       await stage.floaters.breakFlash(at.x, Math.max(80 * l.ui, at.y - 30 * l.ui));
       return 80;
     }
@@ -303,6 +365,7 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
       if (v) {
         v.setActive(false);
         v.figure.gesture("slump", 2);
+        fxLibrary.sound("hit.defeat", 0.8);
         await stage.clock.tween(stage.reduced ? 350 : 750, (k) => v.figure.setDissolve(k, 0xffa860), ease.inOutCubic);
         v.visible = false;
         return 60;
@@ -360,6 +423,7 @@ async function onEvent(stage: BattleStage, ev: BattleEvent, next: BattleEvent | 
 
 export async function playEvents(stage: BattleStage, events: BattleEvent[], final: BattleState): Promise<void> {
   for (let i = 0; i < events.length; i += 1) {
+    stage.decorEvent(events[i]!, final);
     const hold = await onEvent(stage, events[i]!, events[i + 1], final);
     if (hold > 0) await stage.clock.wait(hold);
   }

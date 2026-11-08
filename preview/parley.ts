@@ -372,7 +372,9 @@ const narrator: ParleyNarrator = q.get("narrator") === "chat" ? "chat" : "gambit
 
 let view: ParleyView;
 let replyTimer: ReturnType<typeof setInterval> | undefined;
-view = mountParley(root, scenario, state, journal, mode, { chatBound: q.get("chat") !== "0", narrator, theme, table: q.get("table") === "1" }, {
+// &inroom=1: the scene behind this page stages the talk in its room (preview/scene.ts &encounter=parley).
+if (q.get("inroom") === "1") document.documentElement.style.background = document.body.style.background = "transparent";
+view = mountParley(root, scenario, state, journal, mode, { chatBound: q.get("chat") !== "0", narrator, theme, table: q.get("table") === "1", inRoom: q.get("inroom") === "1" }, {
   say(text) {
     view.judging(text);
     setTimeout(() => {

@@ -2,6 +2,9 @@
  * Scene preview (docs/DESIGN.md 6.1-6.3): the real world builder, delve
  * generator and Scene view, on a made-up harbor card with painted stand-in
  * art. No Lumiverse needed: http://localhost:4174/scene
+ *   &encounter=battle  a demo fight on top of the scene, as the game shows it (a theme with a room stages it there;
+ *                      otherwise the stage draws its own backdrop and the scene is hidden)
+ *   &encounter=parley  the Parley harness (/parley) on top, see-through when the theme stages it in its room
  */
 import { clearRoom, enterDelve, generateDelve, stepDelve } from "../src/engine/world/delve.js";
 import { buildWorld, moveScene, newScene, TIMES } from "../src/engine/world/places.js";
@@ -11,6 +14,8 @@ import { boardMapKey, buildSceneView, placeKey, wallKey, type PlayRecord } from 
 import { npcArtKey } from "../src/shared/art-keys.js";
 import type { ThemeId } from "../src/shared/scene-view.js";
 import { mountScene } from "../src/frontend/scene/view.js";
+import { mountBattleStage } from "../src/frontend/stage/index.js";
+import { demoBattle } from "../src/engine/content/index.js";
 import { addToCodex, awakenedSkill, balance, classFromDraft, fallbackAwakenings, fallbackForge, fromCodex, fuseClasses, newBook, rankOf, type Codex } from "../src/engine/forge/forge.js";
 import { buildForgeView } from "../src/shared/forge-view.js";
 import { baseClassFor } from "../src/engine/card/foes.js";
@@ -382,5 +387,36 @@ refresh();
   if (q.get("classes") === "1") {
     handle.forge(buildForgeView("preview", book, codex, (o) => o.art ?? `class:${o.def.id}`, null));
     ctx?.classes.toggle();
+  }
+}
+
+// &encounter=battle|parley: a fight or a talk over the scene, staged in the theme's room when it has one.
+{
+  const q = new URLSearchParams(location.search);
+  const kind = q.get("encounter");
+  const theme = (q.get("theme") ?? undefined) as ThemeId | undefined;
+  const layer = document.createElement("div");
+  layer.style.cssText = "position:absolute;inset:0;z-index:50;";
+  if (kind === "battle") {
+    const state = demoBattle(q.get("seed") ?? "encounter");
+    const staged = handle.encounter({
+      kind: "battle",
+      enemies: state.combatants.filter((c) => c.side === "enemy").map((c) => ({ id: c.id, name: c.name, art: c.art })),
+      party: state.combatants.filter((c) => c.side === "party").map((c) => ({ id: c.id, name: c.name, art: c.art })),
+    });
+    if (!staged) handle.hide();
+    host.append(layer);
+    const stage = mountBattleStage(layer, { state, onAction: () => ({ state, events: [] }) as never, theme: theme ?? null });
+    // For driving it from devtools or a screenshot script: window.encounter.stage (its host element carries gambitStage).
+    Object.assign(globalThis, { encounter: { stage, state, layer, staged } });
+  } else if (kind === "parley") {
+    const staged = handle.encounter({ kind: "parley", personId: "marrow", name: "Marrow the Ferryman" });
+    if (!staged) handle.hide();
+    const frame = document.createElement("iframe");
+    frame.src = `/parley?${theme ? `theme=${theme}&` : ""}snap=${q.get("snap") ?? "0"}${staged ? "&inroom=1" : ""}`;
+    frame.setAttribute("allowtransparency", "true");
+    frame.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;";
+    layer.append(frame);
+    host.append(layer);
   }
 }

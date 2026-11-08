@@ -8,7 +8,7 @@ import { Container, Graphics, Text } from "pixi.js";
 import { PuppetFigure } from "../puppet/puppet-figure.js";
 import type { FigureSource } from "../puppet/source.js";
 import { C, STATUS_STYLE, T } from "../theme.js";
-import { caps } from "../skin.js";
+import { caps, currentBattleTheme } from "../skin.js";
 import { drawBar, drawPips, drawStatusGlyph, fitText } from "../ui.js";
 import type { DisplayUnit } from "./display.js";
 import type { EnemySlot } from "./layout.js";
@@ -18,7 +18,12 @@ export class EnemyView extends Container {
   figure: PuppetFigure;
   readonly body = new Container();
   private shadow = new Graphics();
-  private plate = new Container();
+  /** The nameplate under the figure (name, HP, poise, statuses). */
+  readonly plate = new Container();
+  /** False: a theme draws its own nameplates (themes/types.ts decorate); the stock one stays hidden. */
+  showPlate = currentBattleTheme()?.enemyPlates !== false;
+  /** The hairline target corners (off when the theme marks targets itself). */
+  showBrackets = currentBattleTheme()?.enemyBrackets !== false;
   private plateG = new Graphics();
   private nameText: Text;
   private brackets = new Graphics();
@@ -145,7 +150,7 @@ export class EnemyView extends Container {
   private drawBrackets(alpha: number, strong = false): void {
     const b = this.brackets;
     b.clear();
-    if (alpha <= 0) return;
+    if (alpha <= 0 || !this.showBrackets) return;
     const w = Math.max(this.slot.height * 0.36, 70 * this.ui);
     const top = -this.slot.height * (this.unit.rig === "huge" ? 0.85 : 1.02);
     const bottom = this.slot.floorY - this.slot.y + 4;
@@ -190,7 +195,7 @@ export class EnemyView extends Container {
     const top = -this.slot.height * (u.rig === "huge" ? 0.82 : 1.04);
     m.poly([-7 * ui, top - 14 * ui, 7 * ui, top - 14 * ui, 0, top - 4 * ui]).fill({ color: C.enemy }).stroke({ width: 1, color: 0x000000, alpha: 0.7 });
     m.visible = this.active;
-    this.plate.visible = u.alive;
+    this.plate.visible = u.alive && this.showPlate;
   }
 
   update(now: number, dt: number): void {

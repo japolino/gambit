@@ -57,6 +57,7 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import { rng, type Stage3D } from "../contract.js";
 import { leatherUrl, matCanvas, paperUrl, slateUrl, tabletop } from "./tex.js";
 import { createPuppetMeshes, type PuppetMeshes } from "../../puppet-mesh.js";
+import { duel, duelCamera } from "./duel.js";
 
 /** What the 3D board shows; drawn in chalk on its slate. */
 export interface Board3D {
@@ -181,6 +182,12 @@ export class Table3D {
   private port = false;
   private t = 0;
   private disposed = false;
+  /** A fight or a talk staged at the table (duel.ts): fixed camera, nobody else seated, the slate given over to the fight. */
+  private enc: "battle" | "parley" | null = null;
+  private slateSeen = -1;
+  private ringSeen = duel.ring;
+  private flareSeen = duel.flare;
+  private flareK = 0;
   onReady: (() => void) | null = null;
 
   constructor(private st: Stage3D, private reduced: boolean) {
@@ -718,6 +725,13 @@ export class Table3D {
       this.base.look.set(0, 0, -1.0);
       this.base.fov = aspect > 2.2 ? 46 : 50;
     }
+    if (this.enc) {
+      // The fight or the talk has its own seat (duel.ts), which the flat layers over the room project too.
+      const c = duelCamera(this.enc, aspect);
+      this.base.eye.set(...c.eye);
+      this.base.look.set(...c.look);
+      this.base.fov = c.fov;
+    }
     const cam = this.st.camera;
     cam.fov = this.base.fov;
     cam.near = 0.03;
@@ -754,6 +768,14 @@ export class Table3D {
       b.rotation.set(0, -0.32, 0.025);
       b.scale.setScalar(0.88);
     }
+    if (this.enc) {
+      // In a fight the slate hangs high on the right, clear of the figures, with the turn order chalked on it;
+      // in a talk (and on a phone, where it would hang off screen) it is taken down.
+      b.visible = !this.port;
+      b.position.set(1.62 * Math.max(0.9, Math.min(1.25, s)), 0.6, -1.95);
+      b.rotation.set(0, -0.38, 0.02);
+      b.scale.setScalar(0.92);
+    } else b.visible = true;
     this.tops.clear();
     const sk = this.pickables.get("skull")!;
     this.candle.position.set(sk.position.x, 0.56, sk.position.z + 0.04);
@@ -928,6 +950,7 @@ export class Table3D {
   }
 
   setBoard(b: Board3D, fontsReady: boolean): void {
+    if (this.enc) return;
     const key = JSON.stringify([{ ...b, map: b.map?.key ?? null }, fontsReady]);
     if (key === this.boardKey) return;
     this.boardKey = key;
@@ -1573,8 +1596,10 @@ export class Table3D {
     const cam = this.st.camera;
     const z = this.zoom;
     // Seated: lean toward the pointer and breathe. Zoomed: glide to the object.
-    const goalEye = z ? z.eye : this.base.eye.clone().add(new Vector3(pointer.x * 0.07, -pointer.y * 0.035 + Math.sin(t * 0.45) * 0.006, Math.sin(t * 0.3) * 0.01));
-    const goalLook = z ? z.look : this.base.look.clone().add(new Vector3(pointer.x * 0.22, -pointer.y * 0.12, 0));
+    if (this.enc) this.duelFrame(dt);
+    const still = !!this.enc;
+    const goalEye = z ? z.eye : still ? this.base.eye : this.base.eye.clone().add(new Vector3(pointer.x * 0.07, -pointer.y * 0.035 + Math.sin(t * 0.45) * 0.006, Math.sin(t * 0.3) * 0.01));
+    const goalLook = z ? z.look : still ? this.base.look : this.base.look.clone().add(new Vector3(pointer.x * 0.22, -pointer.y * 0.12, 0));
     const k = this.reduced ? 1 : 1 - Math.exp(-dt * 6.5);
     this.cam.eye.lerp(goalEye, k);
     this.cam.look.lerp(goalLook, k);
@@ -1588,7 +1613,7 @@ export class Table3D {
     // Candle flicker: the light, the flames, and harder when the house is thinking.
     const amp = this.busy ? 2.2 : 1;
     const f = this.reduced ? 1 : 1 + amp * (0.08 * Math.sin(t * 7.3) + 0.05 * Math.sin(t * 13.7 + 1.3) + (Math.random() - 0.5) * 0.06);
-    this.candle.intensity = 2.4 * f;
+    this.candle.intensity = 2.4 * f * (1 + this.flareK * 1.6);
     this.lamp.intensity = 9 * (1 + (f - 1) * 0.25);
     for (const [i, fl] of this.flames.entries()) {
       fl.quaternion.copy(cam.quaternion);
@@ -1607,6 +1632,89 @@ export class Table3D {
       const shiver = this.ring > 0 ? Math.sin(t * 60) * 0.06 * this.ring : this.busy && !this.reduced ? Math.sin(t * 40) * 0.02 : 0;
       bell.rotation.z = shiver;
     }
+  }
+
+  /** Stage a fight or a talk here (null: back to the scene). */
+  setEncounter(kind: "battle" | "parley" | null): void {
+    if (kind === this.enc) return;
+    this.enc = kind;
+    this.zoom = null;
+    this.setHover(null);
+    this.people.visible = !kind;
+    this.slips.visible = !kind;
+    this.slateSeen = -1;
+    if (!kind) this.patienceCandles(null);
+    // The scoreboard goes back to the day and the hour when the fight is over.
+    if (!kind) this.boardKey = "";
+    if (this.lastW) this.layout(this.lastW, this.lastH);
+  }
+
+  /** What the battle asks of the room this frame: its turn order on the slate, the bell, a flare of the candle. */
+  private duelFrame(dt: number): void {
+    if (duel.slate && duel.slateVersion !== this.slateSeen) {
+      this.slateSeen = duel.slateVersion;
+      const g = this.boardCanvas.getContext("2d")!;
+      g.clearRect(0, 0, this.boardCanvas.width, this.boardCanvas.height);
+      g.drawImage(duel.slate, 0, 0, this.boardCanvas.width, this.boardCanvas.height);
+      this.boardTex.needsUpdate = true;
+    }
+    if (duel.ring !== this.ringSeen) {
+      this.ringSeen = duel.ring;
+      this.ringBell();
+    }
+    if (duel.flare !== this.flareSeen) {
+      this.flareSeen = duel.flare;
+      if (!this.reduced) this.flareK = 1;
+    }
+    this.flareK = Math.max(0, this.flareK - dt * 2.2);
+    const pk = this.enc === "parley" && duel.patience ? `${duel.patience.now}/${duel.patience.max}` : "";
+    if (pk !== this.patienceKey) this.patienceCandles(pk ? duel.patience : null);
+  }
+
+  private patienceRow = new Group();
+  private patienceKey = "";
+  private rowFlames: Mesh[] = [];
+  /** The talk's patience: a row of tapers on the slate's ledge, one snuffed for each that is spent. */
+  private patienceCandles(p: { now: number; max: number } | null): void {
+    this.patienceKey = p ? `${p.now}/${p.max}` : "";
+    this.flames = this.flames.filter((f) => !this.rowFlames.includes(f));
+    this.rowFlames = [];
+    for (const c of [...this.patienceRow.children]) {
+      this.patienceRow.remove(c);
+      c.traverse((o) => (o as Mesh).geometry?.dispose());
+    }
+    const board = this.pickables.get("board");
+    if (!p || !board) return;
+    if (this.patienceRow.parent !== board) board.add(this.patienceRow);
+    const wax = new MeshStandardMaterial({ color: 0xeee2c8, roughness: 0.65, emissive: new Color(0x402010), emissiveIntensity: 0.25 });
+    const spent = new MeshStandardMaterial({ color: 0x9a8e78, roughness: 0.8 });
+    const brass = new MeshStandardMaterial({ color: 0xd8a040, metalness: 1, roughness: 0.3 });
+    const n = Math.max(1, Math.min(8, p.max));
+    const tray = new Mesh(new BoxGeometry(0.07 * n + 0.04, 0.016, 0.07), brass);
+    tray.position.set(0, -0.415, 0.05);
+    this.patienceRow.add(tray);
+    for (let i = 0; i < n; i++) {
+      const lit = i < p.now;
+      const h = lit ? 0.12 : 0.055;
+      const c = new Mesh(new CylinderGeometry(0.011, 0.013, h, 12), lit ? wax : spent);
+      const x = (i - (n - 1) / 2) * 0.07;
+      c.position.set(x, -0.405 + h / 2, 0.05);
+      c.castShadow = true;
+      this.patienceRow.add(this.inked(c, 0.0025, false));
+      const wick = new Mesh(new CylinderGeometry(0.0015, 0.0015, 0.014, 4), new MeshBasicMaterial({ color: 0x120a08 }));
+      wick.position.set(x, -0.405 + h + 0.006, 0.05);
+      this.patienceRow.add(wick);
+      if (lit) {
+        const fl = this.flame();
+        fl.position.set(x, -0.405 + h + 0.03, 0.05);
+        this.patienceRow.add(fl);
+        this.flames.push(fl);
+        this.rowFlames.push(fl);
+      }
+    }
+    const glow = new PointLight(0xff9a40, 0.25 * p.now, 0.9, 2);
+    glow.position.set(0, -0.25, 0.25);
+    this.patienceRow.add(glow);
   }
 
   dispose(): void {

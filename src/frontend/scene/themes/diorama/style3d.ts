@@ -143,4 +143,9 @@ export const CSS3D = `
   /* The middle of the counter is too tight for every label on a phone: the cup, glass and dagger carry theirs (napkin, sand, bounty note) and light up when touched. */
   .dr.d3 .lb:is([data-k="tea"], [data-k="hour"], [data-k="fight"], [data-k="easel"]):not(.hot):not(:focus-visible) { opacity: 0; }
 }
+/* A fight or a talk staged in the shop (room3d.ts encounter): the shop's own labels, narration and panels step aside. */
+.dr.d3.enc .labels, .dr.d3.enc .say, .dr.d3.enc .panel, .dr.d3.enc .ovl { display: none; }
+.dr.d3 .encplate { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; will-change: transform; }
+.dr.d3 .encplate small:empty { display: none; }
+.dr.d3.enc[data-enc="battle"] .vig3 { background: radial-gradient(ellipse 80% 78% at 50% 46%, rgba(0,0,0,0) 48%, rgba(5,2,0,.7)); }
 `;

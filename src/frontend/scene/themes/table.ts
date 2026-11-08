@@ -16,6 +16,7 @@ import { esc, rng, seedOf, type MenuItem, type SceneView, type ThemeCtx, type Th
 import { ARCH_PATH, actionCard, bell, chair, coins, deckCase, factCard, gavel, handBack, handFront, ironTag, ledger, mapSheet, motifFor, openBook, plaque, scoreboard, shadowbox, skullCandle, tentCard, type BoardData } from "./table/art.js";
 import { tableCss } from "./table/css.js";
 import { Table3D, type PickId } from "./table/three.js";
+import { duel } from "./table/duel.js";
 import { feltUrl, leatherUrl, MAT, pageUrl, paintTable, paperUrl, project, SIGILS, slateUrl, stoneUrl, type TableGeom } from "./table/tex.js";
 
 /** A prop's place: left edge as a fraction of the stage width, top as a fraction of the height, width as a fraction of H (wide) or W (portrait). */
@@ -186,6 +187,8 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   let x3 = false;
   /** What the camera zoomed in to open, so closing it zooms back out. */
   let opened: "journal" | "classes" | "tags" | "peek" | null = null;
+  /** A fight or a talk staged at the table (encounter()): the room only, no scene UI, no picking. */
+  let enc: "battle" | "parley" | null = null;
   let fontsReady = false;
   void document.fonts?.ready.then(() => {
     fontsReady = true;
@@ -1035,7 +1038,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const CONTROLS = "button, a, input, textarea, select, .card, .plaque, .book, .tags, .peek, .map, .fgh, [role=button], [tabindex]";
   let lastPick = 0;
   root.addEventListener("pointermove", (e) => {
-    if (!x3 || !t3 || !view) return;
+    if (!x3 || !t3 || !view || enc) return;
     const el = e.target as Element;
     const tag = el.closest<HTMLElement>("[data-pick]");
     if (tag) {
@@ -1059,7 +1062,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     if (lab !== peek) setPeek(lab);
   });
   root.addEventListener("click", (e) => {
-    if (!x3 || !t3 || !view) return;
+    if (!x3 || !t3 || !view || enc) return;
     if ((e.target as Element).closest(CONTROLS)) return;
     const id = t3.pick(e.clientX, e.clientY);
     if (id) act3d(id, view).run?.();
@@ -1129,7 +1132,32 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   return {
     boardSkin: BOARD_SKINS.table,
     render,
+    encounter(e) {
+      if (!e) {
+        if (enc) {
+          enc = null;
+          duel.staged = null;
+          tb.classList.remove("enc", "enc-battle", "enc-parley");
+          t3?.setEncounter(null);
+          if (view) render(view);
+        }
+        return true;
+      }
+      // Only the real room can hold it; the drawn 2D table hands the encounter its own backdrop.
+      if (!x3 || !t3) return false;
+      closeAll();
+      setPeek(null);
+      enc = e.kind;
+      duel.staged = e.kind;
+      duel.slate = null;
+      duel.patience = null;
+      tb.classList.remove("enc-battle", "enc-parley");
+      tb.classList.add("enc", `enc-${e.kind}`);
+      t3.setEncounter(e.kind);
+      return true;
+    },
     key(e) {
+      if (enc) return false;
       if (e.key === "Escape") {
         if (x3 && (t3?.zoomed || opened)) {
           closeAll();
@@ -1160,6 +1188,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       return false;
     },
     destroy() {
+      if (enc) duel.staged = null;
       stop();
       ro.disconnect();
       // The host drops the custom stage (and our frame hook) when the next theme takes the layer.

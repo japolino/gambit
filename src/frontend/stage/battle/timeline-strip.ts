@@ -14,11 +14,11 @@ import type { Rect } from "./layout.js";
 type Chip = { key: string; c: Container; sprite: Sprite; frame: Graphics; x: number; target: number };
 
 export class TimelineStrip extends Container {
-  private bg = new Graphics();
-  private title: Text;
-  private chips: Chip[] = [];
-  private rect: Rect = { x: 0, y: 0, w: 100, h: 40 };
-  private ui = 1;
+  protected bg = new Graphics();
+  protected title: Text;
+  protected chips: Chip[] = [];
+  protected rect: Rect = { x: 0, y: 0, w: 100, h: 40 };
+  protected ui = 1;
   /** Filters for the chip portraits (a pixel theme's picture treatment). */
   chipFilters: Filter[] = [];
 

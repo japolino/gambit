@@ -73,6 +73,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   /** The Scene on screen (6.1), the last view the backend sent, and whether a click asked for it. */
   let scene: SceneHandle | null = null;
   let sceneView: SceneView | null = null;
+  /** The scene's theme is staging the current fight or talk in its own room (the scene stays visible). */
+  let staged = false;
   /** The locked look's palette tokens (a battle outside a themed chat wears them). */
   let lookUi: Parameters<typeof applyUiTokens>[0] = null;
   let wantScene = false;
@@ -199,7 +201,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       });
       pushArt();
     } else scene.setView(view);
-    if (stage) scene.hide();
+    if (stage && !staged) scene.hide();
     else scene.show();
   }
 
@@ -210,6 +212,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       const chatId = current.meta?.chatId;
       stage?.destroy();
       stage = null;
+      if (staged) scene?.encounter(null);
+      staged = false;
       if (sceneView && scene) {
         scene.setView(sceneView);
         scene.show();
@@ -247,6 +251,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       voice.stop();
       stage?.destroy();
       stage = null;
+      staged = false;
       scene?.destroy();
       scene = null;
       parley?.destroy();
@@ -271,7 +276,6 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     ov.show();
     parley?.destroy();
     parley = null;
-    scene?.hide();
     if (!stage) {
       // A fight in a chat wears that chat's scene theme; elsewhere the stage's own look with the look's tokens.
       const theme = sceneView && sceneView.chatId === state.meta?.chatId ? sceneView.theme : null;
@@ -279,12 +283,23 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         applyStageSkin(null);
         applyUiTokens(lookUi);
       }
+      // A theme with its own room stages the fight there; the stage then draws see-through over the scene.
+      staged =
+        !!theme &&
+        !!scene &&
+        scene.chatId === state.meta?.chatId &&
+        scene.encounter({
+          kind: "battle",
+          enemies: state.combatants.filter((c) => c.side === "enemy").map((c) => ({ id: c.id, name: c.name, art: c.art })),
+          party: state.combatants.filter((c) => c.side === "party").map((c) => ({ id: c.id, name: c.name, art: c.art })),
+        });
       stage = mountBattleStage(ov.content, { state, onAction, theme });
       pushArt();
       if (events.length) await stage.update(state, events);
     } else {
       await stage.update(state, events);
     }
+    if (!staged) scene?.hide();
     if (state.meta?.chatId && state.outcome !== "ongoing") backToScene();
   }
 
@@ -295,19 +310,24 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     ov.show();
     stage?.destroy();
     stage = null;
-    scene?.hide();
     if (parley && parley.parleyId === state.id) {
       parley.setState(state, journal, parleyMode);
       return;
     }
     parley?.destroy();
-    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, theme: sceneView && sceneView.chatId === state.chatId ? sceneView.theme : undefined }, {
+    if (staged) scene?.encounter(null);
+    const talkTheme = sceneView && sceneView.chatId === state.chatId ? sceneView.theme : undefined;
+    staged = !!talkTheme && !!scene && scene.chatId === state.chatId && scene.encounter({ kind: "parley", personId: scenario.npc.id, name: scenario.npc.name });
+    if (!staged) scene?.hide();
+    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, theme: talkTheme, inRoom: staged }, {
       say: (text) => send({ type: "parley.say", parleyId: state.id, text }),
       close: (how) => send({ type: "parley.close", parleyId: state.id, how }),
       setMode: (mode) => send({ type: "parley.view", mode }),
       leave: () => {
         parley?.destroy();
         parley = null;
+        if (staged) scene?.encounter(null);
+        staged = false;
         if (scene) scene.show();
         else ov.hide();
       },

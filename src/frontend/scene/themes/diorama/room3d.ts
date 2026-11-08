@@ -29,12 +29,16 @@ import {
   BufferGeometry,
   Float32BufferAttribute,
   AdditiveBlending,
+  PerspectiveCamera,
+  DoubleSide,
   Vector3,
   type CanvasTexture,
   type Object3D,
   type Texture,
 } from "three";
-import { esc, rng, type MenuItem, type SceneView, type ThemeCtx } from "../contract.js";
+import { esc, rng, type EncounterView, type MenuItem, type SceneView, type ThemeCtx } from "../contract.js";
+import { board } from "./bridge.js";
+import { Casters, battlePose, footlights, proscenium, measureBand, parleyPose, poseCamera, toWorld, type Footlights, type Pose } from "./encounter3d.js";
 import type { Stage3D } from "../../layer3d.js";
 import * as M from "./models.js";
 import { cleanCutout } from "./chart.js";
@@ -76,6 +80,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   <div class="panel" hidden></div>
   <div class="say" aria-live="polite"></div>
   <div class="ovl"></div>
+  <div class="lb plate encplate" hidden>${WEDGE}<b></b><small></small></div>
 </div>`;
   const dr = host.querySelector(".dr") as HTMLDivElement;
   const stageEl = host.querySelector(".stage3") as HTMLDivElement;
@@ -83,6 +88,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   const panelEl = host.querySelector(".panel") as HTMLDivElement;
   const say = host.querySelector(".say") as HTMLDivElement;
   const ovl = host.querySelector(".ovl") as HTMLDivElement;
+  const encPlate = host.querySelector(".encplate") as HTMLDivElement;
   let destroyed = false;
   let active = false;
   let last: SceneView | null = null;
@@ -99,7 +105,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     hour: ReturnType<typeof M.hourglass>; dagger: ReturnType<typeof M.dagger>; lantern: ReturnType<typeof M.lanternModel>;
     jour: Group; cls: Group; globe: ReturnType<typeof M.globe>; clock: ReturnType<typeof M.clockModel>; spools: Group; spoolKey: string;
     lamp: PointLight; flame: PointLight; people: Group; peopleKey: string; cards: Group; cardsKey: string; extras: Group; extrasKey: string;
-    motes: Points; cardsAnchor: Group;
+    motes: Points; cardsAnchor: Group; lampG: Group; fill: { hemi: HemisphereLight; front: PointLight; rim: PointLight };
   } | null = null;
   const items = new Map<string, Item>();
   const dynTex = new Set<Texture>();
@@ -159,7 +165,8 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     lamp.shadow.camera.near = 0.1;
     lamp.shadow.camera.far = 12;
     w.add(lamp);
-    w.add(new HemisphereLight(0xffdcb0, 0x1c0e06, 0.55));
+    const hemi = new HemisphereLight(0xffdcb0, 0x1c0e06, 0.55);
+    w.add(hemi);
     const front = new PointLight(0xffb070, 7, 0, 1.6);
     front.position.set(2.4, 2.2, 2.8);
     w.add(front);
@@ -226,9 +233,383 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
 
     squeeze = [easel.group, register.group, tea.group, hour.group, dagger.group, lantern.group, flame, cls, jour, globe.group];
     for (const o of squeeze) o.userData.bx = o.position.x;
-    parts = { back, easel, register, tea, hour, dagger, lantern, jour, cls, globe, clock, spools: new Group(), spoolKey: "", lamp, flame, people, peopleKey: "", cards, cardsKey: "", extras, extrasKey: "", motes, cardsAnchor };
+    parts = { back, easel, register, tea, hour, dagger, lantern, jour, cls, globe, clock, spools: new Group(), spoolKey: "", lamp, flame, people, peopleKey: "", cards, cardsKey: "", extras, extrasKey: "", motes, cardsAnchor, lampG, fill: { hemi, front, rim } };
+    encParts?.casters.dispose();
+    encParts = null;
     w.add(parts.spools);
     gen = s.generation;
+  }
+
+  /* ---------------- An encounter staged in the shop ---------------- */
+  // A fight: the counter is cleared and becomes a little theatre's stage, footlights along its front edge; the
+  // battle (stage/themes/diorama) stands its paper figures on it and the room throws their shadows. A talk: the
+  // person you talk to stands behind the counter, framed close; the till rings up the running offer.
+  let enc: EncounterView | null = null;
+  let encParts: { group: Group; foot: Footlights; casters: Casters; guest: Group; guestKey: string; guestX: number; prosc: Group } | null = null;
+  const encCam = new PerspectiveCamera();
+  let encPose: Pose | null = null;
+  let encPoseKey = "";
+  let parleyVer = -1;
+  let shakeSeen = 0;
+
+  function stageAspect(): number {
+    const b = stageEl.getBoundingClientRect();
+    return Math.max(0.3, b.width / Math.max(1, b.height));
+  }
+  /** The framing for the encounter at the current screen shape (cached), and the counter band the battle reads. */
+  function encFraming(): Pose | null {
+    if (!enc) return null;
+    const aspect = stageAspect();
+    const key = `${enc.kind}|${aspect.toFixed(3)}`;
+    if (key !== encPoseKey || !encPose) {
+      encPoseKey = key;
+      encPose = enc.kind === "battle" ? battlePose(aspect) : parleyPose(aspect);
+      poseCamera(encCam, encPose, aspect);
+      if (enc.kind === "battle") board().band = measureBand(encCam, aspect, -1.42, 1.32);
+      if (encParts) encParts.guestX = guestX(aspect);
+      // The screen changed shape: re-place the backcloth and the props for the new framing.
+      queueMicrotask(() => {
+        applyEnc();
+        syncGuest();
+      });
+    } else poseCamera(encCam, encPose, aspect);
+    return encPose;
+  }
+  /** Where the person stands in a talk: a little left of centre (the till and the hourglass flank them). */
+  function guestX(aspect: number): number {
+    if (aspect < 0.95) return 0;
+    const p = toWorld(encCam, 0.45, 0.45, { z: -0.5 });
+    return p ? Math.max(-1.6, Math.min(0.6, p.x)) : -0.6;
+  }
+
+  function ensureEncParts(): void {
+    if (encParts || !world || !parts) return;
+    const g = new Group();
+    const small = Math.min(innerWidth, innerHeight) < 600;
+    const foot = footlights(7, 1.55, small);
+    g.add(foot.group);
+    const casters = new Casters();
+    g.add(casters.group);
+    const guest = new Group();
+    g.add(guest);
+    const prosc = proscenium(roomKind === "in");
+    g.add(prosc);
+    world.add(g);
+    encParts = { group: g, foot, casters, guest, guestKey: "", guestX: -0.6, prosc };
+    encPoseKey = "";
+  }
+
+  /** Show, hide and move the shop's things for the encounter (after every render, which shows them again). */
+  function applyEnc(): void {
+    if (!parts) return;
+    const P = parts;
+    const on = !!enc;
+    dr.classList.toggle("enc", on);
+    dr.dataset.enc = enc?.kind ?? "";
+    const E0 = encParts;
+    if (!on) {
+      if (encParts) encParts.group.visible = false;
+      P.people.visible = true;
+      for (const o of [P.easel.group, P.register.group, P.hour.group]) delete o.userData.ex;
+      if (P.hour.group.userData.hz !== undefined) P.hour.group.position.z = P.hour.group.userData.hz as number;
+      P.register.group.scale.setScalar(0.8);
+      P.hour.group.scale.setScalar(0.85);
+      P.easel.group.visible = P.register.group.visible = true;
+      if (E0) E0.prosc.visible = false;
+      P.fill.hemi.intensity = 0.55;
+      P.lamp.castShadow = true;
+      P.lampG.position.y = 2.78;
+      P.fill.front.intensity = 7;
+      P.fill.rim.intensity = 5;
+      (P.back.material as MeshStandardMaterial).emissiveIntensity = roomKind === "in" ? 0.28 : 0.5;
+      const home = P.back.userData.home as { p: Vector3; s: number } | undefined;
+      if (home) {
+        P.back.position.copy(home.p);
+        P.back.scale.setScalar(home.s);
+        delete P.back.userData.home;
+      }
+      encPlate.hidden = true;
+      return;
+    }
+    ensureEncParts();
+    const E = encParts!;
+    E.group.visible = true;
+    const battle = enc!.kind === "battle";
+    E.foot.group.visible = battle;
+    E.casters.group.visible = battle;
+    E.guest.visible = !battle;
+    E.prosc.visible = battle;
+    if (battle) {
+      // The valance hangs just inside the top of the frame.
+      const top = toWorld(encCam, 0.5, 0.0, { z: -0.3 });
+      const val = E.prosc.userData.valance as Group;
+      if (top) val.position.y = Math.max(M.TOP + 1.2, top.y - 0.02);
+    }
+    P.people.visible = false;
+    // Clear the middle of the counter: the small props go, the easel and the till are pushed to the ends.
+    for (const o of [P.tea.group, P.hour.group, P.dagger.group, P.globe.group, P.extras, P.cardsAnchor]) o.visible = false;
+    for (const o of [P.lantern.group, P.jour, P.cls]) o.visible = !battle;
+    if (battle) P.flame.intensity = 0;
+    // A fight clears the counter to the wings; in a talk the till stands at the person's elbow ringing up the
+    // running offer, the hourglass at the other runs with their patience, the easel beyond it.
+    P.easel.group.visible = P.register.group.visible = !battle;
+    // A narrow screen keeps the till and the hourglass in frame, tucked in at the person's elbows.
+    const portrait = stageAspect() < 0.95;
+    const edgeX = (sx: number) => toWorld(encCam, sx, 0.3, { z: -0.3 })?.x;
+    const lo = portrait ? edgeX(0.14) : undefined;
+    const hi = portrait ? edgeX(0.84) : undefined;
+    P.easel.group.userData.ex = E.guestX - 1.62;
+    P.register.group.userData.ex = hi === undefined ? E.guestX + 0.95 : Math.min(E.guestX + 0.95, hi);
+    P.register.group.scale.setScalar(portrait ? 0.5 : 0.66);
+    P.spools.visible = false;
+    // In a fight the place's painting comes forward as the little theatre's backcloth, just behind the counter,
+    // so the footlights throw the figures' shadows up it.
+    P.back.userData.home ??= { p: P.back.position.clone(), s: P.back.scale.x };
+    const home = P.back.userData.home as { p: Vector3; s: number };
+    // The fight is lit by the footlights: the room's fills drop so the shadows they throw read.
+    P.fill.hemi.intensity = battle ? 0.32 : 0.55;
+    P.lamp.castShadow = !battle;
+    // The lamp's shade would hang into the turn-order bunting: in a fight it is drawn up out of the frame.
+    P.lampG.position.y = battle ? 3.6 : 2.78;
+    P.fill.front.intensity = battle ? 1.5 : 7;
+    P.fill.rim.intensity = battle ? 1 : 5;
+    (P.back.material as MeshStandardMaterial).emissiveIntensity = battle ? 0.1 : roomKind === "in" ? 0.28 : 0.5;
+    // Inside the proscenium's opening only; the room's own wings frame it. In a talk outdoors it hangs a little
+    // behind the person (the stall's far view would show the bare floor over the counter); indoors the shop's
+    // own back wall stays.
+    if (battle || roomKind === "out") {
+      const bw = (P.back.geometry as PlaneGeometry).parameters.width;
+      const k = (battle ? 5.0 : 6.4) / bw;
+      P.back.scale.setScalar(k);
+      const bh = (P.back.geometry as PlaneGeometry).parameters.height * k;
+      P.back.position.set(0, M.TOP - (battle ? 0.15 : 1.0) + bh / 2, battle ? -0.42 : -1.45);
+    } else {
+      P.back.position.copy(home.p);
+      P.back.scale.setScalar(home.s);
+    }
+    if (!battle) {
+      const pl = board().parley;
+      // The hourglass at their elbow runs with their patience.
+      if (pl.patienceMax > 0) {
+        const sand = pl.patience / pl.patienceMax;
+        P.hour.group.visible = true;
+        P.hour.group.userData.ex = lo === undefined ? E.guestX - 0.8 : Math.max(E.guestX - 0.8, lo);
+        P.hour.group.scale.setScalar(portrait ? 1.1 : 1.3);
+        // Back beside them on the counter top (its home is the counter's front edge, under the talk's plaque).
+        P.hour.group.userData.hz ??= P.hour.group.position.z;
+        P.hour.group.position.z = 0.2;
+        P.hour.top.scale.set(0.3 + sand * 0.7, 0.2 + sand * 0.8, 0.3 + sand * 0.7);
+        P.hour.bottom.scale.set(0.4 + (1 - sand) * 0.6, 0.15 + (1 - sand) * 0.85, 0.4 + (1 - sand) * 0.6);
+        // Its base reads PATIENCE and a row of brass pips, one lit per patience left; four times round the
+        // ring so one copy always faces the camera whole.
+        const left = pl.patience;
+        const max = pl.patienceMax;
+        M.redraw(P.hour.base, (g, w, h) => {
+          g.fillStyle = "#3a200d";
+          g.fillRect(0, 0, w, h);
+          g.textAlign = "center";
+          g.textBaseline = "middle";
+          const q = w / 4;
+          let size = 30;
+          g.font = `800 ${size}px 'Gambit Cinzel', Georgia, serif`;
+          const tw = g.measureText("PATIENCE").width;
+          const pr = Math.min(h * 0.16, (q * 0.42) / Math.max(1, max) / 2.4);
+          const need = tw + 14 + max * pr * 2.4;
+          if (need > q * 0.92) {
+            size = Math.floor((size * q * 0.92) / need);
+            g.font = `800 ${size}px 'Gambit Cinzel', Georgia, serif`;
+          }
+          const tw2 = g.measureText("PATIENCE").width;
+          const pw = max * pr * 2.4;
+          for (let k = 0; k < 4; k++) {
+            const x0 = (k + 0.5) * q - (tw2 + 14 + pw) / 2;
+            g.fillStyle = "#e8c27a";
+            g.fillText("PATIENCE", x0 + tw2 / 2, h * 0.55);
+            for (let i = 0; i < max; i++) {
+              const cx = x0 + tw2 + 14 + pr * 1.2 + i * pr * 2.4;
+              g.beginPath();
+              g.arc(cx, h * 0.55, pr, 0, Math.PI * 2);
+              g.fillStyle = i < left ? "#ffd86a" : "#1a0c04";
+              g.fill();
+              g.lineWidth = 2;
+              g.strokeStyle = "#c8963e";
+              g.stroke();
+            }
+          }
+        });
+      }
+      const n = pl.offer ? Number(/-?\d+/.exec(pl.offer)?.[0] ?? NaN) : NaN;
+      if (Number.isFinite(n)) flags(P.register.flags, n, (pl.unit ?? "").trim() || "offer");
+      // The till's brass plate names the stake.
+      if (pl.label) inked(P.register.plate, [{ text: pl.label.toUpperCase(), font: "800 44px 'Gambit Cinzel', Georgia, serif", color: "#261505", y: 0.55 }], "#c8963e");
+    }
+  }
+
+  /** The person you talk to, as a lit cut-out (or a framed standee) behind the counter. */
+  function syncGuest(): void {
+    const pe = enc;
+    if (!encParts || !pe || pe.kind !== "parley" || !st || !last) return;
+    const E = encParts;
+    const pl = board().parley;
+    const known = pe.personId ? ctx.people(last).find((p) => p.id === pe.personId) : undefined;
+    let url: string | null = null;
+    let cutout = true;
+    if (known) {
+      const a = ctx.personArt(last, known.id);
+      if (a) {
+        cutout = a.cutout && !a.keyed;
+        url = cutout ? cleanCutout(a.url, () => !destroyed && ctx.rerender()) : a.source;
+      }
+    }
+    if (!url && pl.url) {
+      url = pl.url;
+      cutout = !pl.framed;
+    }
+    if (!url && pe.art) url = ctx.art(pe.art);
+    const key = `${url ?? ""}|${cutout}|${E.guestX.toFixed(2)}`;
+    if (key === E.guestKey) return;
+    E.guestKey = key;
+    for (const c of [...E.guest.children]) {
+      E.guest.remove(c);
+      c.traverse((o) => {
+        const m = o as Mesh;
+        m.geometry?.dispose();
+        (m.material as MeshStandardMaterial | undefined)?.dispose?.();
+      });
+    }
+    const x = E.guestX;
+    const z = -0.5;
+    if (url && !cutout) {
+      const sd = M.standee(0.72);
+      sd.group.scale.setScalar(1.08);
+      sd.group.position.set(x, 1.6, z + 0.1);
+      E.guest.add(sd.group);
+      loaded.delete("guest");
+      paint(sd.face, url, 0.72, "guest");
+      return;
+    }
+    const h = 1.5;
+    const plane = new Mesh(new PlaneGeometry(1, 1), new MeshStandardMaterial({ color: url ? 0xffffff : 0x1a0f08, roughness: 0.75, alphaTest: 0.5, shadowSide: DoubleSide }));
+    plane.material.userData.ownEmissive = false;
+    plane.scale.set(h * 0.62, h, 1);
+    plane.position.set(x, 2.0 - h / 2, z);
+    plane.castShadow = true;
+    plane.receiveShadow = true;
+    E.guest.add(plane);
+    {
+      // Nobody drawn yet (or the picture still loading): a dark card silhouette holds the place.
+      const t = M.drawnTex(256, 400, (g, w, hh) => {
+        g.fillStyle = "#2a170b";
+        g.beginPath();
+        g.ellipse(w / 2, hh * 0.2, w * 0.17, hh * 0.13, 0, 0, Math.PI * 2);
+        g.fill();
+        g.beginPath();
+        g.moveTo(w * 0.1, hh);
+        g.bezierCurveTo(w * 0.1, hh * 0.55, w * 0.25, hh * 0.38, w / 2, hh * 0.36);
+        g.bezierCurveTo(w * 0.75, hh * 0.38, w * 0.9, hh * 0.55, w * 0.9, hh);
+        g.fill();
+      });
+      dynTex.add(t);
+      plane.material.map = t;
+      plane.material.color.setHex(0xffffff);
+      plane.material.needsUpdate = true;
+      if (!url) return;
+    }
+    const g0 = gen;
+    void st.texture(url).then((tx) => {
+      if (!tx || destroyed || g0 !== gen || !plane.parent) return;
+      const img = tx.image as { width: number; height: number };
+      plane.scale.set((h * img.width) / Math.max(1, img.height), h, 1);
+      plane.material.map = tx;
+      plane.material.needsUpdate = true;
+      plane.customDistanceMaterial = new MeshDistanceMaterial({ map: tx, alphaTest: 0.5 });
+      puppets.warp(plane, tx.image as HTMLImageElement);
+    });
+  }
+
+  /** Per frame while an encounter is staged: footlights, the enemies' shadows, the guest, the nameplate. */
+  function encFrame(t: number): void {
+    if (!enc || !encParts || !parts || !st) return;
+    const E = encParts;
+    const s = t / 1000;
+    const still = ctx.reducedMotion;
+    const bd = board();
+    if (enc.kind === "battle") {
+      E.casters.sync(bd.enemies, encCam, stageAspect());
+      const any = bd.enemies.some((m) => m.alive);
+      E.foot.light.intensity = (any ? 16 : 9) * (still ? 1 : 1 + Math.sin(s * 11) * 0.04 + Math.sin(s * 6.1) * 0.03);
+      // A footlight under a figure's base would burn through it: those step aside (go dark).
+      E.foot.flames.forEach((f) => {
+        const unit = f.parent!;
+        unit.getWorldPosition(tmp);
+        tmp.project(encCam);
+        const sx = (tmp.x + 1) / 2;
+        unit.visible = !bd.enemies.some((m) => m.alive && Math.abs(m.x - sx) < 0.085);
+      });
+      E.foot.flames.forEach((f, i) => {
+        const k = still ? 1 : 1 + Math.sin(s * (9 + i) + i * 1.7) * 0.12;
+        f.scale.set(1, k, 1);
+        E.foot.glows[i]!.lookAt(st!.camera.position);
+        E.foot.glows[i]!.scale.setScalar(0.9 + (k - 1) * 1.5);
+      });
+      // A blow makes the lamp swing on its chain.
+      if (bd.shake > shakeSeen) shakeSeen = bd.shake;
+      const since = performance.now() / 1000 - shakeSeen;
+      const amp = still || since > 3 ? 0 : 0.09 * Math.exp(-since * 1.6);
+      parts.lampG.rotation.z = Math.sin(since * 7) * amp;
+      parts.lampG.rotation.x = Math.cos(since * 5.3) * amp * 0.5;
+      encPlate.hidden = true;
+      return;
+    }
+    if (bd.parley.ver !== parleyVer) {
+      parleyVer = bd.parley.ver;
+      applyEnc();
+      syncGuest();
+    }
+    // The brass nameplate on the counter's back edge in front of them: who, and what the talk is about.
+    const pe = enc;
+    const name = pe.name;
+    const role = (last && pe.personId ? ctx.people(last).find((p) => p.id === pe.personId)?.role : undefined) ?? bd.parley.role ?? "";
+    const sub = bd.parley.title || role;
+    const b = encPlate.querySelector("b")!;
+    if (b.textContent !== name) b.textContent = name;
+    const sm = encPlate.querySelector("small")!;
+    if (sm.textContent !== sub) sm.textContent = sub;
+    encPlate.hidden = false;
+    tmp.set(E.guestX, M.TOP + 0.03, 0.02).project(st.camera);
+    const bb = stageEl.getBoundingClientRect();
+    encPlate.style.transform = `translate(${(((tmp.x + 1) / 2) * bb.width).toFixed(1)}px, ${(((1 - tmp.y) / 2) * bb.height).toFixed(1)}px) translate(-50%, -100%)`;
+  }
+
+  function stageEncounter(e: EncounterView | null): boolean {
+    if (destroyed) return false;
+    if (!e) {
+      if (!enc) return false;
+      enc = null;
+      board().staged = null;
+      board().band = null;
+      encPose = null;
+      applyEnc();
+      if (last && active) render(last);
+      return false;
+    }
+    if (!active || !ctx.has3d) return false;
+    enc = e;
+    unzoom();
+    pickOpen = false;
+    logOpen = false;
+    hovered = null;
+    board().staged = e.kind;
+    parleyVer = -1;
+    if (encParts) encParts.guestKey = "";
+    if (last) render(last);
+    ensureEncParts();
+    encPoseKey = "";
+    encFraming();
+    if (encParts) encParts.guestX = guestX(stageAspect());
+    applyEnc();
+    syncGuest();
+    return true;
   }
 
   /* ---------------- Interactive items ---------------- */
@@ -346,6 +727,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     }
   };
   const onClick = (e: MouseEvent) => {
+    if (enc) return;
     const t = (e.target as Element).closest<HTMLElement | SVGElement>("[data-act]");
     if (t && dr.contains(t)) {
       e.preventDefault();
@@ -364,7 +746,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   };
   let moveAt = 0;
   const onMove = (e: PointerEvent) => {
-    if (!st || e.pointerType === "touch") return;
+    if (!st || e.pointerType === "touch" || enc) return;
     const now = performance.now();
     if (now - moveAt < 60) return;
     moveAt = now;
@@ -389,17 +771,22 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     puppets.tick(t, Math.min(0.1, dt));
     const camera = st.camera;
     const bp = basePose();
-    if (Math.abs(camera.fov - bp.fov) > 0.01) {
+    if (!enc && Math.abs(camera.fov - bp.fov) > 0.01) {
       camera.fov = bp.fov;
       camera.updateProjectionMatrix();
     }
     const kx = stageEl.clientWidth / Math.max(1, stageEl.clientHeight) < 0.8 ? 0.6 : 1;
-    for (const o of squeeze) o.position.x = o.userData.bx * kx;
+    for (const o of squeeze) o.position.x = (o.userData.ex ?? o.userData.bx) * (o.userData.ex === undefined ? kx : 1);
+    const ep = encFraming();
+    if (ep && Math.abs(camera.fov - ep.fov) > 0.01) {
+      camera.fov = ep.fov;
+      camera.updateProjectionMatrix();
+    }
     const still = ctx.reducedMotion;
     const p = ctx.pointer();
-    const lean = zoomKey ? 0.04 : 1;
-    const gp = zoomKey ? cam.goalPos : bp.pos;
-    const gt = zoomKey ? cam.goalTarget : bp.target;
+    const lean = ep ? (enc?.kind === "battle" ? 0.08 : 0.25) : zoomKey ? 0.04 : 1;
+    const gp = ep ? ep.pos : zoomKey ? cam.goalPos : bp.pos;
+    const gt = ep ? ep.target : zoomKey ? cam.goalTarget : bp.target;
     const breathe = still ? 0 : Math.sin(t * 0.0004) * 0.03;
     const goal = tmp.set(gp.x + p.x * 0.32 * lean, gp.y - p.y * 0.12 * lean + breathe, gp.z);
     const k = 1 - Math.exp(-dt * (still ? 30 : 5.5));
@@ -415,7 +802,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     // Flicker, pendulum, steam, motes.
     if (!still) {
       const s = t / 1000;
-      parts.lamp.intensity = 26 * (1 + Math.sin(s * 13) * 0.025 + Math.sin(s * 7.3) * 0.02);
+      parts.lamp.intensity = (enc?.kind === "battle" ? 9 : 26) * (1 + Math.sin(s * 13) * 0.025 + Math.sin(s * 7.3) * 0.02);
       if (parts.flame.intensity > 0) parts.flame.intensity = 1.6 * (1 + Math.sin(s * 17) * 0.15 + Math.sin(s * 9) * 0.1);
       parts.clock.pendulum.rotation.z = Math.sin(s * Math.PI) * 0.18;
       parts.tea.steam.forEach((m, i) => {
@@ -453,6 +840,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
         }
       });
     }
+    encFrame(t);
     // Labels follow their objects on screen.
     const b = stageEl.getBoundingClientRect();
     for (const [key, el] of labelEls) {
@@ -910,6 +1298,10 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
       ovl.innerHTML = oh;
     }
     if (zoomKey) showPanel();
+    if (enc) {
+      applyEnc();
+      syncGuest();
+    }
   }
 
   /** The clock's ribbon and the thread rack's tag: DOM plaques projected onto those objects. */
@@ -957,8 +1349,9 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
       parts = null;
     },
     render,
+    encounter: stageEncounter,
     key(e) {
-      if (e.key !== "Escape") return false;
+      if (e.key !== "Escape" || enc) return false;
       if (pickOpen) {
         pickOpen = false;
         if (last) render(last);
@@ -987,6 +1380,8 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
       dr.removeEventListener("pointermove", onMove);
       dr.removeEventListener("focusin", onFocus);
       for (const t of dynTex) t.dispose();
+      encParts?.casters.dispose();
+      if (enc) board().staged = null;
       puppets.dispose();
       M.forgetTextures();
     },
