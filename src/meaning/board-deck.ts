@@ -28,6 +28,34 @@ export interface DeckInput {
   room: number;
 }
 
+/** Instructions to the model (formats, popups, "always show", OOC requests), not the world they play in. */
+const INSTRUCTION =
+  /\b(system (instruction|note|prompt)|you must|must (always|never)|always (show|send|write|output|print|generate|display|end|tell)|(exact|following) format|(change|keep) the format|(once )?(per|each|every|of the|end of the) (response|reply|output)|(output|response) format|do not (write|use|mention|change)|don'?t use|show (the )?images?|popup)\b|\(OOC\b|<!--|\{\{\s*(roll|random|\?)/i;
+/** An image list: which picture to print in which slot, by file name. */
+const IMAGE_LIST = /\bimage (list|slot)\b|\.(png|jpe?g|webp|gif)\b|<img\b|\{\{(img|image|asset|emotion|raw|inlay)/i;
+/** A status line the model is told to fill in: `<Skill: name | Cost: ...>`. */
+const TEMPLATE = /<[A-Z][\w ]*:[^>\n]*\|[^>\n]*>/;
+
+/**
+ * A lorebook entry about the world (a place, a people, someone's story), as opposed to the card's machinery: an image
+ * list, rules for the model, a ruleset in YAML (more than a quarter of its lines are `key:` blocks), or a folder header.
+ */
+export function isWorldLore(content: string): boolean {
+  if (INSTRUCTION.test(content) || IMAGE_LIST.test(content) || TEMPLATE.test(content)) return false;
+  const lines = content.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#"));
+  const keys = lines.filter((l) => /^\s*[a-z_][a-z0-9_]*:\s*($|\{|\[)/.test(l)).length;
+  return lines.length > 0 && keys / lines.length <= 0.25;
+}
+
+/** An entry as prose: no markdown headings or emphasis, no tag-only lines (`</Goblin info>`). */
+function prose(s: string): string {
+  return s
+    .split("\n")
+    .filter((l) => !/^\s*(#{1,6}\s|<\/?[^>]+>\s*$)/.test(l))
+    .join("\n")
+    .replace(/(\*\*|__|\*|`)/g, "");
+}
+
 function one(s: string, n = 140): string {
   const t = s.replace(/\s+/g, " ").trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
@@ -43,12 +71,12 @@ export function boardLore(d: DeckInput): LoreCard[] {
   const people: LoreCard[] = d.sheet.cast
     .filter((m) => !m.main && !d.met.has(m.id))
     .map((m) => ({ id: `cast:${m.id}`, kind: "person", ref: m.id, title: m.name, text: one(`${m.name}, ${m.role}. ${m.look}`, 300), stars: 2 }));
-  const ranked = d.sources?.lore.length ? rankLore(d.sources) : [];
+  const ranked = d.sources?.lore.length ? rankLore(d.sources).filter((r) => isWorldLore(r.lore.content)) : [];
   const n = ranked.length;
   const entries: LoreCard[] = ranked.map((r, i) => {
     const id = `entry:${textHash(`${r.lore.title}\n${r.lore.content}`).slice(0, 12)}`;
     const stars = (i < Math.max(1, n / 5) ? 3 : i < n / 2 ? 2 : 1) as 1 | 2 | 3;
-    return { id, kind: "entry", ref: id.slice(6), title: one(r.lore.title, 60), text: one(r.lore.content, 1200), stars };
+    return { id, kind: "entry", ref: id.slice(6), title: one(r.lore.title, 60), text: one(prose(r.lore.content), 1200), stars };
   });
   const thread: LoreCard[] = d.revelation ? [{ id: `thread:${d.revelation.id}`, kind: "thread", ref: d.revelation.id, title: "A piece of the larger story", text: d.revelation.text, stars: 3 }] : [];
   const fresh = (xs: LoreCard[]) => xs.filter((x) => !d.spent.has(x.id));

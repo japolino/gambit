@@ -31,6 +31,21 @@ describe("board deck", () => {
     expect(out[3]).toMatchObject({ title: "Harbor", stars: 3 });
   });
 
+  test("the card's machinery is never dealt as lore: image lists, rules for the model, rulesets, empty folders", () => {
+    const lore = [
+      entry("💠Eralith💠", { constant: true, content: "### Eralith's Image List\n\nThis image must be printed in Character image slot, According to Eralith's situation.\n\nEralith_smile.png" }),
+      entry("Skill", { content: "# Skill information\n\nWhen a character activates a skill, write a Skill Activation popup using this exact format:\n\n<Skill: name | Cost: cost>" }),
+      entry("Choice mode", { content: "- Show the options only once per response at the end of response." }),
+      entry("DK_SYS_Cont", { content: "(OOC — your previous reply stopped before the scene was finished.) Pick up exactly where it stopped." }),
+      entry("warp-ruleset · world", { content: "locations:\n  inn:\n    name: The Crooked Lantern\n    exits: [road]\n  road:\n    name: The Road" }),
+      entry("🏞WORLD🏞", { content: "" }),
+      entry("🏰 Valeria Kingdom", { content: "### Valeria info\n\nName of place: Valeria Kingdom.\n\n**Valeria** is a majestic land, nestled amidst lush green valleys." }),
+    ];
+    const out = boardLore({ sheet: { cast: [], facts: [] }, sources: sources(lore), met: new Set(), spent: new Set(), room: 10 });
+    expect(out.map((c) => c.title)).toEqual(["🏰 Valeria Kingdom"]);
+    expect(out[0]!.text).toBe("Name of place: Valeria Kingdom. Valeria is a majestic land, nestled amidst lush green valleys.");
+  });
+
   test("lore opened on earlier boards is held back while fresh lore is left", () => {
     const first = boardLore({ sheet, sources: null, met: new Set(), spent: new Set(), room: 10 });
     const spent = new Set(first.slice(0, 2).map((c) => c.id));
