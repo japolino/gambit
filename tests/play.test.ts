@@ -33,7 +33,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
   const card = { ...sheet, ...o.sheet };
   const files = new Map<string, unknown>();
   const posted: string[] = [];
-  const messages: { content: string; metadata?: Record<string, unknown> }[] = [];
+  const messages: { role: string; content: string; metadata?: Record<string, unknown> }[] = [];
   const sent: ToFrontend[] = [];
   const started: BattleState[] = [];
   const known: string[] = [];
@@ -45,10 +45,11 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
       setJson: async (p: string, v: unknown) => void files.set(p, structuredClone(v)),
     },
     chat: {
-      appendMessage: async (_chatId: string, m: { content: string; metadata?: Record<string, unknown> }) => {
+      appendMessage: async (_chatId: string, m: { role: string; content: string; metadata?: Record<string, unknown> }) => {
         posted.push(m.content);
         messages.push(m);
       },
+      getMessages: async () => messages.map((m) => ({ ...m, hidden: false })),
     },
     personas: { getActive: async () => ({ description: "A wiry courier." }) },
   };
@@ -366,11 +367,11 @@ describe("play on a card", () => {
     expect(last().menu.some((h) => h.id === "afterglow")).toBe(false);
     const line = messages.at(-1)!;
     expect(line.content).toMatch(/^\*Wren claims .+\.\*$/);
-    // The chat's generation: the note goes last, before the preset's prefill, and nothing before it changes.
+    // The chat's generation: the note goes last, before the preset's prefill, and nothing before it changes. The
+    // scene is known from the chat's latest line, whatever the preset did with it in the prompt.
     const prompt = [
       { role: "system", content: "preset" },
-      // The host may not hand the line's metadata to the interceptor: the line is known by its words, then by its id.
-      { role: "user", content: line.content, __isChatHistory: true, sourceMessageId: "m1" },
+      { role: "user", content: `# User's input\n${line.content}` },
       { role: "assistant", content: "Mm,", partial: true },
     ];
     const out = await play.intercept(prompt as never, { userId: "u", chatId: "chat1", generationType: "normal" } as never);
