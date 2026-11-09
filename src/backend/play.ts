@@ -18,7 +18,7 @@ import { boardLore, glimpse, loreScenePrompt, parseLoreScene } from "../meaning/
 export type BoardOp = "move" | "lore" | "camp" | "skip" | "leave";
 import type { BattleState, MonsterDef } from "../engine/types.js";
 import { clearRoom, enterDelve, generateDelve, stepDelve, type DelveMove } from "../engine/world/delve.js";
-import { addPlace, applyTraits, buildWorld, clockTo, moveScene, newScene, searchScene, seatPeople, sleepScene, TIMES, unjudged } from "../engine/world/places.js";
+import { addPlace, applyTraits, buildWorld, clockTo, moveScene, newScene, searchScene, seatCast, seatPeople, sleepScene, TIMES, unjudged } from "../engine/world/places.js";
 import { createSenses } from "./senses.js";
 import { PLACE_TRAITS as PLACE_FLAGS, type CompanionLike } from "../meaning/senses.js";
 import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
@@ -107,6 +107,8 @@ export interface BattlesPort {
 }
 
 const path = (chatId: string) => `play/${chatId}.json`;
+/** What any night restores the party to; a bed or a fed camp does more. */
+const NIGHT_VIGOR = 0.5;
 const tag = cardTag;
 
 /** How a Parley ended, as the moment its CG shows. */
@@ -257,7 +259,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     let changed = false;
     if (!r || r.cardKey !== sheet.cardKey || r.v !== 1) {
       const world = buildWorld(sheet, `${sheet.cardKey}:${chatId}`);
-      r = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world, sheet.player.coin), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: [] };
+      r = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world, sheet.player.coin), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: [], sheetAt: sheet.readAt };
+      changed = true;
+    } else if (r.sheetAt !== sheet.readAt) {
+      // The card was read again: its people stand where the new read puts them.
+      r.world = seatCast(r.world, sheet, `${sheet.cardKey}:${chatId}`);
+      r.sheetAt = sheet.readAt;
       changed = true;
     }
     const b = (await cards.storedBible?.(userId, sheet.cardKey, sheet).catch(() => null)) ?? null;
@@ -640,6 +647,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       place: { name: place?.name ?? "Here", description: place?.description ?? "" },
       time: TIMES[r.scene.time] ?? "",
       people: withPromoted(sheet, r).cast.filter((c) => place?.people.includes(c.id)).map((c) => ({ id: c.id, name: c.name, role: c.role, voice: c.voice })),
+      elsewhere: withPromoted(sheet, r)
+        .cast.filter((c) => !place?.people.includes(c.id))
+        .map((c) => {
+          const at = Object.values(r.world.places).find((p) => p.people.includes(c.id))?.name;
+          return { name: c.name, role: c.role, ...(at ? { at } : {}) };
+        }),
       places: Object.values(r.world.places).filter((p) => p.id !== r.scene.placeId).map((p) => ({ id: p.id, name: p.name })),
       goal: r.thread && !r.threadEnd ? r.thread.goal : null,
       recent: (r.story ?? []).map((b) => ({ text: b.said, reply: !b.said && b.roll ? `${b.roll}. ${b.reply}`.trim() : b.reply, ...(b.found ? { found: b.found } : {}) })),
@@ -693,6 +706,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
    * what it decides becomes true, and the montage shows it.
    */
   async function nightfall(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord): Promise<void> {
+    // A night without a bed still does something: the party wakes at half strength at least.
+    r.scene = { ...r.scene, vigor: Math.max(r.scene.vigor, NIGHT_VIGOR) };
     const { deeds: today, rumors } = nightAdapt(r);
     const day = r.scene.day;
     await save(userId, chatId, r);
@@ -855,7 +870,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return foeFromAnswers(answers, foes) ?? foeByWords(line, foes);
   }
 
-  async function fight(userId: string, chatId: string, opts: { lead?: string; boss?: boolean; room?: string; title?: string; initiative?: "party" | "foes"; board?: boolean; line?: string } = {}): Promise<void> {
+  async function fight(userId: string, chatId: string, opts: { lead?: string; boss?: boolean; room?: string; initiative?: "party" | "foes"; board?: boolean; line?: string } = {}): Promise<void> {
     const ctx = await context(userId, chatId);
     if (!ctx) return;
     let { sheet, r } = ctx;
@@ -869,7 +884,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const partySize = Math.min(MAX_PARTY, partyFromSheet(sheet, { exclude: lead?.id }).length + (r.memory?.recruits?.length ?? 0));
     const named = opts.line && !lead ? await foeForLine(userId, opts.line, foes) : null;
     if (named) log(`fight: the line goes for ${named.name}`);
-    const enc = encounterFrom(foes, { seed, party: partySize, ...(opts.boss ? { boss: true } : {}), ...(lead ? { lead: `cast_${lead.id}`, kin: true } : {}), ...(named ? { lead: named.id, kin: true } : {}), ...(opts.title ? { name: opts.title } : {}) });
+    const enc = encounterFrom(foes, { seed, party: partySize, ...(opts.boss ? { boss: true } : {}), ...(lead ? { lead: `cast_${lead.id}`, kin: true } : {}), ...(named ? { lead: named.id, kin: true } : {}) });
     if (!enc) return send({ type: "notice", level: "warn", text: "This card has nobody to fight.", chatId }, userId);
     const t = tag(sheet.cardKey);
     const ns = (def: MonsterDef): MonsterDef => {
@@ -1734,7 +1749,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const contact = events.find((e): e is Extract<BoardEvent, { kind: "contact" }> => e.kind === "contact");
       if (contact) {
         await show(userId, chatId, sheet, r);
-        return fight(userId, chatId, { board: true, initiative: contact.first, title: contact.first === "party" ? "Caught unawares" : "An ambush" });
+        return fight(userId, chatId, { board: true, initiative: contact.first });
       }
     } catch (err) {
       note(r, err instanceof Error ? err.message : String(err));
@@ -2091,18 +2106,20 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const story = storyContext(sheet, r);
       const left = !leaving ? "" : r.scene.placeId !== from ? ` They do get away, and the scene is now at ${story.place.name}.` : ` They are stopped before they get away, and are still at ${fromName}.`;
 
-      // Seeking turns something up when it works: one find per place per day, so you have to move on.
+      // Seeking that works turns up a secret: one per place per day, so you have to move on. Without one it still
+      // gets what it went for (the way to the guild, a room for the night); only the secret waits.
       const searchedHere = r.scene.searched.includes(r.scene.placeId);
       const finds = read.route === "seek" && beatWorked(res.roll) && !searchedHere;
       const next = finds ? r.thread?.revelations.find((x) => !r.revealed?.includes(x.id)) : undefined;
       const fact = finds && !next ? sheet.facts.find((f) => !f.known && !r.scene.found.includes(f.id)) : undefined;
       const found = next?.text ?? fact?.text ?? null;
-      const dry = read.route === "seek" && beatWorked(res.roll) && !found;
-      const fallout = found ? `${res.fallout} They discover this, so show it: ${found}` : dry ? `${read.attempt}: they look properly, and there is nothing new to find here today.` : `${res.fallout}${left}`;
-      const told = dry ? "There's nothing new to find here today." : res.told;
+      const fallout = found ? `${res.fallout} They discover this, so show it: ${found}` : `${res.fallout}${left}`;
+      const told = res.told;
 
       send({ type: "scene.story", chatId, said: line, roll, text: "" }, userId);
-      const brief = storyNarrator(story, line, fallout, read.route);
+      // What the card's lorebook says about what the line names holds, so the narrator doesn't make up the world around it.
+      const lore = (await cards.loreFor?.(userId, chatId, line).catch(() => "")) ?? "";
+      const brief = storyNarrator({ ...story, ...(lore ? { lore } : {}) }, line, fallout, read.route);
       const words = beatWords(read.route);
       let last = 0;
       const written = await writeWithRetry(
@@ -2138,11 +2155,11 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       await postBeat(chatId, line, clean ? (roll ? `*(${roll})*\n\n${clean}` : clean) : null);
       await save(userId, chatId, fresh);
       await show(userId, chatId, sheet, fresh);
-      if (clean) void cards.followBeat?.(userId, chatId, [{ content: line }, { content: clean }]).catch((err: unknown) => log(`story people: ${String(err).slice(0, 160)}`));
+      const following = clean ? cards.followBeat?.(userId, chatId, [{ content: line }, { content: clean }]).catch((err: unknown) => log(`story people: ${String(err).slice(0, 160)}`)) : undefined;
       if (fresh.scene.day > dayBefore) {
-        // Let them read what just happened before the night takes the screen.
-        await new Promise((res) => setTimeout(res, clean ? readMs : 0));
-        return nightfall(userId, chatId, sheet, fresh);
+        // Let them read what just happened before the night takes the screen. The night starts from who the beat left where.
+        await Promise.all([following, new Promise((res) => setTimeout(res, clean ? readMs : 0))]);
+        return nightfall(userId, chatId, sheet, (await load(userId, chatId)) ?? fresh);
       }
     },
 
@@ -2194,6 +2211,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         case "wait":
           r.scene = moveScene(r.world, r.scene, { kind: "wait" });
           note(r, `Time passes: ${TIMES[r.scene.time]}.`);
+          if (r.scene.day > day) return nightfall(userId, chatId, sheet, r);
           await save(userId, chatId, r);
           break;
         case "search": {

@@ -82,6 +82,9 @@ export interface SheetFact {
   evidence: Evidence;
 }
 
+/** What the persona says about the player is theirs to keep, never leverage on someone else. */
+export const ownSecret = (f: Pick<SheetFact, "evidence">): boolean => f.evidence.source === "persona";
+
 export interface SheetPlace {
   id: string;
   name: string;

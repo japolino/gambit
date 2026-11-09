@@ -302,6 +302,49 @@ describe("play on a card", () => {
     expect([record().scene.time, record().spent]).toEqual([1, 0]);
   });
 
+  test("a search that works gets what it went for, even with no secret left to find here today", async () => {
+    const { play, last, files } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const r = files.get(key) as { scene: { placeId: string; searched: string[] } };
+    files.set(key, { ...r, scene: { ...r.scene, searched: [r.scene.placeId] } });
+    for (let i = 0; i < 12 && !last().story.some((b) => /, success$/.test(b.roll ?? "")); i++) await play.say("u", "chat1", "I search for the way to the harbour office");
+    const beat = last().story.find((b) => /, success$/.test(b.roll ?? ""))!;
+    expect(beat.found).toBeUndefined();
+    expect(beat.reply).toBe("It works.");
+  });
+
+  test("waiting past midnight brings the night, and the night gives back some strength", async () => {
+    const { play, files, sent, last } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const r = files.get(key) as { scene: object };
+    files.set(key, { ...r, scene: { ...r.scene, time: 3, vigor: 0.3 } });
+    await play.act("u", "chat1", "wait");
+    expect(sent.some((m) => m.type === "scene.meanwhile")).toBe(true);
+    expect(last().clock).toEqual({ day: 2, time: "morning" });
+    expect(last().vigor).toBe(0.5);
+  });
+
+  test("reading the card again seats its people where the new read says", async () => {
+    const at = (files: Map<string, unknown>) => (files.get("play/chat1.json") as { world: { places: Record<string, { people: string[] }> } }).world.places;
+    const first = setup({ sheet: { readAt: 1 } });
+    await first.play.open("u", "chat1");
+    expect(at(first.files).docks!.people).toContain("mara");
+    const reread = setup({ sheet: { readAt: 2, cast: [{ ...sheet.cast[0]!, at: "caves" }] } });
+    reread.files.set("play/chat1.json", first.files.get("play/chat1.json"));
+    await reread.play.open("u", "chat1");
+    expect(at(reread.files).caves!.people).toEqual(["mara"]);
+    expect(at(reread.files).docks!.people).toEqual([]);
+  });
+
+  test("the player's own secret from their persona is never a fact to play on someone", async () => {
+    const persona = { id: "deserter", text: "Wren deserted the navy.", about: ["mara"], weight: 3, known: true, evidence: { source: "persona", quote: "", verified: true } };
+    const { play, last } = setup({ sheet: { facts: [...sheet.facts, persona] } });
+    await play.open("u", "chat1");
+    expect(last().hand.map((f) => f.id)).not.toContain("deserter");
+  });
+
   test("the purse starts with what the persona says the player has", async () => {
     const { play, last } = setup({ sheet: { player: { ...sheet.player, coin: 12 } } });
     await play.open("u", "chat1");

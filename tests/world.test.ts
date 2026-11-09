@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ahead, checkContract, clearRoom, enterDelve, generateDelve, reachableRooms, roomAt, stepDelve, type DelveMap, type DelveState } from "../src/engine/world/delve.js";
-import { buildWorld, hotspotsOf, moveScene, newScene, nextStop, searchScene } from "../src/engine/world/places.js";
+import { applyTraits, buildWorld, fightLabel, hotspotsOf, moveScene, newScene, nextStop, searchScene, seatCast } from "../src/engine/world/places.js";
 
 const ev = (quote = "") => ({ source: "card" as const, quote, verified: true });
 const mods = { parley: true, encounters: true, places: true, delves: true, kits: true, economy: true };
@@ -45,6 +45,42 @@ describe("the card's places", () => {
     expect(w.places.chapel!.people).toEqual(["maren"]);
   });
 
+  test("a word only one place's name has puts someone there, the start too, but a smaller place wins over the start", () => {
+    const realm = [
+      { id: "valeria", name: "Valeria Kingdom", description: "a human kingdom", evidence: ev() },
+      { id: "aldurin", name: "Aldurin Kingdom", description: "a magic kingdom", evidence: ev() },
+      { id: "tavern", name: "Rosedale Tavern", description: "a tavern", evidence: ev() },
+    ];
+    const people = [
+      { id: "cedric", name: "King Cedric", role: "monarch of Valeria", look: "", main: false, evidence: ev() },
+      { id: "adin", name: "King Adin", role: "ruler of Aldurin", look: "", main: false, evidence: ev() },
+      { id: "nina", name: "Nina", role: "waitress at the Rosedale tavern in Valeria", look: "", main: false, evidence: ev() },
+    ] as never[];
+    const w = buildWorld(sheet("journey", { places: realm, cast: people }), "s");
+    expect([w.places.valeria!.people, w.places.aldurin!.people, w.places.tavern!.people]).toEqual([["cedric"], ["adin"], ["nina"]]);
+  });
+
+  test("a newer read seats the card's people where it says, and leaves anyone else where play put them", () => {
+    const w = buildWorld(sheet("town"), "s");
+    const played = { ...w, places: { ...w.places, crypt: { ...w.places.crypt!, people: ["mira", "stranger"] }, library: { ...w.places.library!, people: [] } } };
+    const again = seatCast(played, { cast: [{ ...(cast as { id: string }[])[1], at: "ward" }] } as never, "s");
+    expect(again.places.ward!.people).toContain("mira");
+    expect(again.places.crypt!.people).toEqual(["stranger"]);
+  });
+
+  test("a delve-shaped card's delve is the deepest of its places that isn't where people live", () => {
+    const rooms = [
+      { id: "core", name: "Core Room", description: "the heart of the dungeon", evidence: ev() },
+      { id: "prison", name: "Prison Block", description: "cells for captured heroes", evidence: ev() },
+      { id: "surface", name: "Surface Domain", description: "the settlement above the labyrinth", evidence: ev() },
+    ];
+    const w = buildWorld(sheet("delve", { places: rooms, cast: [] }), "s");
+    expect(w.places.prison!.delve).toBe(true);
+    // Judged with no delve anywhere, it still goes there.
+    const judged = applyTraits(w, sheet("delve"), Object.fromEntries(rooms.map((p) => [p.id, { indoor: true, rest: false, shop: false, danger: false, delve: false }])));
+    expect(Object.values(judged.places).filter((p) => p.delve).map((p) => p.id)).toEqual(["prison"]);
+  });
+
   test("where the reader says someone is found comes first", () => {
     const people = [{ id: "rook", name: "Rook", role: "werewolf pack alpha", look: "", main: false, at: "crypt", evidence: ev() }] as never[];
     expect(buildWorld(sheet("town", { cast: people }), "s").places.crypt!.people).toEqual(["rook"]);
@@ -57,6 +93,10 @@ describe("the card's places", () => {
     expect(buildWorld(sheet("town", { places: [places[0]] }), "s").shape).toBe("scene");
     const none = buildWorld(sheet("town", { places: [] }), "s");
     expect(Object.keys(none.places)).toEqual(["here"]);
+  });
+
+  test("the fight item reads as English", () => {
+    expect([fightLabel("brawl"), fightLabel("invasion"), fightLabel("a long and bloody war"), fightLabel(undefined)]).toEqual(["Look for a brawl", "Look for an invasion", "Look for a fight", "Look for a fight"]);
   });
 
   test("the menu has talk, look, exits, and what the place allows", () => {

@@ -3,7 +3,7 @@
  * Sheet (docs/DESIGN.md 6.1). Pure: the backend sends it, the preview page
  * and the tests build it the same way.
  */
-import type { CardSheet } from "../engine/card/types.js";
+import { ownSecret, type CardSheet } from "../engine/card/types.js";
 import { roomAt, type DelveMap, type DelveState } from "../engine/world/delve.js";
 import { fightLabel, hotspotsOf, TIMES, type Hotspot, type SceneState, type World } from "../engine/world/places.js";
 import { hexKey, SUPPLY_MAX, TERRAIN_NAME, type HexMap, type HexState, type Terrain } from "../engine/world/hex.js";
@@ -83,6 +83,8 @@ export interface PlayRecord {
   hex?: { map: HexMap; state: HexState };
   /** When the World Bible last merged into this world (its `at`). */
   bibleAt?: number;
+  /** The read of the card its people were last seated from (the sheet's `readAt`). */
+  sheetAt?: number;
   /** The central thread, copied from the Bible, and the revelation ids found so far. */
   thread?: Thread;
   revealed?: string[];
@@ -265,7 +267,7 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     ...(r.board ? { board: boardView(sheet, r) } : {}),
     ...(r.hex ? { hex: hexView(r) } : {}),
     ...(r.thread ? { thread: { goal: r.thread.goal, found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text), total: r.thread.revelations.length, ...(r.deadline !== undefined ? { daysLeft: Math.max(0, r.deadline - r.scene.day + 1) } : {}), ...(r.threadEnd ? { ended: r.threadEnd } : {}) } } : {}),
-    hand: sheet.facts.filter((f) => f.known || r.scene.found.includes(f.id)).map((f) => ({ id: f.id, text: f.text })),
+    hand: sheet.facts.filter((f) => !ownSecret(f) && (f.known || r.scene.found.includes(f.id))).map((f) => ({ id: f.id, text: f.text })),
     // A Decision model's verdict when the place was judged (backend/senses.ts), else the word rule.
     indoor: !wild && !r.delve && (p.indoor ?? (p.shop || INDOOR.test(`${p.name} ${p.description}`))),
     journal: journalView(sheet, r),

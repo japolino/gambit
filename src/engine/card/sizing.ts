@@ -5,7 +5,7 @@
  */
 import type { ContestDef, ContestKind, Fact, Mood, NpcDef, ParleyScenario, Speaker } from "../parley/types.js";
 import { freshNames } from "./naming.js";
-import type { CardSheet, CastMember, ContestFrame, SheetFact, Tier } from "./types.js";
+import { ownSecret, type CardSheet, type CastMember, type ContestFrame, type SheetFact, type Tier } from "./types.js";
 
 const TEMPERAMENT = [0.1, 0.3, 0.5, 0.7, 0.9] as const;
 const INSIGHT = [1, 1, 2, 3, 4] as const;
@@ -155,7 +155,7 @@ function factsFor(sheet: CardSheet, c: CastMember, frame: ContestFrame): SheetFa
     const first = sheet.cast.find((m) => m.id === id)?.name.split(/\s+/)[0]?.toLowerCase();
     return !!first && theirs.has(first);
   };
-  return sheet.facts.filter((f) => !f.about.length || f.about.includes(c.id) || f.about.some(tied));
+  return sheet.facts.filter((f) => !ownSecret(f) && (!f.about.length || f.about.includes(c.id) || f.about.some(tied)));
 }
 
 const KIND_VERB: Record<ContestKind, string> = {

@@ -230,17 +230,18 @@ describe("contests from a card", () => {
     const sc = scenarioFromSheet(sheet, frame, "chat1", "card:x", [])!;
     expect(sc.npc.name).toBe("Ilse Varga");
     expect(sc.speaker.stats.presence).toBe(3);
-    expect(sc.known).toContain("aground");
+    // The player's own past, from their persona, is theirs to keep: never something to hold over someone.
+    expect(sc.facts.some((f) => f.id === "aground")).toBe(false);
     expect(sc.known).not.toContain("fines");
     expect(sc.reveals).toContain("fines");
     expect(sc.card).toMatchObject({ journalKey: "chat/chat1", avatar: { imageId: "img-ilse", url: "/api/v1/images/img-ilse" } });
     expect(sc.facts.find((f) => f.id === "fines")!.floorShift).toBe(0.2);
     expect(sc.npc.stance.tells.irritated).toBe("taps her cards");
     expect(sc.npc.stance.tells.amused).toBeTruthy();
-    const state = createParley(sc, "seed1", "chat1");
-    const read: RefereeRead = { tactic: "interest", tacticP: {}, fit: 2, credibility: 2.5, temperament: 3, asserts: { aground: 0.9 }, otherClaim: 0, by: "rules" };
-    const r = applyExchange(sc, state, "You know I ran the Heron aground. I won't do it twice.", read);
-    expect(r.exchange.leverageFacts).toContain("aground");
+    const learned = scenarioFromSheet(sheet, frame, "chat1", "card:x", ["fines"])!;
+    const read: RefereeRead = { tactic: "interest", tacticP: {}, fit: 2, credibility: 2.5, temperament: 3, asserts: { fines: 0.9 }, otherClaim: 0, by: "rules" };
+    const r = applyExchange(learned, createParley(learned, "seed1", "chat1"), "The Tide Guild fined you twice this month. Take my coin.", read);
+    expect(r.exchange.leverageFacts).toContain("fines");
   });
 
   test("fallback framing uses their last line as the opening", () => {

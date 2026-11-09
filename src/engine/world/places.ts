@@ -54,6 +54,19 @@ const SHOP = /\b(shop|market|store|merchant|bazaar|bar|tavern|inn|cafe|café|smi
 const DANGER = /\b(ruin|ruins|ruined|dungeon|cave|caves|crypt|wreck|forest|woods|wild|wilds|wilderness|jungle|battle|battlefield|front|street|streets|alley|alleys|slums?|docks|sewers?|swamp|desert|wasteland|pit|arena|hell|abyss|tower|tomb|catacombs?|mines?|graveyard|cemetery|danger|dangerous|warzone|lawless)\b/i;
 const DELVE = /\b(ruin|ruins|dungeon|cave|caves|crypt|wreck|derelict|station|tunnel|tunnels|catacomb|catacombs|mine|labyrinth|maze|tomb|vault|basement|sewer|sewers|undercroft|dungeons|haunted)\b/i;
 
+/** Where people live: a place like this isn't the delve, even at the bottom of the list. */
+const SETTLED = /\b(town|village|city|settlement|surface|market|square|home)\b/i;
+
+/** Where a delve-shaped world's delve goes when nothing says: the deepest of the card's own places that isn't where people live. */
+function deepest(places: Readonly<Record<string, WorldPlace>>, start: string): string {
+  const ids = Object.keys(places);
+  const wild = [...ids].reverse().find((id) => {
+    const p = places[id]!;
+    return id !== start && !p.added && !p.shop && !SETTLED.test(`${p.name} ${p.description}`);
+  });
+  return wild ?? ids[ids.length - 1]!;
+}
+
 const hash = (s: string): number => {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
@@ -71,20 +84,41 @@ function nameWords(name: string): string[] {
 
 /**
  * Who is where: where the reader says they're found, else a person whose words name a place is there, then a person a place's own words name
- * ("the inn (Ysolde, the back room)"); the rest spread from the start, the main cast at the start.
+ * ("the inn (Ysolde, the back room)"), then a person whose words use a word only one place's name has ("monarch of Valeria" for "Valeria
+ * Kingdom"); the rest spread from the start, the main cast at the start. A smaller place wins over the start: everyone in a town is of the town.
  */
-function placePeople(sheet: Pick<CardSheet, "cast">, ids: string[], names: Record<string, string>, texts: Record<string, string>, start: string, seed: number): Record<string, string[]> {
+function placePeople(sheet: Pick<CardSheet, "cast">, places: readonly Pick<WorldPlace, "id" | "name" | "description" | "evidence">[], start: string, seed: number): Record<string, string[]> {
+  const ids = places.map((p) => p.id);
   const out: Record<string, string[]> = Object.fromEntries(ids.map((id) => [id, [] as string[]]));
   const says = (text: string, word: string) => ` ${text} `.includes(` ${word} `);
+  const texts = Object.fromEntries(places.map((p) => [p.id, norm(`${p.description} ${p.evidence.quote}`)]));
+  const names = places.map((p) => {
+    const full = norm(p.name);
+    const own = full.split(" ").filter((w) => w.length > 3 && !TITLES.has(w) && places.every((q) => q.id === p.id || !norm(q.name).split(" ").includes(w)));
+    return { id: p.id, full, own };
+  });
+  const pick = (ok: (n: (typeof names)[number]) => boolean) => names.find((n) => n.id !== start && ok(n))?.id ?? names.find((n) => n.id === start && ok(n))?.id;
   sheet.cast.forEach((m, i) => {
     const text = norm(`${m.role} ${m.look} ${m.evidence.quote}`);
-    const named = ids.find((id) => id !== start && names[id] && norm(names[id]!).length > 2 && text.includes(norm(names[id]!)));
     const words = nameWords(m.name);
-    const namedBy = ids.find((id) => words.some((w) => says(texts[id] ?? "", w)));
-    const at = (m.at && ids.includes(m.at) ? m.at : undefined) ?? named ?? namedBy ?? (m.main || ids.length === 1 ? start : ids[(seed + i * 7) % ids.length]!);
+    const at =
+      (m.at && ids.includes(m.at) ? m.at : undefined) ??
+      pick((n) => n.full.length > 2 && says(text, n.full)) ??
+      ids.find((id) => words.some((w) => says(texts[id] ?? "", w))) ??
+      pick((n) => n.own.some((w) => says(text, w))) ??
+      (m.main || ids.length === 1 ? start : ids[(seed + i * 7) % ids.length]!);
     out[at]!.push(m.id);
   });
   return out;
+}
+
+/** A newer read of the card says where its people are: they go there, wherever play had them. Anyone the card doesn't have stays put. */
+export function seatCast(world: World, sheet: Pick<CardSheet, "cast">, seed: string): World {
+  const list = Object.values(world.places);
+  const who = placePeople(sheet, list, world.start, hash(seed));
+  const card = new Set(sheet.cast.map((m) => m.id));
+  const places = Object.fromEntries(list.map((p) => [p.id, { ...p, people: [...p.people.filter((id) => !card.has(id)), ...(who[p.id] ?? [])] }]));
+  return { ...world, places };
 }
 
 /** The world for this card, in its shape. Never empty: a card with no places gets one scene. */
@@ -138,17 +172,13 @@ export function buildWorld(sheet: Pick<CardSheet, "shape" | "places" | "cast" | 
     case "delve": {
       // The way in, then the delve itself (room by room in delve.ts).
       for (let i = 0; i + 1 < ids.length; i++) link(ids[i]!, ids[i + 1]!);
-      const deepest = ids[ids.length - 1]!;
-      if (sheet.modules.delves) places[deepest]!.delve = true;
+      if (sheet.modules.delves) places[deepest(places, start)]!.delve = true;
       break;
     }
   }
-  // The start is where you can always rest; a delve shape always has a delve somewhere.
+  // The start is where you can always rest.
   places[start]!.rest = true;
-  if (shape === "delve" && sheet.modules.delves && !ids.some((id) => places[id]!.delve)) places[ids[ids.length - 1]!]!.delve = true;
-  const names = Object.fromEntries(ids.map((id) => [id, places[id]!.name]));
-  const texts = Object.fromEntries(raw.map((p) => [p.id, norm(`${p.description} ${p.evidence.quote}`)]));
-  const who = placePeople(sheet, ids, names, texts, start, s);
+  const who = placePeople(sheet, Object.values(places), start, s);
   for (const id of ids) places[id]!.people = who[id] ?? [];
   return { v: 1, shape, start, places, route };
 }
@@ -249,9 +279,8 @@ export function applyTraits(world: World, sheet: Pick<CardSheet, "modules">, tra
   }
   if (!changed) return world;
   if (world.shape === "delve" && sheet.modules.delves && !Object.values(places).some((p) => p.delve)) {
-    const ids = Object.keys(places);
-    const last = ids[ids.length - 1]!;
-    places[last] = { ...places[last]!, delve: true };
+    const id = deepest(places, world.start);
+    places[id] = { ...places[id]!, delve: true };
   }
   return { ...world, places };
 }
@@ -278,8 +307,12 @@ export function hotspotsOf(world: World, placeId: string, sheet: Pick<CardSheet,
 
 /* ------------------------------ scene state ---------------------------- */
 
-/** "Look for a brawl"; a long skin word reads better as plain "fight". */
-export const fightLabel = (fight: string | undefined): string => (fight && fight.trim().split(/\s+/).length <= 2 ? `Look for a ${fight.trim()}` : "Look for a fight");
+/** "Look for a brawl", "Look for an ambush"; a long skin word reads better as plain "fight". */
+export const fightLabel = (fight: string | undefined): string => {
+  const word = fight?.trim() ?? "";
+  if (!word || word.split(/\s+/).length > 2) return "Look for a fight";
+  return `Look for ${/^[aeiou]/i.test(word) ? "an" : "a"} ${word}`;
+};
 
 export const TIMES = ["morning", "afternoon", "evening", "night"] as const;
 export type TimeOfDay = (typeof TIMES)[number];
