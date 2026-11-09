@@ -139,7 +139,7 @@ describe("play on a card", () => {
     await play.say("u", "chat1", "I sneaked past Mara");
     const beat = last().story[0]!;
     expect(beat.said).toBe("I sneaked past Mara");
-    expect(beat.roll).toMatch(/^Going unseen: \d+ vs 12, /);
+    expect(beat.roll).toMatch(/^Sneaking: \d+ vs 12, /);
     expect(beat.reply.length).toBeGreaterThan(0);
     expect(last().busy).toBeUndefined();
     expect(posted.at(-1)).toBe("I sneaked past Mara");
@@ -433,7 +433,7 @@ describe("play on a card", () => {
       if (last().place.id === "tavern") break;
     }
     expect(places.at(-1)).toBe("tavern");
-    expect(last().story.at(-1)!.roll).toMatch(/^Going unseen/);
+    expect(last().story.at(-1)!.roll).toMatch(/^Sneaking/);
   });
 
   test("a line that names a foe fights that foe and its own kind, and a line that goes somewhere fights there", async () => {

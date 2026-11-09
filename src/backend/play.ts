@@ -631,15 +631,15 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const models = modelsFor(spindle);
     const people = story.people.map((p) => p.id);
     const places = story.places.map((p) => p.id);
-    const sure = (read: BeatRead): BeatRead => (read.route === "flavor" && saysAttack(line) ? { ...read, route: "fight", stat: "menace", attempt: "Using force" } : read);
+    const sure = (read: BeatRead): BeatRead => (read.route === "flavor" && saysAttack(line) ? { ...read, route: "fight", stat: "menace", attempt: "Attacking" } : read);
     const answers = await models.decide(userId, routeState(story, line), routeQuestions(story), 6_000, "story").catch(() => null);
-    const typed = answers ? readFromAnswers(answers, people, places) : null;
+    const typed = answers ? readFromAnswers(answers, people, places, line) : null;
     if (typed) return sure(typed);
     const asked = judgePrompt(story, line);
     const said = await models
       .quiet(userId, "helper", { messages: [{ role: "system", content: asked.system }, { role: "user", content: asked.user }], parameters: { temperature: 0.1 }, signal: AbortSignal.timeout(15_000) })
       .catch((err: unknown) => (log(`story judge: ${String(err).slice(0, 160)}`), ""));
-    return sure(parseRead(said, people, places) ?? storyRules(line, story.people, story.places));
+    return sure(parseRead(said, people, places, line) ?? storyRules(line, story.people, story.places));
   }
 
   /** The next thing to come out of the thread, once found. */

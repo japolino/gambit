@@ -123,7 +123,7 @@ describe("reading a line", () => {
 
   test("the decision model's answers become a read", () => {
     const r = readFromAnswers({ route: said("press"), stat: said("menace"), difficulty: said("hard"), target: said("orla"), to: said("staying") }, ["orla"], ["hall"]);
-    expect(r).toEqual({ route: "press", attempt: "Using force", stat: "menace", difficulty: 2, target: "orla", to: null });
+    expect(r).toEqual({ route: "press", attempt: "Forcing", stat: "menace", difficulty: 2, target: "orla", to: null });
   });
 
   test("a guess doesn't take over a quiet moment", () => {
@@ -148,6 +148,15 @@ describe("reading a line", () => {
 
 describe("what the playtest turned up", () => {
   const said = (choice: string, p = 0.9) => ({ type: "choice", choice, probabilities: { [choice]: p } }) as never;
+
+  test("a roll is called what the line attempts, not what stat it uses", () => {
+    const read = (route: string, stat: string, line: string) => readFromAnswers({ route: said(route), stat: said(stat) }, [], [], line)?.attempt;
+    expect(read("risk", "guile", `I laugh. "Deserter? Sister, I sell salt and lamp oil."`)).toBe("Lying");
+    expect(read("risk", "guile", "I keep to the shadows along the wall")).toBe("Sneaking");
+    expect(read("press", "presence", `I lean in close. "Free, you said? Then warm it with me."`)).toBe("Persuading");
+    expect(read("press", "presence", "I flirt with her until she gives me the key")).toBe("Charming");
+    expect(read("risk", "menace", "I put my shoulder to the door")).toBe("Forcing");
+  });
   const ctx: StoryContext = { premise: "", tone: "", player: { name: "Tam", concept: "" }, place: { name: "Quay", description: "" }, time: "dusk", people: [], places: [], goal: null, recent: [], memory: null };
 
   test("unsure it's a journey but sure where to: the scene goes too", () => {

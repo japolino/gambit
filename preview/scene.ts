@@ -170,7 +170,7 @@ if (storyBeats) {
 const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   say(text) {
     const risky = /sneak|steal|lie/i.test(text);
-    r = { ...r, story: [...(r.story ?? []), { said: text, roll: risky ? "Going unseen: 7 vs 12, failed" : null, reply: risky ? "He doesn't turn around. \"Going somewhere, darling?\"" : "The gulls answer, and the tide comes on." }] };
+    r = { ...r, story: [...(r.story ?? []), { said: text, roll: risky ? "Sneaking: 7 vs 12, failed" : null, reply: risky ? "He doesn't turn around. \"Going somewhere, darling?\"" : "The gulls answer, and the tide comes on." }] };
     handle.setView(buildSceneView(sheet, "preview", r));
   },
   act(id) {
