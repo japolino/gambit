@@ -643,6 +643,7 @@ Gambit uses **Warp's event-sourced model**:
 - State is never stored directly. It is a **fold of event records** attached to messages, stored per swipe: `metadata.gambit.swipes[i]`.
 - Swiping a narration re-narrates the same decided outcome. Branching or deleting messages rewinds state for free.
 - **Stage sessions** (a combat, a Parley) are run in the panel and committed as one event batch on the message that closes them. Re-narrating that message never re-runs the battle.
+- **Stage sessions belong to their chat.** Each chat has at most one open Parley and one running fight, saved as `parley/chat/<chatId>.json` and `battles/chat/<chatId>.json` (`none` for one started outside any chat), so each can be resumed from its own chat. A user can play two chats at once (two tabs, or phone and PC), and every window of the user gets every message, so each message about a chat says which chat (`chatId`, or the Parley or fight it is about). A window acts only on messages for the chat it shows: its scene's, else the host's active chat. When the chat on screen changes, the window asks for that chat's fight and Parley again, for the drawer's Resume buttons. An older save's single `parley/current.json` or `battles/current.json` is read as belonging to the chat its state names.
 - **Seeded RNG:** `seed = hash(campaign seed, event id)`, so replay is exact.
 - **Big data lives in extension storage, not message metadata:** World Bible, ledger of model answers, NPC dossiers, the asset index, and the codex. Messages carry only small events and references.
 

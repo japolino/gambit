@@ -255,3 +255,75 @@ describe("Gambit's own narrator", () => {
     expect(s.posted.at(-1)!.content).toContain("Well");
   });
 });
+
+describe("two chats at once", () => {
+  /** One user playing chats A and B (two tabs, or phone and PC). `chats` is what each chat holds. */
+  function twoChats(files = new Map<string, unknown>()) {
+    const sent: ToFrontend[] = [];
+    const chats: Record<string, { id: string; role: string; content: string; metadata: unknown }[]> = { A: [], B: [] };
+    const spindle = {
+      log: { info() {}, warn() {}, error() {} },
+      userStorage: {
+        getJson: async (p: string, o: { fallback: unknown }) => (files.has(p) ? structuredClone(files.get(p)) : o.fallback),
+        setJson: async (p: string, v: unknown) => void files.set(p, structuredClone(v)),
+      },
+      connections: { list: async () => ({ data: [], total: 0 }) },
+      generate: {
+        quiet: async () => {
+          throw new Error("no referee in this test");
+        },
+      },
+      chat: { getMessages: async (chatId: string) => chats[chatId] ?? [], updateMessage: async () => {} },
+    };
+    const art = new Proxy({}, { get: () => async () => ({ state: "failed" }) });
+    const parleys = createParleys(spindle as never, (m) => void sent.push(m), art as never);
+    const states = () => sent.filter((m): m is Extract<ToFrontend, { type: "parley.state" }> => m.type === "parley.state");
+    const plain = { ...PARLEYS.marta_nets! };
+    return { parleys, files, sent, chats, states, plain };
+  }
+
+  test("each chat keeps its own Parley, and resumes only that one", async () => {
+    const s = twoChats();
+    const a = await s.parleys.startScenario(USER, s.plain, "A");
+    const b = await s.parleys.startScenario(USER, s.plain, "B");
+    expect(await s.parleys.openIn(USER, "A")).toBe(true);
+    expect(await s.parleys.openIn(USER, "B")).toBe(true);
+    s.sent.length = 0;
+    await s.parleys.resume(USER, "A");
+    await s.parleys.resume(USER, "B");
+    await s.parleys.resume(USER, "C");
+    expect(s.states().map((m) => [m.state.id, m.state.chatId, m.resumed])).toEqual([
+      [a, "A", true],
+      [b, "B", true],
+    ]);
+  });
+
+  test("a line written in one chat goes into that chat's Parley", async () => {
+    const s = twoChats();
+    const a = await s.parleys.startScenario(USER, s.plain, "A");
+    const b = await s.parleys.startScenario(USER, s.plain, "B");
+    s.chats.B!.push({ id: "b1", role: "user", content: "Hundred, cash, now.", metadata: {} });
+    await s.parleys.intercept([{ role: "user", content: "Hundred, cash, now." }] as never, { chatId: "B", userId: USER, generationType: "normal", isDryRun: false, interceptorDeadlineAt: Date.now() + 9000 } as never);
+    const saved = (id: string) => s.files.get(`parley/${encodeURIComponent(id)}.json`) as ParleyState;
+    expect(saved(b).exchanges.map((e) => e.messageId)).toEqual(["b1"]);
+    expect(saved(a).exchanges).toEqual([]);
+    expect(s.sent.find((m) => m.type === "parley.exchange")).toMatchObject({ parleyId: b });
+  });
+
+  test("an older save's one Parley belongs to the chat its state names, and a Parley in another chat leaves it open", async () => {
+    const old = createParley(scenario, "old", "A");
+    const s = twoChats(
+      new Map<string, unknown>([
+        [`parley/${encodeURIComponent(old.id)}.json`, old],
+        [`parley/scene/${scenario.id}.json`, scenario],
+        ["parley/current.json", { id: old.id, chatId: "A" }],
+      ]),
+    );
+    expect(await s.parleys.openIn(USER, "A")).toBe(true);
+    expect(await s.parleys.openIn(USER, "B")).toBe(false);
+    await s.parleys.startScenario(USER, s.plain, "B");
+    s.sent.length = 0;
+    await s.parleys.resume(USER, "A");
+    expect(s.states().map((m) => m.state.id)).toEqual([old.id]);
+  });
+});

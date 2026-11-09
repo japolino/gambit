@@ -35,16 +35,15 @@ type Send = (msg: ToFrontend, userId: string) => void;
 
 const statePath = (id: string) => `parley/${encodeURIComponent(id)}.json`;
 const scenePath = (id: string) => `parley/scene/${encodeURIComponent(id)}.json`;
-const CURRENT = "parley/current.json";
+/** The Parley open in each chat (one each); "none" holds the one started outside any chat. */
+const openPath = (chatId: string | null) => `parley/chat/${encodeURIComponent(chatId ?? "none")}.json`;
+/** Older saves kept one Parley per user here. */
+const OLD_CURRENT = "parley/current.json";
 const JOURNAL = "journal.json";
 /** Card scenes keep one journal per chat (docs/DESIGN.md 4.0); the Saltgate demo keeps the global one. */
 const journalPath = (scenario: ParleyScenario | null | undefined) => (scenario?.card ? `journal/${encodeURIComponent(scenario.card.journalKey)}.json` : JOURNAL);
 const SETTINGS = "settings.json";
 
-interface Current {
-  id?: string;
-  chatId?: string | null;
-}
 interface Settings {
   parleyView?: ParleyViewMode;
   parleyNarrator?: ParleyNarrator;
@@ -136,7 +135,13 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
     return saved;
   }
 
-  const current = (userId: string) => spindle.userStorage.getJson<Current>(CURRENT, { fallback: {}, userId });
+  /** The Parley last opened in a chat, ended or not. An older save's one Parley belongs to the chat its state names. */
+  async function openedIn(userId: string, chatId: string | null): Promise<ParleyState | null> {
+    const own = await spindle.userStorage.getJson<{ id?: string } | null>(openPath(chatId), { fallback: null, userId });
+    const id = own ? own.id : (await spindle.userStorage.getJson<{ id?: string }>(OLD_CURRENT, { fallback: {}, userId })).id;
+    const state = id ? await load(userId, id) : null;
+    return state && (state.chatId ?? null) === chatId ? state : null;
+  }
   const journal = async (userId: string, scenario?: ParleyScenario | null) => (await spindle.userStorage.getJson<{ known?: string[] }>(journalPath(scenario), { fallback: {}, userId })).known ?? [];
   const settings = (userId: string) => spindle.userStorage.getJson<Settings>(SETTINGS, { fallback: {}, userId });
   const viewMode = async (userId: string): Promise<ParleyViewMode> => (await settings(userId)).parleyView ?? "immersive";
@@ -436,7 +441,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
   return {
     async start(userId: string, scenarioId: string, chatId: string | null) {
       const scenario = PARLEYS[scenarioId];
-      if (!scenario) return send({ type: "parley.error", error: `Unknown Parley ${scenarioId}` }, userId);
+      if (!scenario) return send({ type: "parley.error", error: `Unknown Parley ${scenarioId}`, chatId }, userId);
       await this.startScenario(userId, scenario, chatId);
     },
 
@@ -450,16 +455,15 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       const known = new Set([...base.known, ...(await journal(userId, scenario)).filter((id) => scenario.facts.some((f) => f.id === id))]);
       const state: ParleyState = { ...base, known: [...known] };
       await save(userId, state);
-      await spindle.userStorage.setJson(CURRENT, { id: state.id, chatId } satisfies Current, { userId });
+      await spindle.userStorage.setJson(openPath(chatId), { id: state.id }, { userId });
       await pushState(userId, state);
       requestNpcArt(scenario, userId);
       return state.id;
     },
 
-    async resume(userId: string) {
-      const cur = await current(userId);
-      if (!cur.id) return;
-      const state = await load(userId, cur.id);
+    /** The chat's open Parley, sent again (the drawer can resume it). */
+    async resume(userId: string, chatId: string | null) {
+      const state = await openedIn(userId, chatId);
       const scenario = state && (await scenarioOf(userId, state.scenarioId));
       if (state && scenario && !state.end) {
         await pushState(userId, state, true);
@@ -472,14 +476,14 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       const line = text.trim();
       if (!line) return;
       const bk = k(userId, parleyId);
-      if (busy.has(bk)) return send({ type: "parley.error", error: "Still judging the last line." }, userId);
+      if (busy.has(bk)) return send({ type: "parley.error", error: "Still judging the last line.", parleyId }, userId);
       busy.add(bk);
       let heard: string | null = null;
       try {
         const saved = await load(userId, parleyId);
         const scenario = saved && (await scenarioOf(userId, saved.scenarioId));
-        if (!saved || !scenario) return send({ type: "parley.error", error: "That Parley is gone." }, userId);
-        if (saved.end) return send({ type: "parley.error", error: "This Parley is over." }, userId);
+        if (!saved || !scenario) return send({ type: "parley.error", error: "That Parley is gone.", parleyId }, userId);
+        if (saved.end) return send({ type: "parley.error", error: "This Parley is over.", parleyId }, userId);
         const state = await withKnown(userId, scenario, saved);
         const read = await judge(spindle, scenario, state, line, userId, { log });
         const r = applyExchange(scenario, state, line, read);
@@ -517,13 +521,13 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
     async close(userId: string, parleyId: string, how: "deal" | "walk") {
       // A line still being judged would save over this ending; a second tap would end it twice.
       const bk = k(userId, parleyId);
-      if (busy.has(bk)) return send({ type: "parley.error", error: "Still judging the last line." }, userId);
+      if (busy.has(bk)) return send({ type: "parley.error", error: "Still judging the last line.", parleyId }, userId);
       busy.add(bk);
       try {
         const state = await load(userId, parleyId);
         const scenario = state && (await scenarioOf(userId, state.scenarioId));
         if (!state || !scenario) return;
-        if (how === "deal" && !canPay(scenario, state.value)) return send({ type: "parley.error", error: "You don't have that much." }, userId);
+        if (how === "deal" && !canPay(scenario, state.value)) return send({ type: "parley.error", error: "You don't have that much.", parleyId }, userId);
         const closed = closeParley(scenario, state, how);
         await save(userId, closed);
         if (closed !== state && scenario.card && closed.chatId) {
@@ -549,9 +553,8 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       send({ type: "parley.view", mode }, userId);
     },
 
-    async resetJournal(userId: string) {
-      const cur = await current(userId);
-      const state = cur.id ? await load(userId, cur.id) : null;
+    async resetJournal(userId: string, chatId: string | null) {
+      const state = await openedIn(userId, chatId);
       const scenario = state ? await scenarioOf(userId, state.scenarioId) : null;
       await spindle.userStorage.setJson(JOURNAL, { known: [] }, { userId });
       if (scenario?.card) await spindle.userStorage.setJson(journalPath(scenario), { known: [] }, { userId });
@@ -560,9 +563,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
 
     /** The Parley open in this chat, if any (contest chips stay quiet while one is open). */
     async openIn(userId: string, chatId: string): Promise<boolean> {
-      const cur = await current(userId);
-      if (!cur.id || cur.chatId !== chatId) return false;
-      const state = await load(userId, cur.id);
+      const state = await openedIn(userId, chatId);
       return !!state && !state.end;
     },
 
@@ -605,9 +606,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       }
 
       // 2. A Parley is open in this chat: judge a composer line inline, or keep the narrator briefed.
-      const cur = await current(ctx.userId);
-      if (!cur.id || cur.chatId !== ctx.chatId) return messages;
-      const state = await load(ctx.userId, cur.id);
+      const state = await openedIn(ctx.userId, ctx.chatId);
       const scenario = state && (await scenarioOf(ctx.userId, state.scenarioId));
       if (!state || !scenario || state.end) return messages;
       const text = line?.content.trim() ?? "";
@@ -661,7 +660,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       const state = await load(w.userId, w.parleyId);
       const scenario = state && (await scenarioOf(w.userId, state.scenarioId));
       const ex = state?.exchanges[w.index];
-      if (!state || !scenario || !ex) return send({ type: "parley.error", error: "The narrator stopped before answering." }, w.userId);
+      if (!state || !scenario || !ex) return send({ type: "parley.error", error: "The narrator stopped before answering.", parleyId: w.parleyId }, w.userId);
       const text = ex.reply || fallbackReply(scenario, state, ex);
       send({ type: "parley.reply", parleyId: w.parleyId, index: w.index, text, final: true }, w.userId);
       if (!ex.reply) await remember(w.userId, w.parleyId, w.index, { reply: text }).catch(() => {});
@@ -688,9 +687,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
 
     /** A Parley line was deleted: rewind to before it. */
     async onMessageDeleted(chatId: string, messageId: string, userId: string) {
-      const cur = await current(userId);
-      if (!cur.id || cur.chatId !== chatId) return;
-      const state = await load(userId, cur.id);
+      const state = await openedIn(userId, chatId);
       const scenario = state && (await scenarioOf(userId, state.scenarioId));
       const at = state?.exchanges.findIndex((e) => e.messageId === messageId) ?? -1;
       if (!state || !scenario || at < 0) return;
@@ -702,9 +699,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
 
     /** A Parley line was edited: re-judge the new words with the same die faces. */
     async onMessageEdited(chatId: string, messageId: string, content: string, userId: string) {
-      const cur = await current(userId);
-      if (!cur.id || cur.chatId !== chatId) return;
-      const state = await load(userId, cur.id);
+      const state = await openedIn(userId, chatId);
       const scenario = state && (await scenarioOf(userId, state.scenarioId));
       const at = state?.exchanges.findIndex((e) => e.messageId === messageId) ?? -1;
       if (!state || !scenario || at < 0 || state.exchanges[at]!.text === content.trim()) return;

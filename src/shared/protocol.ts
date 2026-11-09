@@ -163,6 +163,8 @@ export type StyleProbeKey = `style_probe:${string}:${"gate" | "bust"}`;
 
 export type ToBackend =
   | { type: "hello" }
+  /** The window shows this chat now (or no chat): send its running fight and open Parley again, for the drawer's Resume. */
+  | { type: "resume"; chatId: string | null }
   /** The stage wants the effect sheets and sounds (shared/fx.ts). */
   | { type: "fx.get" }
   /** The Stage opened: close the side drawer so it does not cover the fight. */
@@ -176,7 +178,7 @@ export type ToBackend =
   | { type: "parley.close"; parleyId: string; how: "deal" | "walk" }
   | { type: "parley.view"; mode: ParleyViewMode }
   | { type: "parley.narrator"; mode: ParleyNarrator }
-  | { type: "journal.reset" }
+  | { type: "journal.reset"; chatId: string | null }
   // card
   /** What's on screen changed, and music is on: which track goes with it? */
   | { type: "music.want"; chatId: string; moment: MusicMoment; about?: string }
@@ -251,7 +253,8 @@ export type ToFrontend =
   | { type: "fx.file"; file: string; mime: string; part: number; parts: number; data: string }
   // battle
   | { type: "battle.state"; state: BattleState; events: BattleEvent[] }
-  | { type: "battle.error"; error: string }
+  /** battleId: the fight it is about; without one, a fight that could not start. */
+  | { type: "battle.error"; error: string; battleId?: string }
   // parley
   | { type: "parley.state"; state: ParleyState; scenario: ParleyScenario; journal: string[]; view: ParleyViewMode; narrator: ParleyNarrator; resumed?: boolean }
   /** A decided exchange: play the read and the dice. */
@@ -260,7 +263,8 @@ export type ToFrontend =
   | { type: "parley.judging"; parleyId: string; text: string }
   /** The NPC's narrated reply to exchange `index` (or a code-written one without a chat). */
   | { type: "parley.reply"; parleyId: string; index: number; text: string; final: boolean }
-  | { type: "parley.error"; error: string }
+  /** About a running Parley (parleyId), or one that could not start in a chat. */
+  | ({ type: "parley.error"; error: string } & ({ parleyId: string } | { chatId: string | null }))
   | { type: "parley.view"; mode: ParleyViewMode }
   | { type: "parley.narrator"; mode: ParleyNarrator }
   // card
@@ -292,4 +296,5 @@ export type ToFrontend =
   | { type: "style.locked"; lookId: string; ui?: LookUi | null }
   | { type: "inset.compose"; request: InsetComposeRequest }
   | { type: "art.pixels"; job: PixelJob }
-  | { type: "notice"; level: "info" | "warn" | "error"; text: string };
+  /** chatId: about that chat only (a window on another chat ignores it). */
+  | { type: "notice"; level: "info" | "warn" | "error"; text: string; chatId?: string };

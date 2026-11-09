@@ -100,7 +100,7 @@ export function createForge(d: ForgeDeps) {
     for (const o of Object.values(book.classes)) if (o.art) portrait(userId, sheet, o, [], 2);
   }
 
-  const warn = (userId: string, text: string) => d.send({ type: "notice", level: "warn", text }, userId);
+  const warn = (userId: string, chatId: string, text: string) => d.send({ type: "notice", level: "warn", text, chatId }, userId);
 
   async function fusion(userId: string, sheet: CardSheet, book: ClassBook, a: OwnedClass, b: OwnedClass, salt: string, fresh: boolean): Promise<void> {
     const da = defOf(a);
@@ -120,10 +120,10 @@ export function createForge(d: ForgeDeps) {
   async function act(userId: string, chatId: string, op: ForgeOp, arg?: string, arg2?: string, text?: string): Promise<void> {
     const sheet = await d.sheetFor(userId, chatId);
     const r = await d.load(userId, chatId);
-    if (!sheet || !r) return warn(userId, "Open this chat's scene first.");
+    if (!sheet || !r) return warn(userId, chatId, "Open this chat's scene first.");
     const book = bookOf(r);
     const k = `${userId}:${chatId}`;
-    if (busy.has(k) && op !== "open") return warn(userId, "Still working on the last one.");
+    if (busy.has(k) && op !== "open") return warn(userId, chatId, "Still working on the last one.");
     const work = async (fn: () => Promise<void>) => {
       busy.add(k);
       await push(userId, chatId, sheet, r);
@@ -137,14 +137,14 @@ export function createForge(d: ForgeDeps) {
       case "open":
         break;
       case "use": {
-        if (!arg || !book.classes[arg]) return warn(userId, "No such class.");
+        if (!arg || !book.classes[arg]) return warn(userId, chatId, "No such class.");
         book.active = arg;
         break;
       }
       case "forge": {
         const t = (text ?? "").replace(/\s+/g, " ").trim().slice(0, 600);
-        if (book.crests < 1) return warn(userId, "The Forge needs a Blank Crest. Finishing someone's questline turns one up.");
-        if (t.length < 8) return warn(userId, "Describe the class in a sentence or two.");
+        if (book.crests < 1) return warn(userId, chatId, "The Forge needs a Blank Crest. Finishing someone's questline turns one up.");
+        if (t.length < 8) return warn(userId, chatId, "Describe the class in a sentence or two.");
         await work(async () => {
           const closest = baseClassFor(t);
           const res = await ask(userId, "forge", forgePrompt(t, sheet.skin.genre), 1600, (raw) => parseForge(raw, t), () => fallbackForge(t, closest));
@@ -161,9 +161,9 @@ export function createForge(d: ForgeDeps) {
       case "fuse": {
         const a = arg ? book.classes[arg] : undefined;
         const b = arg2 ? book.classes[arg2] : undefined;
-        if (!a || !b || arg === arg2) return warn(userId, "Pick two different classes.");
-        if (rankOf(a.wins) < FUSE_RANK || rankOf(b.wins) < FUSE_RANK) return warn(userId, `Both classes need rank ${FUSE_RANK}. Win fights with them to raise it.`);
-        if (book.catalysts < 1) return warn(userId, "Fusion needs a catalyst. Bosses and cleared delves leave them behind.");
+        if (!a || !b || arg === arg2) return warn(userId, chatId, "Pick two different classes.");
+        if (rankOf(a.wins) < FUSE_RANK || rankOf(b.wins) < FUSE_RANK) return warn(userId, chatId, `Both classes need rank ${FUSE_RANK}. Win fights with them to raise it.`);
+        if (book.catalysts < 1) return warn(userId, chatId, "Fusion needs a catalyst. Bosses and cleared delves leave them behind.");
         book.catalysts--;
         await work(async () => {
           await fusion(userId, sheet, book, a, b, `${chatId}:${Date.now().toString(36)}`, false);
@@ -173,8 +173,8 @@ export function createForge(d: ForgeDeps) {
       }
       case "reroll": {
         const p = book.pending;
-        if (p?.kind !== "fusion" || !p.pair || p.rerolled) return warn(userId, "There is no fusion to reroll.");
-        if (book.catalysts < 1) return warn(userId, "A reroll costs a second catalyst.");
+        if (p?.kind !== "fusion" || !p.pair || p.rerolled) return warn(userId, chatId, "There is no fusion to reroll.");
+        if (book.catalysts < 1) return warn(userId, chatId, "A reroll costs a second catalyst.");
         const [ia, ib] = p.pair;
         const a = book.classes[ia];
         const b = book.classes[ib];
@@ -191,9 +191,9 @@ export function createForge(d: ForgeDeps) {
         const active = book.classes[book.active];
         const cls = active ? defOf(active) : null;
         const skill = cls?.skills.find((s) => s.id === arg);
-        if (!cls || !skill || !arg) return warn(userId, "That skill is not in your active class.");
-        if (book.awakened[arg]) return warn(userId, `${skill.name} has already awakened.`);
-        if ((book.uses[arg] ?? 0) < AWAKEN_AT) return warn(userId, `${skill.name} awakens after ${AWAKEN_AT} uses.`);
+        if (!cls || !skill || !arg) return warn(userId, chatId, "That skill is not in your active class.");
+        if (book.awakened[arg]) return warn(userId, chatId, `${skill.name} has already awakened.`);
+        if ((book.uses[arg] ?? 0) < AWAKEN_AT) return warn(userId, chatId, `${skill.name} awakens after ${AWAKEN_AT} uses.`);
         await work(async () => {
           const solved = skill;
           const fam = familiesOf(cls);
@@ -209,7 +209,7 @@ export function createForge(d: ForgeDeps) {
       case "pick": {
         const p = book.pending;
         const i = Number(arg);
-        if (p?.kind !== "awaken" || !p.skillId || !p.options?.[i]) return warn(userId, "Nothing to pick.");
+        if (p?.kind !== "awaken" || !p.skillId || !p.options?.[i]) return warn(userId, chatId, "Nothing to pick.");
         book.awakened[p.skillId] = p.options[i]!;
         book.pending = null;
         await d.aside(chatId, `${sheet.player.name || "You"}'s ${p.options[i]!.name.split(":")[0]} awakens: ${p.options[i]!.name}.`);
@@ -217,9 +217,9 @@ export function createForge(d: ForgeDeps) {
       }
       case "confirm": {
         const p = book.pending;
-        if (!p?.owned || (p.kind !== "forge" && p.kind !== "fusion")) return warn(userId, "Nothing to confirm.");
+        if (!p?.owned || (p.kind !== "forge" && p.kind !== "fusion")) return warn(userId, chatId, "Nothing to confirm.");
         if (p.kind === "forge") {
-          if (book.crests < 1) return warn(userId, "The Forge needs a Blank Crest.");
+          if (book.crests < 1) return warn(userId, chatId, "The Forge needs a Blank Crest.");
           book.crests--;
         }
         const id = p.owned.def.id;
@@ -242,7 +242,7 @@ export function createForge(d: ForgeDeps) {
       case "take": {
         const codex = await codexOf(userId);
         const e = codex.entries.find((x) => x.id === arg);
-        if (!e) return warn(userId, "That class is not in the codex.");
+        if (!e) return warn(userId, chatId, "That class is not in the codex.");
         book.classes[e.id] ??= fromCodex(e);
         break;
       }

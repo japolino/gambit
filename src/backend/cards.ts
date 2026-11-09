@@ -891,13 +891,13 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       const extra = base && placeHook?.extraCast ? await placeHook.extraCast(userId, chatId).catch(() => []) : [];
       const sheet = base && extra.length ? { ...base, cast: [...base.cast, ...extra.filter((m) => !base.cast.some((c) => c.id === m.id))] } : base;
       const who = sheet?.cast.find((c) => c.id === castId);
-      if (!sheet || !who) return send({ type: "parley.error", error: "Gambit has no sheet for this chat yet." }, userId);
+      if (!sheet || !who) return send({ type: "parley.error", error: "Gambit has no sheet for this chat yet.", chatId }, userId);
       send({ type: "card.starting", chatId, castName: who.name }, userId);
       const lines = await recent(userId, chatId, 8);
       const standing = (await placeHook?.standing?.(userId, chatId, castId).catch(() => null)) ?? null;
       const f = await frame(userId, sheet, lines, castId, chip?.kind ?? kind, firstLine, standing ? { feel: standing.history.feel, remembers: standing.history.remembers, ...(standing.thread ? { thread: standing.thread } : {}) } : undefined);
       const scenario = scenarioFromSheet(sheet, f, chatId, `card:${chatId.slice(0, 8)}:${castId}:${Date.now().toString(36)}`, []);
-      if (!scenario) return send({ type: "parley.error", error: "Could not set that scene up." }, userId);
+      if (!scenario) return send({ type: "parley.error", error: "Could not set that scene up.", chatId }, userId);
       scenario.story = storySoFar(lines);
       if (standing) {
         scenario.history = standing.history;

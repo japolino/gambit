@@ -112,10 +112,12 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
       case "hello": {
         await art.setCampaign(CAMPAIGN, userId);
         send({ type: "welcome", version: VERSION, styleLook: art.styleLock(userId)?.lookId ?? null, ui: art.lookUi(userId) }, userId);
-        await battles.resume(userId);
-        await parleys.resume(userId);
         break;
       }
+      case "resume":
+        await battles.resume(userId, msg.chatId);
+        await parleys.resume(userId, msg.chatId);
+        break;
       case "parley.start":
         await parleys.start(userId, msg.scenarioId, msg.chatId);
         break;
@@ -169,7 +171,7 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         send({ type: "models.state", state: await modelsFor(spindle).update(userId, msg.patch) }, userId);
         break;
       case "journal.reset":
-        await parleys.resetJournal(userId);
+        await parleys.resetJournal(userId, msg.chatId);
         break;
       case "stage.opened":
         // In the host runtime but not yet in the published types (0.6.79).
@@ -245,7 +247,8 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
     }
   } catch (err) {
     spindle.log.error(`gambit: ${msg?.type}: ${err instanceof Error ? err.stack : String(err)}`);
-    send({ type: "notice", level: "error", text: err instanceof Error ? err.message : String(err) }, userId);
+    const chatId = (msg as { chatId?: unknown })?.chatId;
+    send({ type: "notice", level: "error", text: err instanceof Error ? err.message : String(err), ...(typeof chatId === "string" ? { chatId } : {}) }, userId);
   }
 });
 

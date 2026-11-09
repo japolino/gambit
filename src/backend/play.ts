@@ -562,7 +562,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
   async function context(userId: string, chatId: string): Promise<{ sheet: CardSheet; r: PlayRecord } | null> {
     const sheet = await cards.sheetFor(userId, chatId);
     if (!sheet) {
-      send({ type: "notice", level: "warn", text: "Gambit has not read this card yet. Turn it on for this chat first." }, userId);
+      send({ type: "notice", level: "warn", text: "Gambit has not read this card yet. Turn it on for this chat first.", chatId }, userId);
       return null;
     }
     const r = await record(userId, chatId, sheet);
@@ -850,7 +850,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const named = opts.line && !lead ? await foeForLine(userId, opts.line, foes) : null;
     if (named) log(`fight: the line goes for ${named.name}`);
     const enc = encounterFrom(foes, { seed, party: partySize, ...(opts.boss ? { boss: true } : {}), ...(lead ? { lead: `cast_${lead.id}`, kin: true } : {}), ...(named ? { lead: named.id, kin: true } : {}), ...(opts.title ? { name: opts.title } : {}) });
-    if (!enc) return send({ type: "notice", level: "warn", text: "This card has nobody to fight." }, userId);
+    if (!enc) return send({ type: "notice", level: "warn", text: "This card has nobody to fight.", chatId }, userId);
     const t = tag(sheet.cardKey);
     const ns = (def: MonsterDef): MonsterDef => {
       const id = `${t}.${def.id}`;
@@ -2086,7 +2086,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const spot = menuFor(sheet, r).find((h) => h.id === hotspot);
       const wild = wildCell(r);
       const day = r.scene.day;
-      if (!spot) return send({ type: "notice", level: "warn", text: "That is not something you can do here." }, userId);
+      if (!spot) return send({ type: "notice", level: "warn", text: "That is not something you can do here.", chatId }, userId);
       if (spot.id === "afterglow") return afterglow(userId, chatId, sheet, r);
       switch (spot.kind) {
         case "talk":

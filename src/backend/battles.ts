@@ -1,7 +1,8 @@
 /**
  * Battle sessions on the backend. The engine is authoritative here: the
  * frontend only sends actions and plays back the events it gets. Each
- * battle's state is saved per user, so a reload resumes the same fight.
+ * battle's state is saved, and each chat remembers its running fight, so a
+ * reload resumes it in that chat.
  */
 import { emptyTally, tallyEvents } from "../engine/memory/memory.js";
 import type { SpindleAPI } from "lumiverse-spindle-types";
@@ -14,6 +15,11 @@ import type { ToFrontend } from "../shared/protocol.js";
 type Send = (msg: ToFrontend, userId: string) => void;
 
 const path = (battleId: string) => `battles/${encodeURIComponent(battleId)}.json`;
+/** Each chat's latest fight; "none" holds the one started outside any chat (a demo encounter). */
+const chatPath = (chatId: string | null) => `battles/chat/${encodeURIComponent(chatId ?? "none")}.json`;
+/** Older saves kept one fight per user here. */
+const OLD_CURRENT = "battles/current.json";
+const chatOf = (state: BattleState): string | null => state.meta?.chatId ?? null;
 
 export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state: BattleState, userId: string) => void, onEnd?: (state: BattleState, userId: string) => void) {
   const live = new Map<string, BattleState>();
@@ -30,7 +36,7 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
   async function save(userId: string, state: BattleState): Promise<void> {
     live.set(key(userId, state.id), state);
     await spindle.userStorage.setJson(path(state.id), state, { userId });
-    await spindle.userStorage.setJson("battles/current.json", { battleId: state.id }, { userId });
+    await spindle.userStorage.setJson(chatPath(chatOf(state)), { battleId: state.id }, { userId });
   }
 
   return {
@@ -49,11 +55,12 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
       onShown?.(state, userId);
     },
 
-    async resume(userId: string) {
-      const current = await spindle.userStorage.getJson<{ battleId?: string }>("battles/current.json", { fallback: {}, userId });
-      if (!current.battleId) return;
-      const state = await load(userId, current.battleId);
-      if (state && state.outcome === "ongoing") {
+    /** The chat's running fight, sent again. An older save's one fight belongs to the chat it was fought in. */
+    async resume(userId: string, chatId: string | null) {
+      const own = await spindle.userStorage.getJson<{ battleId?: string } | null>(chatPath(chatId), { fallback: null, userId });
+      const battleId = own ? own.battleId : (await spindle.userStorage.getJson<{ battleId?: string }>(OLD_CURRENT, { fallback: {}, userId })).battleId;
+      const state = battleId ? await load(userId, battleId) : null;
+      if (state && chatOf(state) === chatId && state.outcome === "ongoing") {
         send({ type: "battle.state", state, events: [] }, userId);
         onShown?.(state, userId);
       }
@@ -71,7 +78,7 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
 
     async act(userId: string, battleId: string, action: Action) {
       const state = await load(userId, battleId);
-      if (!state) return send({ type: "battle.error", error: "That battle is gone." }, userId);
+      if (!state) return send({ type: "battle.error", error: "That battle is gone.", battleId }, userId);
       try {
         const r = actAndAdvance(state, action, chooseAction);
         // Card battles keep a tally of how the party fights (the build profile, 4.6).
@@ -83,7 +90,7 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
         send({ type: "battle.state", state: r.state, events: r.events }, userId);
         if (state.outcome === "ongoing" && r.state.outcome !== "ongoing") onEnd?.(r.state, userId);
       } catch (err) {
-        send({ type: "battle.error", error: err instanceof Error ? err.message : String(err) }, userId);
+        send({ type: "battle.error", error: err instanceof Error ? err.message : String(err), battleId }, userId);
         send({ type: "battle.state", state, events: [] }, userId);
       }
     },
