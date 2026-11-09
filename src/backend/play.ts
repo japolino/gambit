@@ -23,7 +23,7 @@ import { PLACE_TRAITS as PLACE_FLAGS, type CompanionLike } from "../meaning/sens
 import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
 import { fallbackPlaceFromChat, named, parsePlaceFromChat, placeFromChatPrompt, type Bible } from "../meaning/bible.js";
 import { modelsFor } from "./models.js";
-import { beatWorked, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, THREAD_DAYS, threadEnd, type BeatRead } from "../engine/story/beat.js";
+import { beatWorked, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, THREAD_DAYS, threadEnd, type BeatRead, type BeatRoute } from "../engine/story/beat.js";
 import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
 import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
@@ -624,6 +624,15 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       recent: (r.story ?? []).map((b) => ({ text: b.said, reply: !b.said && b.roll ? `${b.roll}. ${b.reply}`.trim() : b.reply, ...(b.found ? { found: b.found } : {}) })),
       memory: memoryNote(sheet, r),
     };
+  }
+
+  /** Writing and searching from the menu run the same clock: enough of it turns the time of day. */
+  function spend(r: PlayRecord, route: BeatRoute): void {
+    const clock = spendClock(r.spent ?? 0, route);
+    r.spent = clock.spent;
+    if (!clock.steps) return;
+    r.scene = clockTo(r.scene, (r.scene.time + clock.steps) % TIMES.length);
+    note(r, `It is ${TIMES[r.scene.time]} now.`);
   }
 
   /** What a line is trying to do: the fast decision model, then an ordinary model, then plain rules. */
@@ -2050,12 +2059,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         fresh.scene = { ...fresh.scene, found: [...fresh.scene.found, fact.id] };
         await cards.markKnown?.(userId, chatId, fact.id);
       }
-      const clock = spendClock(fresh.spent ?? 0, read.route);
-      fresh.spent = clock.spent;
-      if (clock.steps) {
-        fresh.scene = clockTo(fresh.scene, (fresh.scene.time + clock.steps) % TIMES.length);
-        note(fresh, `It is ${TIMES[fresh.scene.time]} now.`);
-      }
+      spend(fresh, read.route);
       await postBeat(chatId, line, clean ? (roll ? `*(${roll})*\n\n${clean}` : clean) : null);
       await save(userId, chatId, fresh);
       await show(userId, chatId, sheet, fresh);
@@ -2074,6 +2078,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const p = r.world.places[r.scene.placeId]!;
       const spot = menuFor(sheet, r).find((h) => h.id === hotspot);
       const wild = wildCell(r);
+      const day = r.scene.day;
       if (!spot) return send({ type: "notice", level: "warn", text: "That is not something you can do here." }, userId);
       if (spot.id === "afterglow") return afterglow(userId, chatId, sheet, r);
       switch (spot.kind) {
@@ -2084,7 +2089,6 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
           return;
         case "exit": {
           if (r.hex) {
-            const day = r.scene.day;
             await travel(userId, chatId, sheet, r, spot.target!);
             if (r.scene.day > day) return nightfall(userId, chatId, sheet, r);
             break;
@@ -2126,16 +2130,18 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
             const roll = (([...`${chatId}:${key}:${r.scene.day}`].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0) % 20) + 1;
             const got = roll + (sheet.player.social.guile ?? 2) >= 10 ? (roll >= 17 ? 3 : 2) : 0;
             r.hex!.state = { ...r.hex!.state, supplies: Math.min(SUPPLY_MAX, r.hex!.state.supplies + got) };
-            r.scene = { ...moveScene(r.world, r.scene, { kind: "wait" }), searched: [...r.scene.searched, key] };
+            r.scene = { ...r.scene, searched: [...r.scene.searched, key] };
             note(r, got ? `You forage (${roll}) and find ${got} supplies.` : `You forage (${roll}) and find nothing to eat.`);
+            spend(r, "seek");
             await save(userId, chatId, r);
             break;
           }
           interest(r, `place:${p.id}`, NOTICE.search);
           const quest = r.scene.searched.includes(p.id) ? null : questStep(r, p.id);
           if (quest) {
-            r.scene = { ...moveScene(r.world, r.scene, { kind: "wait" }), searched: [...r.scene.searched, p.id] };
+            r.scene = { ...r.scene, searched: [...r.scene.searched, p.id] };
             note(r, quest);
+            spend(r, "seek");
             await save(userId, chatId, r);
             await aside(chatId, quest);
             break;
@@ -2152,6 +2158,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
               line = `Looking around ${p.name} (${res.roll}), you uncover part of it: ${rev.text}`;
             }
             note(r, line);
+            spend(r, "seek");
             await save(userId, chatId, r);
             if (rev) await aside(chatId, line);
             if (fact) {
@@ -2174,6 +2181,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         case "explore":
           return explore(userId, chatId, sheet, r);
       }
+      if (spot.kind === "search" && r.scene.day > day) return nightfall(userId, chatId, sheet, r);
       await show(userId, chatId, sheet, r);
     },
 

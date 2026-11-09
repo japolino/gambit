@@ -286,6 +286,16 @@ describe("play on a card", () => {
     expect([r.scene.time, r.spent]).toEqual([1, 0]);
   });
 
+  test("looking around from the menu runs the same clock as a written search", async () => {
+    const { play, files } = setup();
+    await play.open("u", "chat1");
+    const record = () => files.get([...files.keys()].find((k) => k.includes("chat1"))!) as { scene: { time: number }; spent: number };
+    await play.act("u", "chat1", "search");
+    expect([record().scene.time, record().spent]).toEqual([0, 2]);
+    await play.say("u", "chat1", "I watch the gulls");
+    expect([record().scene.time, record().spent]).toEqual([1, 0]);
+  });
+
   test("a thread runs against a deadline, and running out of days ends it", async () => {
     const { play, last, files } = setup();
     await play.open("u", "chat1");

@@ -369,7 +369,7 @@ export function moveScene(world: World, s: SceneState, move: SceneMove): SceneSt
   }
 }
 
-/** A seeded d20 search: finds a hidden fact about someone here, or about the place, when the roll beats the DC. */
+/** A seeded d20 search: finds a hidden fact about someone here, or about the place, when the roll beats the DC. The time it takes runs on the story clock (play.ts). */
 export function searchScene(world: World, s: SceneState, sheet: Pick<CardSheet, "facts" | "player">, seed: string): { scene: SceneState; roll: number; dc: number; factId: string | null } {
   if (s.searched.includes(s.placeId)) throw new Error("You have already searched here today.");
   const p = world.places[s.placeId]!;
@@ -381,7 +381,7 @@ export function searchScene(world: World, s: SceneState, sheet: Pick<CardSheet, 
   const dc = 10 + (pool[0]?.weight ?? 1) * 2;
   const hit = pool.length > 0 && roll + wits >= dc;
   const factId = hit ? pool[0]!.id : null;
-  const scene = { ...tick(s), searched: [...s.searched, s.placeId], found: factId ? [...s.found, factId] : s.found };
+  const scene = { ...s, searched: [...s.searched, s.placeId], found: factId ? [...s.found, factId] : s.found };
   return { scene, roll, dc, factId };
 }
 
