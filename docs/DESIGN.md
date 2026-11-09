@@ -114,7 +114,7 @@ The Card Reader proposes the set. The player can switch any module on or off per
 
 **The card's art is the anchor.** Art the user already has always beats art Gambit draws. For each person on the sheet, `backend/card-faces.ts` looks, in order, at:
 1. their own card: its expression group for them, its expression sprites, its imported Risu assets, its avatar;
-2. the chat's card(s), for people who live in its lorebook or share a multi-character card: the expression group or Risu assets named after them (`Mira.young.surprised`, `Lark_angry`);
+2. the chat's card(s), for people who live in its lorebook or share a multi-character card: the expression group or Risu assets named after them (`Mira.young.surprised`, `Lark_angry`; a key that is a file name, `Lark_angry.webp`, counts without its extension);
 3. a card in the user's library with the same name (Brannoc has his own card);
 4. a captioned image in the card's gallery.
 

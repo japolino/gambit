@@ -74,6 +74,12 @@ describe("faces from art the user has", () => {
     expect(facesFromRisu({ happy: "h" }, "Anyone", false)).toBeNull();
   });
 
+  test("Risu assets listed under their file names too are still one person's sprites, and sex positions are no face", () => {
+    const map = { "Lilim_Reverse Standing Position.webp": "x", "Lilim_Reverse Standing Position": "x", "Lilim_angry.webp": "a", Lilim_angry: "a", "Lilim_standing.webp": "s", Lilim_standing: "s", "Vesper_joyful.webp": "v", Vesper_joyful: "v" };
+    expect(facesFromRisu(map, "Lilim", false)).toEqual({ base: "s", expressions: { angry: "a" }, source: "risu" });
+    expect(facesFromRisu(map, "Vesper", false)!.expressions).toEqual({ happy: "v" });
+  });
+
   test("expression groups are found by name", () => {
     const groups = { "Prince Corvin": { neutral: "n", sad: "s" }, Odile: { happy: "o" } };
     expect(facesFromLabels(groupFor(groups, "Corvin")!, "groups")).toEqual({ base: "n", expressions: { sad: "s" }, source: "groups" });

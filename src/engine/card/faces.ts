@@ -35,7 +35,9 @@ const MOODS: Record<string, Expression> = {
 };
 
 /** Words that rule a whole key out, whatever mood it names. */
-const UNSAFE = /\b(nude|naked|nsfw|lewd|sex|sexy|erotic|xxx|topless|bottomless|underwear|lingerie|bath|bathing|cum|ahegao|aroused|lust|lustful|horny|yuri|yaoi|hentai|bdsm)\b/;
+const UNSAFE = /\b(nude|naked|nsfw|lewd|sex|sexy|erotic|xxx|topless|bottomless|underwear|lingerie|bath|bathing|cum|ahegao|aroused|lust|lustful|horny|yuri|yaoi|hentai|bdsm|position|cowgirl|doggy|missionary|spooning|paizuri|handjob|footjob|job|blowjob|fellatio|deepthroat|fingering|masturbation|ejaculated|ejaculation|penis|vagina|condom|pee)\b/;
+
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|bmp)$/i;
 
 const words = (label: string): string[] => normName(label.replace(/([a-z])([A-Z])/g, "$1 $2")).split(" ").filter(Boolean);
 
@@ -75,7 +77,13 @@ export function facesFromLabels(map: Readonly<Record<string, unknown>>, source: 
  *     when `single` (the card has one character) or the label names them.
  */
 export function facesFromRisu(map: Readonly<Record<string, unknown>>, name: string, single: boolean): FaceSet | null {
-  const entries = Object.entries(map).filter((e): e is [string, string] => typeof e[1] === "string" && !!e[1]);
+  // Importers may list an asset by its file name too ("Lilim_angry.webp"): that dot is no "person.variant".
+  const byKey = new Map<string, string>();
+  for (const [k, v] of Object.entries(map)) {
+    const key = k.replace(IMAGE_EXT, "");
+    if (typeof v === "string" && v && !byKey.has(key)) byKey.set(key, v);
+  }
+  const entries = [...byKey];
   const dotted = entries.filter(([k]) => k.includes("."));
   if (dotted.length >= entries.length / 2) {
     const people = [...new Set(entries.map(([k]) => k.split(".")[0]!))];
