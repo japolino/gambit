@@ -71,14 +71,6 @@ export function npcDna(scenario: ParleyScenario): CharacterDNA {
   };
 }
 
-const textOf = (m: LlmMessageDTO | undefined): string => {
-  if (!m) return "";
-  const c = (m as { content?: unknown }).content;
-  if (typeof c === "string") return c;
-  if (Array.isArray(c)) return c.map((p) => (typeof p === "object" && p && "text" in p ? String((p as { text: unknown }).text ?? "") : "")).join("");
-  return "";
-};
-
 const metaOf = (meta: unknown): ParleyMessageMeta | null => {
   const p = (meta as { gambit?: { parley?: ParleyMessageMeta } } | null | undefined)?.gambit?.parley;
   return p && typeof p.id === "string" && Number.isInteger(p.index) ? p : null;
@@ -86,6 +78,12 @@ const metaOf = (meta: unknown): ParleyMessageMeta | null => {
 
 /** A Parley with someone on a card ended (4.6: the deed ledger hears about it). */
 export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: ParleyState) => void;
+
+/** The story a talk is part of (play): it hears the talk's replies, and says which facts the player knows by now. */
+export interface ParleyStoryHook {
+  heard(userId: string, chatId: string, lines: { name: string; content: string; isUser: boolean }[]): Promise<void>;
+  known(userId: string, chatId: string): Promise<string[]>;
+}
 
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { retryMs = [1500, 4000] }: { retryMs?: number[] } = {}) {
   const figures = createFigurePrints(spindle, art, sharedInlayPictures(spindle, (m) => log(m)));
@@ -96,6 +94,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
   };
   let pictures: ReturnType<typeof sharedInlayPictures> | null = null;
   let endHook: ParleyEndHook | null = null;
+  let story: ParleyStoryHook | null = null;
   const told = new Set<string>();
   const live = new Map<string, ParleyState>();
   const scenes = new Map<string, ParleyScenario>();
@@ -314,6 +313,37 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
     }
   }
 
+  /** A fact the player learned in the story since the talk began counts in it too (4.1.3). */
+  async function withKnown(userId: string, scenario: ParleyScenario, state: ParleyState): Promise<ParleyState> {
+    if (!story || !state.chatId) return state;
+    const ids = await story.known(userId, state.chatId).catch(() => []);
+    const fresh = ids.filter((id) => !state.known.includes(id) && scenario.facts.some((f) => f.id === id));
+    if (!fresh.length) return state;
+    const next = { ...state, known: [...state.known, ...fresh] };
+    await save(userId, next);
+    return next;
+  }
+
+  /** A reply in a talk is part of the story: what it lets slip becomes known, and the talk shows it at once. */
+  async function hear(userId: string, parleyId: string, reply: string): Promise<void> {
+    const state = await load(userId, parleyId);
+    const scenario = state && (await scenarioOf(userId, state.scenarioId));
+    if (!story || !state?.chatId || !scenario) return;
+    await story.heard(userId, state.chatId, [{ name: scenario.npc.name, content: reply, isUser: false }]);
+    const bk = k(userId, parleyId);
+    // A line being judged now picks it up itself.
+    if (busy.has(bk)) return;
+    busy.add(bk);
+    try {
+      const now = await load(userId, parleyId);
+      if (!now || now.end) return;
+      const next = await withKnown(userId, scenario, now);
+      if (next !== now) await pushState(userId, next);
+    } finally {
+      busy.delete(bk);
+    }
+  }
+
   /** Store a reply (and the message that carries the exchange) on the saved exchange. */
   async function remember(userId: string, parleyId: string, index: number, patch: Partial<Pick<Exchange, "reply" | "messageId">>): Promise<void> {
     const fresh = await load(userId, parleyId);
@@ -346,6 +376,22 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
     const clean = cleanReply(written);
     if (!clean) log("no narrator answered; using a short line, kept out of the chat");
     return clean ? { text: clean, written: true } : { text: fallbackReply(scenario, state, ex), written: false };
+  }
+
+  /**
+   * The chat's latest line from the player, read from the chat, not the prompt: the host doesn't pass a line's metadata
+   * to an interceptor, and a preset may lift the latest line out of the history into a block of its own. `answered`:
+   * this generation writes the reply to it (it is the newest message, or the reply after it is being swiped).
+   */
+  async function latestLine(chatId: string, generationType: string) {
+    const all = await spindle.chat
+      .getMessages(chatId, { tail: 4 })
+      .catch(() => spindle.chat.getMessages(chatId))
+      .catch(() => []);
+    const line = all.filter((m) => m.role === "user" && !m.hidden).at(-1);
+    if (!line) return null;
+    const after = all.slice(all.findIndex((m) => m.id === line.id) + 1);
+    return { line, answered: !after.length || ((generationType === "swipe" || generationType === "regenerate") && after.length === 1) };
   }
 
   /** Post a line to the chat without starting the chat's own reply. */
@@ -428,11 +474,13 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       const bk = k(userId, parleyId);
       if (busy.has(bk)) return send({ type: "parley.error", error: "Still judging the last line." }, userId);
       busy.add(bk);
+      let heard: string | null = null;
       try {
-        const state = await load(userId, parleyId);
-        const scenario = state && (await scenarioOf(userId, state.scenarioId));
-        if (!state || !scenario) return send({ type: "parley.error", error: "That Parley is gone." }, userId);
-        if (state.end) return send({ type: "parley.error", error: "This Parley is over." }, userId);
+        const saved = await load(userId, parleyId);
+        const scenario = saved && (await scenarioOf(userId, saved.scenarioId));
+        if (!saved || !scenario) return send({ type: "parley.error", error: "That Parley is gone." }, userId);
+        if (saved.end) return send({ type: "parley.error", error: "This Parley is over." }, userId);
+        const state = await withKnown(userId, scenario, saved);
         const read = await judge(spindle, scenario, state, line, userId, { log });
         const r = applyExchange(scenario, state, line, read);
         await save(userId, r.state);
@@ -455,11 +503,15 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
         await remember(userId, parleyId, r.exchange.index, { reply });
         send({ type: "parley.reply", parleyId, index: r.exchange.index, text: reply, final: true }, userId);
         // The chat keeps what a narrator wrote. A stand-in line is for the Parley on screen, not the story.
-        if (chatId && written) await appendQuiet(chatId, "assistant", reply, { ...meta, npc: true }, scenario.npc.name);
+        if (chatId && written) {
+          await appendQuiet(chatId, "assistant", reply, { ...meta, npc: true }, scenario.npc.name);
+          heard = reply;
+        }
         await tellEnd(userId, parleyId);
       } finally {
         busy.delete(bk);
       }
+      if (heard) void hear(userId, parleyId, heard).catch((err: unknown) => log(`hearing the reply: ${err instanceof Error ? err.message : String(err)}`));
     },
 
     async close(userId: string, parleyId: string, how: "deal" | "walk") {
@@ -523,34 +575,23 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       endHook = h;
     },
 
+    setStoryHook(h: ParleyStoryHook) {
+      story = h;
+    },
+
     /** Prompt pipeline: inject the decided outcome (and judge composer lines inline). */
     async intercept(messages: LlmMessageDTO[], ctx: InterceptorContextDTO): Promise<LlmMessageDTO[] | InterceptorResultDTO> {
       if (ctx.generationType === "quiet" || ctx.generationType === "impersonate" || ctx.isDryRun) return messages;
-      let lastUser = -1;
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i]!;
-        if (m.role === "user" && m.__isChatHistory !== false && (m.sourceMessageId || m.__isChatHistory)) {
-          lastUser = i;
-          break;
-        }
-      }
-      const userMsg = lastUser >= 0 ? messages[lastUser] : undefined;
-      // The outcome rides on the latest user turn as a bracketed note, and again
-      // as the very last message. A trailing system message alone is not enough:
-      // some providers (Gemini, Vertex) fold system messages into the system
-      // instruction, where a long preset drowns it out.
+      const latest = await latestLine(ctx.chatId, ctx.generationType);
+      const line = latest?.line;
       const inject = (content: string): InterceptorResultDTO => {
-        const out = messages.slice();
-        if (lastUser >= 0 && typeof out[lastUser]!.content === "string") {
-          out[lastUser] = { ...out[lastUser]!, content: `${out[lastUser]!.content as string}\n\n(OOC — game engine note, not part of my line:\n${content})` };
-        }
         const note: LlmMessageDTO = { role: "system", content };
-        const all = withSuffix(out, note);
+        const all = withSuffix(messages, note);
         return { messages: all, breakdown: [{ messageIndex: all.indexOf(note), name: "Gambit Parley" }] };
       };
 
       // 1. The latest line already carries a decided exchange: narrate it.
-      const meta = metaOf(userMsg?.sourceMessageMetadata);
+      const meta = latest?.answered ? metaOf(line?.metadata) : null;
       if (meta) {
         const state = await load(ctx.userId, meta.id);
         const scenario = state && (await scenarioOf(ctx.userId, state.scenarioId));
@@ -569,21 +610,22 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       const state = await load(ctx.userId, cur.id);
       const scenario = state && (await scenarioOf(ctx.userId, state.scenarioId));
       if (!state || !scenario || state.end) return messages;
-      const text = textOf(userMsg).trim();
-      const already = state.exchanges.some((e) => e.messageId && e.messageId === userMsg?.sourceMessageId);
-      if (ctx.generationType === "normal" && userMsg?.sourceMessageId && text && !already && !busy.has(k(ctx.userId, state.id))) {
+      const text = line?.content.trim() ?? "";
+      const already = state.exchanges.some((e) => e.messageId && e.messageId === line?.id);
+      if (ctx.generationType === "normal" && line && latest.answered && text && !already && !busy.has(k(ctx.userId, state.id))) {
         const bk = k(ctx.userId, state.id);
         busy.add(bk);
         try {
           send({ type: "parley.judging", parleyId: state.id, text }, ctx.userId);
-          const read = await judge(spindle, scenario, state, text, ctx.userId, { deadline: ctx.interceptorDeadlineAt - 3000, log });
-          const r = applyExchange(scenario, state, text, read);
-          r.exchange.messageId = userMsg.sourceMessageId;
+          const knowing = await withKnown(ctx.userId, scenario, state);
+          const read = await judge(spindle, scenario, knowing, text, ctx.userId, { deadline: ctx.interceptorDeadlineAt - 3000, log });
+          const r = applyExchange(scenario, knowing, text, read);
+          r.exchange.messageId = line.id;
           await save(ctx.userId, r.state);
           const meta: ParleyMessageMeta = { id: state.id, index: r.exchange.index };
           await spindle.chat
-            .updateMessage(ctx.chatId, userMsg.sourceMessageId, { ownMetadata: { parley: meta } })
-            .catch(() => spindle.chat.updateMessage(ctx.chatId, userMsg.sourceMessageId!, { metadata_patch: { gambit: { parley: meta } } }))
+            .updateMessage(ctx.chatId, line.id, { ownMetadata: { parley: meta } })
+            .catch(() => spindle.chat.updateMessage(ctx.chatId, line.id, { metadata_patch: { gambit: { parley: meta } } }))
             .catch((err: unknown) => log(`could not tag message: ${err instanceof Error ? err.message : String(err)}`));
           awaiting.set(ctx.chatId, { userId: ctx.userId, parleyId: state.id, index: r.exchange.index });
           narrating.add(ctx.chatId);
@@ -612,6 +654,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       if (content) {
         send({ type: "parley.reply", parleyId: w.parleyId, index: w.index, text: content, final: true }, w.userId);
         await remember(w.userId, w.parleyId, w.index, { reply: cleanReply(content, 400) }).catch(() => {});
+        void hear(w.userId, w.parleyId, content).catch((err: unknown) => log(`hearing the reply: ${err instanceof Error ? err.message : String(err)}`));
         await tellEnd(w.userId, w.parleyId);
         return;
       }

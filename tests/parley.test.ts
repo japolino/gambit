@@ -188,6 +188,16 @@ describe("Tracks and endings", () => {
     expect(made.roll.stat).toBe("guile");
   });
 
+  test("the Referee reads the talk so far, who the speaker is, and what they know", () => {
+    const who = { ...marta, speaker: { ...marta.speaker, who: "a former guild clerk" } };
+    const first = applyExchange(who, createParley(who, "talk"), "Hundred, cash.", read()).state;
+    first.exchanges[0] = { ...first.exchanges[0]!, reply: "\"The guild fined me again,\" Marta says." };
+    const st = refereeState(who, first, "The guild has you by the throat.");
+    expect(st.talk_so_far).toEqual(["the traveler: Hundred, cash.", "Marta: \"The guild fined me again,\" Marta says."]);
+    expect(st.speaker).toBe("the traveler: a former guild clerk");
+    expect(st.the_speaker_knows).toContain(marta.facts.find((f) => f.id === "guild_fines")!.text);
+  });
+
   test("the Referee and the narrator both read the story before the talk", () => {
     const told = { ...vey, story: "Narrator: You wake in a strange coat. A letter sits in the pocket." };
     const state = createParley(told, "story");

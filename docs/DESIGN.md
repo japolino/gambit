@@ -163,7 +163,7 @@ The Architect writes it when the NPC is created; it is stored as data:
    - Claim is false or unknown to the player: a **Bluff**, with a separate Guile vs Insight roll. If caught, the NPC remembers it permanently.
    - Claim is unverifiable flavor: ignored.
 3. **The Referee reads the argument** with typed questions in one batch:
-   - `tactic` (choice): interest, logic, empathy, candor, flattery, threat, bribe, bluff, humor, insult, nonsense. Candor is telling the plain truth or simply asking. A bluff is a claim made up to pressure someone, so the Referee reads the story just before the talk: what it shows to be true is no bluff, and only a line rolled as a bluff counts as a lie in memory.
+   - `tactic` (choice): interest, logic, empathy, candor, flattery, threat, bribe, bluff, humor, insult, nonsense. Candor is telling the plain truth or simply asking. A bluff is a claim made up to pressure someone, so the Referee reads the story just before the talk, the talk so far with the NPC's replies, who the speaker is (their persona), and the facts they know: what those show to be true, the speaker's own past as their persona has it, and a guess drawn from what the NPC said are no bluff. Only a line rolled as a bluff counts as a lie in memory.
    - `fit` (score): how directly it touches this NPC's wants and fears.
    - `credibility` (score): coherent, specific, in character?
    - `temperament_match` (score): does this tactic land with *this* person? A threat works on a coward and backfires on a proud veteran.
@@ -194,7 +194,7 @@ The Architect writes it when the NPC is created; it is stored as data:
 
 #### 4.1.3 Information is power
 
-**Leverage can move the floor, not just the roll.** No roll can get a price below what the merchant can afford. Knowing she fences stolen nets changes what she can afford to refuse. Exploration, eavesdropping, and earlier conversations write facts into your journal. Those facts are your real ammunition. This is what turns talking into a game rather than a vibe check. In a contest framed from a card, a small or real ask can be talked out of someone; a big one has a floor that only Leverage takes down, and that floor is never higher than what the facts on that person can remove, so no talk is unwinnable from the start. A talk only brings the facts that matter to it: about this person, about nobody in particular, or about someone they have to do with.
+**Leverage can move the floor, not just the roll.** No roll can get a price below what the merchant can afford. Knowing she fences stolen nets changes what she can afford to refuse. Exploration, eavesdropping, and earlier conversations write facts into your journal. A talk's replies are part of the story too: a fact the NPC lets slip is noticed like one met in the chat, marked known on the sheet, and counts as Leverage from the next line on. Those facts are your real ammunition. This is what turns talking into a game rather than a vibe check. In a contest framed from a card, a small or real ask can be talked out of someone; a big one has a floor that only Leverage takes down, and that floor is never higher than what the facts on that person can remove, so no talk is unwinnable from the start. A talk only brings the facts that matter to it: about this person, about nobody in particular, or about someone they have to do with.
 
 #### 4.1.4 Showing the read to the player
 
@@ -692,7 +692,7 @@ Storage and drawer tabs are free.
 2. The frontend sends the text to the backend over messaging. The backend runs claim extraction (`generate.quiet`, JSON) and the Referee (`decisions`) **in parallel**, then rolls seeded dice and writes the exchange event.
 3. The frontend plays the read strip and dice animation (about 1.5 s, which hides the Referee's latency) with the decided result.
 4. The frontend sends the player's line as a chat message (`composer.send`, or `chat.appendMessage` with `triggerGeneration`).
-5. Gambit's interceptor sees that message's stored exchange event and injects: *"OUTCOME (already decided, narrate faithfully): Marta lowers her price to 85; she is irritated by the reminder."* plus Marta's stance and tells.
+5. Gambit's interceptor reads the chat's latest line (not the prompt: the host doesn't pass a line's metadata to an interceptor, and a preset may lift the latest line into a block of its own), finds the exchange stored on it, and injects at the prompt's end: *"OUTCOME (already decided, narrate faithfully): Marta lowers her price to 85; she is irritated by the reminder."* plus Marta's stance and tells.
 6. The Narrator writes her reply. A swipe re-narrates the same event.
 
 When the player types in plain chat without opening Parley, a context handler (up to 120 s) can run steps 2 and 5 inline. The dice chip then appears under the reply instead of before it.

@@ -94,6 +94,8 @@ export interface ContestDef {
 
 export interface Speaker {
   name: string;
+  /** Who they are, from the player's persona: what they say about their own past is judged against it. */
+  who?: string;
   stats: Record<SocialStat, number>;
 }
 

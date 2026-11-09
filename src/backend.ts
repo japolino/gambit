@@ -50,6 +50,11 @@ cards.setPlaceHook({
 });
 // Memory (4.6): Parley outcomes become deeds; the narrator hears what people here remember.
 parleys.setEndHook((u, scenario, state) => void play!.onParleyEnd(u, scenario, state).catch((e) => spindle.log.error(`gambit deeds: ${String(e)}`)));
+// A talk's replies are part of the story: a fact they let slip is known on the sheet, and so in the talk.
+parleys.setStoryHook({
+  heard: (u, c, lines) => play!.notice(u, c, lines),
+  known: async (u, c) => ((await cards.sheetFor(u, c))?.facts ?? []).filter((f) => f.known).map((f) => f.id),
+});
 /** World-changing actions run one at a time per chat. */
 const acting = createGate();
 const CAMPAIGN = "default"; // one campaign until the World Bible exists (M4)

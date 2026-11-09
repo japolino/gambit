@@ -23,27 +23,58 @@ function session(withReply?: string, end?: ParleyState["end"]) {
     ["parley/current.json", { id: judged.id, chatId: CHAT }],
   ]);
   const sent: ToFrontend[] = [];
+  // The chat as the host keeps it: the latest line carries its exchange in its metadata.
+  const chat = [
+    { id: "m0", role: "user", content: "How much for the net?", metadata: {} },
+    { id: "m1", role: "user", content: "Hundred, cash, now.", metadata: { gambit: { parley: { id: judged.id, index: 0 } } } },
+  ];
   const spindle = {
     log: { info() {}, warn() {}, error() {} },
     userStorage: {
       getJson: async (p: string, o: { fallback: unknown }) => (files.has(p) ? structuredClone(files.get(p)) : o.fallback),
       setJson: async (p: string, v: unknown) => void files.set(p, structuredClone(v)),
     },
+    chat: { getMessages: async () => chat },
   };
   const art = new Proxy({}, { get: () => () => null });
   const parleys = createParleys(spindle as never, (m) => void sent.push(m), art as never);
   const ended: ParleyState[] = [];
   parleys.setEndHook((_u, _s, state) => void ended.push(state));
-  /** The chat is about to narrate this exchange: the interceptor briefs it and starts waiting for its reply. */
-  const brief = () =>
-    parleys.intercept(
-      [{ role: "user", content: "Hundred, cash, now.", sourceMessageId: "m1", sourceMessageMetadata: { gambit: { parley: { id: judged.id, index: 0 } } } } as never],
-      { chatId: CHAT, userId: USER, generationType: "normal", isDryRun: false, interceptorDeadlineAt: Date.now() + 9000 } as never,
-    );
+  /**
+   * The chat is about to narrate this exchange: the interceptor briefs it and starts waiting for its reply. The prompt is
+   * as a preset builds it: the latest line lifted out of the history into a block of its own, and no line's metadata.
+   */
+  const prompt = [
+    { role: "system", content: "You are the narrator." },
+    { role: "user", content: "How much for the net?", __isChatHistory: true, sourceMessageId: "m0" },
+    { role: "user", content: "User's input: Hundred, cash, now." },
+  ] as never[];
+  const brief = () => parleys.intercept(prompt, { chatId: CHAT, userId: USER, generationType: "normal", isDryRun: false, interceptorDeadlineAt: Date.now() + 9000 } as never);
   const saved = () => files.get(file) as ParleyState;
   const replies = () => sent.filter((m): m is Extract<ToFrontend, { type: "parley.reply" }> => m.type === "parley.reply");
-  return { parleys, id: judged.id, sent, ended, brief, saved, replies };
+  return { parleys, id: judged.id, sent, ended, chat, brief, prompt, saved, replies };
 }
+
+describe("briefing the narrator", () => {
+  test("the decided exchange is found on the chat's latest line, and its outcome goes last with the prompt left as it was", async () => {
+    const s = session();
+    const out = (await s.brief()) as { messages: { role: string; content: string }[] };
+    expect(out.messages.slice(0, -1)).toEqual(s.prompt as never);
+    expect(out.messages.at(-1)!.role).toBe("system");
+    expect(out.messages.at(-1)!.content).toContain(scenario.npc.name);
+    expect(s.parleys.awaitingIn(CHAT)).toBe(true);
+  });
+
+  test("once the line has its reply, only a swipe of that reply narrates it again", async () => {
+    const s = session();
+    s.chat.push({ id: "m2", role: "assistant", content: '"Fine," she says.', metadata: {} });
+    const ctx = (generationType: string) => ({ chatId: CHAT, userId: USER, generationType, isDryRun: false, interceptorDeadlineAt: Date.now() + 9000 }) as never;
+    await s.parleys.intercept(s.prompt, ctx("continue"));
+    expect(s.parleys.awaitingIn(CHAT)).toBe(false);
+    await s.parleys.intercept(s.prompt, ctx("swipe"));
+    expect(s.parleys.awaitingIn(CHAT)).toBe(true);
+  });
+});
 
 describe("the end of a narration", () => {
   test("a reply reaches the Parley and is kept", async () => {
@@ -174,7 +205,8 @@ describe("Gambit's own narrator", () => {
     const art = new Proxy({}, { get: () => () => null });
     const parleys = createParleys(spindle as never, (m) => void sent.push(m), art as never, { retryMs: [1, 1] });
     const replies = () => sent.filter((m): m is Extract<ToFrontend, { type: "parley.reply" }> => m.type === "parley.reply" && m.final);
-    return { parleys, id: start.id, posted, replies, calls: () => calls };
+    const saved = () => files.get(`parley/${encodeURIComponent(start.id)}.json`) as ParleyState;
+    return { parleys, id: start.id, posted, sent, replies, saved, calls: () => calls };
   }
   const LINE = "Hundred, cash, now.";
 
@@ -192,6 +224,28 @@ describe("Gambit's own narrator", () => {
     await s.parleys.say(USER, s.id, LINE);
     expect(s.replies().at(-1)!.text.length).toBeGreaterThan(0);
     expect(s.posted.map((m) => m.role)).toEqual(["user"]);
+  });
+
+  test("the story hears the reply, and what it let slip counts in the talk from then on", async () => {
+    const s = narrated(['"Those nets came off the Gull," she said.', '"Fine," she said.']);
+    const known = new Set<string>();
+    const heard: string[] = [];
+    s.parleys.setStoryHook({
+      heard: async (_u, _c, lines) => {
+        heard.push(...lines.map((l) => l.content));
+        known.add("stolen_nets");
+      },
+      known: async () => [...known],
+    });
+    await s.parleys.say(USER, s.id, LINE);
+    await Bun.sleep(5);
+    expect(heard).toEqual(['"Those nets came off the Gull," she said.']);
+    const pushed = s.sent.filter((m): m is Extract<ToFrontend, { type: "parley.state" }> => m.type === "parley.state").at(-1);
+    expect(pushed?.state.known).toContain("stolen_nets");
+    await s.parleys.say(USER, s.id, "Those are the stolen nets off the wreck of the Gull. Ninety.");
+    const ex = s.saved().exchanges[1]!;
+    expect(ex.leverageFacts).toContain("stolen_nets");
+    expect(ex.bluff).toBeNull();
   });
 
   test("an error that isn't a rate limit goes straight to the helper", async () => {
