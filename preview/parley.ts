@@ -19,6 +19,7 @@
  *   &bar=1             a theme picker; keys 0-6 switch theme too
  *   &wary=1            someone who remembers you badly, and caught you lying
  *   &purse=<n>         what you can pay (the fare is priced in your money)
+ *   &long=1            a long name and stake, as real talks have them
  */
 import { closeParley, createParley, applyExchange } from "../src/engine/parley/exchange.js";
 import { DEFAULT_SPEAKER } from "../src/engine/content/parleys.js";
@@ -74,7 +75,7 @@ const scenario: ParleyScenario = {
   opening: "\"Sixty crowns, and you sit where I tell you. The Greywater takes the careless, and I don't fish them out for free.\"",
   npc: {
     id: "marrow",
-    name: "Marrow the Ferryman",
+    name: q.get("long") ? "Captain Hollis Ashworth" : "Marrow the Ferryman",
     role: "keeper of the last ferry across the Greywater",
     pronoun: "he",
     voice: "Slow and gravelly, every word weighed like cargo; dry humour, no patience for haste.",
@@ -108,7 +109,7 @@ const scenario: ParleyScenario = {
       secrets: [{ fact: "untaxed_salt", leverage: 3 }],
     },
   },
-  contest: { kind: "haggle", track: "fare", stake: "passage across the Greywater", unit: "crowns", money: true, start: 60, floor: 42, hardFloor: 24, dc: 13 },
+  contest: { kind: "haggle", track: "fare", stake: q.get("long") ? "a room for the night with the two-coppers discount" : "passage across the Greywater", unit: "crowns", money: true, start: 60, floor: 42, hardFloor: 24, dc: 13 },
   facts,
   known: ["toll_doubled", "cracked_keel", "weir_daughter"],
   speaker: DEFAULT_SPEAKER,

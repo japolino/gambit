@@ -256,9 +256,10 @@ ${P} .sbp-head .scroll { position: relative; height: 82%; margin-left: -6%; widt
 ${P} .sbp-head .scroll .band { position: absolute; inset: 0; } ${P} .sbp-head .scroll .band svg { width: 100%; height: 100%; display: block; }
 ${P} .sbp-head .scroll .end { position: absolute; right: -2%; top: -12%; height: 124%; aspect-ratio: 40 / 110; translate: 50% 0; }
 ${P} .sbp-head .scroll .end svg { width: 100%; height: 100%; display: block; }
-${P} .kind { position: absolute; z-index: 6; top: calc(2.4cqh + var(--hh) * .14); left: calc(var(--hx) + var(--hh) * .96 + 26px); width: calc(clamp(280px, 30cqw, 520px) - 70px); height: calc(var(--hh) * .72);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; align-content: center; padding: calc(var(--hh) * .1) 0 0;
-  font: italic 400 clamp(17px, 2.5cqh, 26px)/1.08 ${FELL}; letter-spacing: 0; text-transform: none; color: #3a1a08; text-shadow: 0 1px 0 rgba(255,246,220,.6); background: none; box-shadow: none; border-radius: 0; }
+/* The title sits between the scroll's rules, in two lines at most: a long one (--n: its length) gets smaller type. */
+${P} .kind { position: absolute; z-index: 6; top: calc(2.4cqh + var(--hh) * .27); left: calc(var(--hx) + var(--hh) * .96 + 26px); width: calc(clamp(280px, 30cqw, 520px) - 70px); height: calc(var(--hh) * .52);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; align-content: center; padding: 0;
+  font: italic 400 max(13px, min(clamp(17px, 2.5cqh, 26px), calc((clamp(280px, 30cqw, 520px) - 70px) * 2 / (var(--n, 1) * .42))))/1 ${FELL}; letter-spacing: 0; text-transform: none; color: #3a1a08; text-shadow: 0 1px 0 rgba(255,246,220,.6); background: none; box-shadow: none; border-radius: 0; }
 ${P} .kind::first-letter { text-transform: uppercase; }
 
 /* ---------- Bookmarks: the fare and the person's patience ---------- */

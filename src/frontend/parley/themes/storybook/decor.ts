@@ -48,10 +48,16 @@ function banner(pat: string, emblem: string): string {
   </svg>`;
 }
 
+/**
+ * The scene stays in the document under a talk, hidden, and it holds the same art with the same ids first: ours
+ * would point at its hidden copies, and hidden patterns and clip paths paint nothing. Ours get their own ids.
+ */
+const own = (svg: string) => svg.replace(/(id="|url\(#|href="#)sb-/g, "$1sbp-");
+
 export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   const { root, scene, scenario } = ctx;
   const reduced = ctx.reducedMotion;
-  root.insertAdjacentHTML("afterbegin", DEFS.replace('class="sb-defs"', 'class="sb-defs sbp-defs"'));
+  root.insertAdjacentHTML("afterbegin", own(DEFS.replace('class="sb-defs"', 'class="sb-defs sbp-defs"')));
 
   // Light over the painting.
   const light = document.createElement("div");
@@ -63,29 +69,31 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   const book = document.createElement("div");
   book.className = "sbp-book";
   book.setAttribute("aria-hidden", "true");
-  book.innerHTML = `<div class="skirt"></div>
-    <div class="dlg"><div class="back"></div><div class="vellum" style="background-image:url(${parchment()})"></div><div class="front"></div><div class="dv">${DIVIDER}</div></div>`;
+  book.innerHTML = own(`<div class="skirt"></div>
+    <div class="dlg"><div class="back"></div><div class="vellum" style="background-image:url(${parchment()})"></div><div class="front"></div><div class="dv">${DIVIDER}</div></div>`);
   const corners = document.createElement("div");
   corners.className = "sbp-corners";
   corners.setAttribute("aria-hidden", "true");
-  corners.innerHTML = ["tl", "tr", "bl", "br"].map((c) => `<div class="c ${c}">${cornerFlourish()}</div>`).join("");
+  corners.innerHTML = own(["tl", "tr", "bl", "br"].map((c) => `<div class="c ${c}">${cornerFlourish()}</div>`).join(""));
 
   // The chapter header behind the stake's title: an astrolabe at dusk and a parchment scroll.
   const head = document.createElement("div");
   head.className = "sbp-head";
   head.setAttribute("aria-hidden", "true");
-  head.innerHTML = `<div class="astro">${astrolabe("evening")}</div><div class="scroll"><div class="band">${SCROLL_BAND}</div><div class="end">${SCROLL_END}</div></div>`;
+  head.innerHTML = own(`<div class="astro">${astrolabe("evening")}</div><div class="scroll"><div class="band">${SCROLL_BAND}</div><div class="end">${SCROLL_END}</div></div>`);
 
   // Bookmarks: the stake (amber silk with a coin) and patience (crimson silk with a candle).
   const marks = document.createElement("div");
   marks.className = "sbp-marks";
   marks.setAttribute("aria-hidden", "true");
-  marks.innerHTML = `<div class="bm stake">${banner("sb-pat-amber", COIN)}</div><div class="bm pat">${banner("sb-pat-crimson", CANDLE)}</div>`;
+  marks.innerHTML = own(`<div class="bm stake">${banner("sb-pat-amber", COIN)}</div><div class="bm pat">${banner("sb-pat-crimson", CANDLE)}</div>`);
 
   root.insertBefore(book, root.querySelector(".side"));
   root.append(corners);
   scene.append(head);
   scene.append(marks);
+  const kind = root.querySelector<HTMLElement>(".kind");
+  kind?.style.setProperty("--n", String(kind.textContent!.length));
 
   // The speaker's nameplate: brass caps and an enamel band around the name.
   const plaque = scene.querySelector<HTMLElement>(".plaque");
@@ -93,15 +101,15 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     const band = document.createElement("div");
     band.className = "sbp-band";
     band.setAttribute("aria-hidden", "true");
-    band.innerHTML = PLATE_BAND;
+    band.innerHTML = own(PLATE_BAND);
     const capL = document.createElement("div");
     capL.className = "sbp-cap l";
     capL.setAttribute("aria-hidden", "true");
-    capL.innerHTML = plateCap(false);
+    capL.innerHTML = own(plateCap(false));
     const capR = document.createElement("div");
     capR.className = "sbp-cap r";
     capR.setAttribute("aria-hidden", "true");
-    capR.innerHTML = plateCap(true);
+    capR.innerHTML = own(plateCap(true));
     plaque.prepend(band, capL);
     plaque.append(capR);
   }
@@ -112,7 +120,7 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     const arch = document.createElement("div");
     arch.className = "sbp-arch";
     arch.setAttribute("aria-hidden", "true");
-    arch.innerHTML = archFront().replace(/<svg /, '<svg preserveAspectRatio="none" ');
+    arch.innerHTML = own(archFront().replace(/<svg /, '<svg preserveAspectRatio="none" '));
     fig.append(arch);
   }
 
@@ -144,10 +152,10 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     if (key === lastKey) return;
     lastKey = key;
     const { back, front } = dialogueFrame(dw, dh);
-    dlg.querySelector(".back")!.innerHTML = back;
-    dlg.querySelector(".front")!.innerHTML = front;
+    dlg.querySelector(".back")!.innerHTML = own(back);
+    dlg.querySelector(".front")!.innerHTML = own(front);
     const skH = Math.round((dh + db) * 0.72);
-    book.querySelector(".skirt")!.innerHTML = skirt(W, skH, dx, dx + dw);
+    book.querySelector(".skirt")!.innerHTML = own(skirt(W, skH, dx, dx + dw));
   };
   const ro = new ResizeObserver(layout);
   ro.observe(root);
