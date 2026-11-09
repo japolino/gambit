@@ -33,7 +33,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
   const card = { ...sheet, ...o.sheet };
   const files = new Map<string, unknown>();
   const posted: string[] = [];
-  const messages: { role: string; content: string; metadata?: Record<string, unknown> }[] = [];
+  const messages: { id: string; role: string; content: string; metadata?: Record<string, unknown> }[] = [];
   const sent: ToFrontend[] = [];
   const started: BattleState[] = [];
   const known: string[] = [];
@@ -46,10 +46,13 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
     },
     chat: {
       appendMessage: async (_chatId: string, m: { role: string; content: string; metadata?: Record<string, unknown> }) => {
+        const id = `m${posted.length}`;
         posted.push(m.content);
-        messages.push(m);
+        messages.push({ ...m, id });
+        return { id };
       },
       getMessages: async () => messages.map((m) => ({ ...m, hidden: false })),
+      deleteMessage: async (_chatId: string, id: string) => void messages.splice(messages.findIndex((m) => m.id === id), 1),
     },
     personas: { getActive: async () => ({ description: "A wiry courier." }) },
     ...o.spindle,
@@ -596,19 +599,64 @@ describe("play on a card", () => {
     expect(await offered(adults, "defeat")).toBe(true);
   });
 
+  test("a model's refusal is never the story: a line gets plain words, and a fight keeps its result line", async () => {
+    const refuses = { generate: { quietStream: async function* () { yield { type: "done", content: "I cannot fulfill this request. The prompt asks to generate content I can't write." }; } }, connections: { list: async () => [{ id: "c1", name: "c", provider: "x", model: "m", is_default: true }] } };
+    const { play, started, last, posted } = setup({ sheet: { skin: { ...sheet.skin, defeat: "claimed" } }, spindle: refuses });
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I sneaked past Mara");
+    expect(last().story.at(-1)!.reply).not.toMatch(/fulfill/);
+    expect(last().story.at(-1)!.reply.length).toBeGreaterThan(0);
+    await play.fight("u", "chat1");
+    await play.onBattleEnd(ended(started[0]!, "defeat"), "u");
+    await new Promise((res) => setTimeout(res, 100));
+    expect(last().story.at(-1)!.roll).toContain("claims Wren");
+    expect(last().story.at(-1)!.reply).toBe("");
+    expect(posted.some((p) => /fulfill/.test(p))).toBe(false);
+  });
+
+  test("the story box tells the scene you are in: a move or a night starts it afresh", async () => {
+    const { play, last } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I watch the gulls for a while");
+    expect(last().story).toHaveLength(1);
+    await play.act("u", "chat1", "go:tavern");
+    expect(last().story).toHaveLength(0);
+    await play.say("u", "chat1", "I order a drink");
+    expect(last().story).toHaveLength(1);
+    const day = last().clock.day;
+    for (let i = 0; i < 8 && last().clock.day === day; i++) await play.act("u", "chat1", "wait");
+    expect(last().clock.day).toBe(day + 1);
+    expect(last().place.id).toBe("tavern");
+    expect(last().story).toHaveLength(0);
+  });
+
+  test("someone with sprites of their own stands as those in the scene, not as a drawn figure", async () => {
+    const faces = { base: "img-mara", expressions: {}, source: "risu" };
+    const { play, last } = setup({ sheet: { cast: [{ ...sheet.cast[0]!, faces }] } });
+    await play.open("u", "chat1");
+    await play.act("u", "chat1", "go:docks");
+    const mara = last().people.find((p) => p.id === "mara")!;
+    expect(mara.imageId).toBe("img-mara");
+    expect(mara.figure).toBeUndefined();
+  });
+
   test("a scene the host fails to write closes the reader with a notice, and the offer comes back", async () => {
-    const { play, started, last, sent } = setup({ cards: { adultOn: async () => true } });
+    const { play, started, last, sent, messages } = setup({ cards: { adultOn: async () => true } });
     await play.open("u", "chat1");
     await play.fight("u", "chat1");
     await play.onBattleEnd(ended(started[0]!, "victory"), "u");
     await until(() => last().menu.some((h) => h.id === "afterglow"));
     await play.act("u", "chat1", "afterglow");
     expect(last().menu.some((h) => h.id === "afterglow")).toBe(false);
+    const leadIn = () => messages.filter((m) => (m.metadata?.gambit as { scene?: unknown } | undefined)?.scene);
+    expect(leadIn()).toHaveLength(1);
     // The generation fails before any prompt is built, so no note was ever added.
     expect(await play.onGenerationEnded("chat1", "", undefined, "The browser owning this Lua operation disconnected")).toBe(true);
     expect(sent.some((m) => m.type === "scene.afterglow" && m.pages?.length === 0)).toBe(true);
     expect(sent.some((m) => m.type === "notice" && m.text.includes("Lua operation disconnected"))).toBe(true);
     expect(last().menu.some((h) => h.id === "afterglow")).toBe(true);
+    // Its lead-in line goes with it, so failed tries leave no "You give in" lines behind.
+    expect(leadIn()).toHaveLength(0);
   });
 
   test("a Parley's end is on the page when you come back, and the scene is refreshed", async () => {

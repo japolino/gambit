@@ -94,7 +94,7 @@ describe("how people look", () => {
   const src = sources("Ero Trap Dungeon", "A dungeon run by its officers.");
 
   test("the reader is asked, and its answer is kept for the cast and the player", () => {
-    expect(readerPrompts(src).world.user).toMatch(/"cast": \[\{[^\]]*"look"/);
+    expect(readerPrompts(src).world.user).toMatch(/"cast": \[\{[^\]]*"look": "[^"]*hair colour[^"]*eye colour[^"]*clothing/);
     const sheet = parseSheet(mergeReads({ cast: [{ ...person("Lilim", "trap officer"), look: "short pink twin tails, small bat wings, latex jacket" }], player: { concept: "a newborn monster", look: "a palm-sized green slime", pronoun: "they" } }, null), src, 1);
     expect(sheet.cast.find((c) => c.name === "Lilim")!.look).toBe("short pink twin tails, small bat wings, latex jacket");
     expect(sheet.player).toMatchObject({ look: "a palm-sized green slime", pronoun: "they" });

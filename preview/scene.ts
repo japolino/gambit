@@ -169,20 +169,22 @@ if (KO) {
 // ?story=N: a story long enough to test the reading room.
 const storyBeats = Number(new URLSearchParams(location.search).get("story") ?? 0);
 if (storyBeats) {
+  // The box shows the beats of the scene you are in (scene-build.ts), so they happen here, today.
+  const here = { where: new URLSearchParams(location.search).get("at") ?? r.scene.placeId, day: r.scene.day };
   const told = "Mara looks up from the ledger and does not smile. Rain ticks against the shutters behind her, and *somewhere below* a rope groans against its post.\n\n\"You came a long way to ask me that,\" she says at last, and turns the book so the column of names faces you. \"Read it, then. Tell me which one you think is **lying**.\"\n\nIlse snorts from the doorway. \"She means *me*.\"";
   r = {
     ...r,
     story: Array.from({ length: storyBeats }, (_, i) =>
       i === storyBeats - 1 && i > 1
-        ? { said: "", roll: "You won the argument", reply: "They close the ledger with one finger, and push it across the desk toward you." }
-        : { said: i % 2 ? "I lean over the book and run a finger down the names. \"Which one is yours, Mara?\"" : "\"Where does the night boat go?\"", roll: i % 2 ? "Reading a face: 14 vs 11, worked" : null, reply: told, ...(i === 1 ? { found: "A name that shouldn't be there." } : {}) },
+        ? { ...here, said: "", roll: "You won the argument", reply: "They close the ledger with one finger, and push it across the desk toward you." }
+        : { ...here, said: i % 2 ? "I lean over the book and run a finger down the names. \"Which one is yours, Mara?\"" : "\"Where does the night boat go?\"", roll: i % 2 ? "Reading a face: 14 vs 11, worked" : null, reply: told, ...(i === 1 ? { found: "A name that shouldn't be there." } : {}) },
     ),
   };
 }
 const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   say(text) {
     const risky = /sneak|steal|lie/i.test(text);
-    r = { ...r, story: [...(r.story ?? []), { said: text, roll: risky ? "Sneaking: 7 vs 12, failed" : null, reply: risky ? "He doesn't turn around. \"Going somewhere, darling?\"" : "The gulls answer, and the tide comes on." }] };
+    r = { ...r, story: [...(r.story ?? []), { where: r.scene.placeId, day: r.scene.day, said: text, roll: risky ? "Sneaking: 7 vs 12, failed" : null, reply: risky ? "He doesn't turn around. \"Going somewhere, darling?\"" : "The gulls answer, and the tide comes on." }] };
     handle.setView(buildSceneView(sheet, "preview", r));
   },
   act(id) {

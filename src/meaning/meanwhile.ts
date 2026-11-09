@@ -6,6 +6,7 @@
  */
 import type { CardSheet } from "../engine/card/types.js";
 import type { Deed, DeedKind } from "../engine/memory/memory.js";
+import { isRefusal } from "../engine/parley/narrate.js";
 import type { Bible } from "./bible.js";
 import { fallbackMeanwhile, type Vignette } from "./fallbacks.js";
 import { fallbackNight, SCAR_FLAGS, type Scar, type ScarFlag } from "./night.js";
@@ -236,7 +237,7 @@ export function parseNightScenes(raw: Record<string, unknown>, b: NightBrief): N
     }
     if (kind === "word") {
       const text = str(e.text, 200).replace(/^(?:word|rumou?rs?|talk)\b[^,.:]*?\b(?:that|:)\s*/i, "");
-      if (used.word || !text) return null;
+      if (used.word || !text || isRefusal(text)) return null;
       used.word++;
       return { kind, text: text.charAt(0).toUpperCase() + text.slice(1) };
     }
@@ -247,7 +248,7 @@ export function parseNightScenes(raw: Record<string, unknown>, b: NightBrief): N
   for (const v of Array.isArray(raw.vignettes) ? raw.vignettes : []) {
     const o = obj(v);
     const text = withoutCause(str(o.text, 320));
-    if (text.length < 15 || ledByPlayer(text, b.player)) continue;
+    if (text.length < 15 || ledByPlayer(text, b.player) || isRefusal(text)) continue;
     const who = str(o.who, 40);
     const where = str(o.where, 60);
     const because = quiet ? "" : str(o.because, 90);
@@ -299,8 +300,12 @@ export function fallbackNightScenes(sheet: CardSheet, bible: Bible | null, b: Ni
   // A day of lines and no labelled deeds still gets its answer.
   const lastFind = [...b.beats].reverse().find((x) => x.found);
   const lastSlip = [...b.beats].reverse().find((x) => !x.found && /failed/.test(x.roll ?? ""));
-  if (lastFind && out.length < 3) out.push({ ...(lastFind.where ? { where: lastFind.where } : {}), because: "What you found", text: `Back at ${lastFind.where ? name(lastFind.where) : "that place"}, something isn't where it was left, and someone is about to notice.` });
-  if (lastSlip && out.length < 3) out.push({ ...(lastSlip.where ? { where: lastSlip.where } : {}), because: "What you tried", text: `People at ${lastSlip.where ? name(lastSlip.where) : "that place"} are still talking about what they saw.` });
+  // A beat out on the overland happened at no place.
+  const at = (x: DayBeat) => (b.places.some((p) => p.id === x.where) ? x.where : undefined);
+  const found = lastFind && at(lastFind);
+  const slipped = lastSlip && at(lastSlip);
+  if (lastFind && out.length < 3) out.push({ ...(found ? { where: found } : {}), because: "What you found", text: `Back at ${found ? name(found) : "that place"}, something isn't where it was left, and someone is about to notice.` });
+  if (lastSlip && out.length < 3) out.push({ ...(slipped ? { where: slipped } : {}), because: "What you tried", text: `People at ${slipped ? name(slipped) : "that place"} are still talking about what they saw.` });
   return [...out, ...fallbackVignettes(sheet, bible, b.places, b.day + 1)].slice(0, 5);
 }
 

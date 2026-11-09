@@ -237,14 +237,27 @@ export function narratorPrompt(scenario: ParleyScenario, state: ParleyState, ex:
   return { system, messages };
 }
 
-/** Tidy a narrator reply: drop headings and scene breaks, cap the length. */
+/**
+ * A model declining to write ("I cannot fulfill this request…") rather than writing the story. Only its own voice
+ * counts: an opening in the first person that refuses, or the stock phrases of a refusal; a character's "I can't" in
+ * quotes is story.
+ */
+export function isRefusal(text: string): boolean {
+  const t = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^[*_]+/, "");
+  const opening = /^(?:(?:I'?m|I am) sorry|(?:My )?apologies|Sorry)\b[^.!?\n]{0,80}\b(?:can(?:no|')t|unable|won'?t|not able)\b/i.test(t) || /^I (?:can(?:no|')t|can not|won'?t|will not|am unable to|'m unable to|am not able to|'m not able to|must decline|have to decline)\b[^.!?\n]{0,30}\b(?:fulfil|comply|help|assist|write|create|generate|produce|continue|provide|engage|do (?:that|this)|complete|depict|describe|request)/i.test(t) || /^As an AI\b/i.test(t);
+  const narration = t.slice(0, 400).replace(/["“][^"”]*["”]/g, "");
+  return opening || /\b(?:can(?:no|')t|unable to|won'?t) (?:fulfil{1,2}|complete|comply with) (?:this|that|your|the) request\b|\bagainst my (?:guidelines|programming|principles)\b|\b(?:content|usage|safety) polic(?:y|ies)\b/i.test(narration);
+}
+
 /** A status line a card's rules asked a model to add: "[HP: 100/100 | Mana: 50/50 | Gold: 0]". The game keeps those numbers itself, and these are invented. */
 function isStatusLine(l: string): boolean {
   if (!/\b(hp|mp|mana|stamina|gold|coins?|level|lv|exp|xp|items?|inventory|status)\s*[:=]/i.test(l) || /["“”]/.test(l)) return false;
   return /^\s*[[(【*]/.test(l) || l.includes("|") || (l.length < 120 && /\d+\s*\/\s*\d+/.test(l));
 }
 
+/** Tidy a narrator reply: drop headings and scene breaks, cap the length. A refusal is no reply: empty. */
 export function cleanReply(text: string, maxWords = 260): string {
+  if (isRefusal(text)) return "";
   const lines = text
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .split("\n")

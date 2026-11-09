@@ -192,7 +192,8 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       send({ type: "art.update", items }, userId);
       const card = scenario.card;
       if (!baseId) return;
-      if (!card) {
+      // Their own sprites stand for them here as in the scene: no figure takes their place.
+      if (!card || faces?.base) {
         for (const expression of missing) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: baseId, source: "card" } }, 2, userId);
         return;
       }
@@ -277,6 +278,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
   /** Gambit's own picture of a moment (no chat, or Inlay could not make it). */
   function drawOwnMoment(scenario: ParleyScenario, state: ParleyState, index: number, m: NonNullable<ReturnType<typeof parleyMoment>>, figureKey: string, userId: string): void {
     const fig = art.status(figureKey, userId);
+    const ref = scenario.card?.faces?.base ?? (fig?.state === "ready" ? fig.imageId : undefined);
     art.request(
       momentArtKey(state.id, index),
       {
@@ -284,7 +286,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
         direction: "parley",
         moment: m.moment,
         tags: m.tags,
-        cast: [{ character: npcDna(scenario), ...(fig?.state === "ready" && fig.imageId ? { ref: { imageId: fig.imageId } } : {}) }],
+        cast: [{ character: npcDna(scenario), ...(ref ? { ref: { imageId: ref } } : {}) }],
         location: { id: scenario.id, name: scenario.name, description: scenario.setting, palette: scenario.npc.look.palette },
       },
       0,

@@ -420,9 +420,11 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
   /**
    * A cast member's full figure, drawn by V5 from their tags (Inlay's when
    * there, else the reader's; no reference image), transparent. It replaces
-   * their framed card art, or the old bust portrait. Returns its key.
+   * their framed card art, or the old bust portrait. Returns its key; null for
+   * someone with sprites of their own, who stands as those everywhere.
    */
-  function requestFigure(userId: string, sheet: CardSheet, m: CastMember, priority: 0 | 1 | 2): string {
+  function requestFigure(userId: string, sheet: CardSheet, m: CastMember, priority: 0 | 1 | 2): string | null {
+    if (m.faces?.base) return null;
     return figureOf(userId, sheet, m, priority, true, () => tagDna(userId, sheet, m));
   }
 
@@ -492,7 +494,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       Promise.all(
         members.map(async (m) => {
           const fig = art.status(figureArtKey(sheet.cardKey, m.id), userId);
-          return { character: await tagDna(userId, sheet, m), ...(fig?.state === "ready" && fig.imageId ? { ref: { imageId: fig.imageId } } : {}) };
+          const ref = m.faces?.base ?? (fig?.state === "ready" ? fig.imageId : undefined);
+          return { character: await tagDna(userId, sheet, m), ...(ref ? { ref: { imageId: ref } } : {}) };
         }),
       ).then((cast) => {
         art.request(key, { kind: "cg", moment: `${o.moment}. From ${sheet.cardName} (${sheet.skin.genre})`, cast, ...(location ? { location } : {}) }, o.priority ?? 1, userId);
@@ -1143,7 +1146,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
     record_(sheet, r, deeds, false);
     note(r, line);
-    if (onPage) r.story = [...(r.story ?? []), { said: "", roll: line, reply: "", day: r.scene.day, where: r.scene.placeId }].slice(-40);
+    if (onPage) r.story = [...(r.story ?? []), { said: "", roll: line, reply: "", day: r.scene.day, where: spotOf(r) }].slice(-40);
     await save(userId, chatId, r);
     // Companions' feelings about the fight: judged in the background (a Decision model, else their warmth).
     reactLater(userId, chatId, sheet, deeds);
@@ -1185,14 +1188,21 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     } catch (err) {
       log(`scene: ${errText(err)}`);
       scenesWriting.delete(chatId);
-      await sceneFailed(userId, chatId, a, errText(err));
+      await sceneFailed(userId, chatId, meta.id, a, errText(err));
     }
   }
 
-  /** An adult scene that came back with nothing to read: the reader closes and says so, and a first take is offered again. */
-  async function sceneFailed(userId: string, chatId: string, offer: Afterglow | undefined, why: string): Promise<void> {
+  /**
+   * An adult scene that came back with nothing to read: the reader closes and says so, and a first take is offered
+   * again. Its lead-in line goes from the chat with it: taking the offer again posts a new one.
+   */
+  async function sceneFailed(userId: string, chatId: string, sceneId: string, offer: Afterglow | undefined, why: string): Promise<void> {
     send({ type: "scene.afterglow", chatId, title: "", pages: [] }, userId);
     if (offer) {
+      const recent = await spindle.chat.getMessages(chatId, { tail: 6 }).catch(() => []);
+      for (const m of recent.filter((x) => x.role === "user" && sceneOf(x.metadata)?.id === sceneId)) {
+        await spindle.chat.deleteMessage(chatId, m.id).catch((err: unknown) => log(`scene line: ${errText(err)}`));
+      }
       const r = await load(userId, chatId);
       const sheet = await cards.sheetFor(userId, chatId);
       if (r && sheet && !r.afterglow) {
@@ -1234,7 +1244,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const { userId, meta } = s;
     const pages = error ? [] : scenePages(content);
     const title = sceneTitle(meta);
-    if (!pages.length) return sceneFailed(userId, chatId, s.offer, error ? error.slice(0, 160) : content.trim() ? "the reply had no story in it" : "");
+    if (!pages.length) return sceneFailed(userId, chatId, meta.id, s.offer, error ? error.slice(0, 160) : content.trim() ? "the reply had no story in it" : "");
     const sheet = await cards.sheetFor(userId, chatId);
     const r = await load(userId, chatId);
     const h = [...`${messageId ?? ""}|${content.length}|${content.slice(-40)}`].reduce((x, ch) => Math.imul(x ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
@@ -1248,7 +1258,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         n.notes = [...n.notes, { day: r.scene.day, text: meta.won ? "Was claimed by you after a fight" : "Claimed you after a fight", tone: 1 as const }].slice(-8);
         n.affinity = Math.min(10, n.affinity + 1);
       }
-      r.story = [...(r.story ?? []), { said: "", roll: title, reply: pages[pages.length - 1]!.text, day: r.scene.day, where: r.scene.placeId, scene: meta.id }].slice(-40);
+      r.story = [...(r.story ?? []), { said: "", roll: title, reply: pages[pages.length - 1]!.text, day: r.scene.day, where: spotOf(r), scene: meta.id }].slice(-40);
       await save(userId, chatId, r);
     }
     if (!pictures) return;
@@ -1845,7 +1855,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // Back on the page, the story has moved on: where the talk got to, and how it ended.
       const lastSaid = state.exchanges.findLast((e) => e.text)?.text ?? "";
       const lastReply = state.exchanges.findLast((e) => e.reply)?.reply ?? "";
-      r.story = [...(r.story ?? []), { said: "", roll: `Talking with ${name}: ${PARLEY_END_TAG[state.end.kind] ?? "it's over"}`, reply: cleanReply(lastReply, 120), day: r.scene.day, where: r.scene.placeId, ...(learned || got ? { found: learned ?? `Yours now: ${stake}.` } : {}) }].slice(-40);
+      r.story = [...(r.story ?? []), { said: "", roll: `Talking with ${name}: ${PARLEY_END_TAG[state.end.kind] ?? "it's over"}`, reply: cleanReply(lastReply, 120), day: r.scene.day, where: spotOf(r), ...(learned || got ? { found: learned ?? `Yours now: ${stake}.` } : {}) }].slice(-40);
       await save(userId, chatId, r);
       await show(userId, chatId, sheet, r);
       // The talk may have sent someone off, or brought them along: the scene shows the same story.
@@ -2085,7 +2095,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // The systems that take over from here: the line is their opening move.
       // Whatever takes over, the line was written: it stays in the story, before how it came out.
       const wrote = () => {
-        r.story = [...(r.story ?? []), { said: line, roll: null, reply: "", day: dayBefore, where: r.scene.placeId }].slice(-40);
+        r.story = [...(r.story ?? []), { said: line, roll: null, reply: "", day: dayBefore, where: spotOf(r) }].slice(-40);
       };
       if (read.route === "press") {
         wrote();
@@ -2152,7 +2162,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // The world may have grown while the models wrote: the beat lands on the latest record.
       const fresh = (await load(userId, chatId)) ?? r;
       fresh.beats = index + 1;
-      fresh.story = [...(fresh.story ?? []), { said: line, roll, reply, day: dayBefore, where: fresh.scene.placeId, ...(found ? { found } : {}) }].slice(-40);
+      fresh.story = [...(fresh.story ?? []), { said: line, roll, reply, day: dayBefore, where: spotOf(fresh), ...(found ? { found } : {}) }].slice(-40);
       if (res.vigorLoss) fresh.scene = { ...fresh.scene, vigor: Math.max(0.2, fresh.scene.vigor - res.vigorLoss) };
       if (res.caughtBy) {
         const name = withPromoted(sheet, fresh).cast.find((p) => p.id === res.caughtBy)?.name ?? res.caughtBy;

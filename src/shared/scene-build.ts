@@ -62,7 +62,7 @@ export interface PlayRecord {
   theme: ThemeId;
   log: string[];
   /** Lines written in the scene, and what came of them. */
-  story?: { said: string; roll: string | null; reply: string; found?: string | null; day?: number; where?: string; /** The adult scene this beat is (play.ts SceneMeta id). */ scene?: string }[];
+  story?: { said: string; roll: string | null; reply: string; found?: string | null; day?: number; /** Where it happened (spotOf): a place, or an overland cell. */ where?: string; /** The adult scene this beat is (play.ts SceneMeta id). */ scene?: string }[];
   /** How far the clock has run toward the next step of the day (engine/story/beat.ts). */
   spent?: number;
   /** The last day of the thread, and how it came out. */
@@ -239,7 +239,8 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
   const people = (wild ? [] : p.people)
     .map((id) => cast.get(id))
     .filter((m): m is NonNullable<typeof m> => !!m)
-    .map((m) => ({ id: m.id, name: m.name, role: m.role, imageId: m.faces?.base ?? m.avatarImageId ?? null, art: npcArtKey(`${sheet.cardKey}:${m.id}`), figure: figureArtKey(sheet.cardKey, m.id) }));
+    // Someone with sprites of their own stands as those, never as a figure drawn for them.
+    .map((m) => ({ id: m.id, name: m.name, role: m.role, imageId: m.faces?.base ?? m.avatarImageId ?? null, art: npcArtKey(`${sheet.cardKey}:${m.id}`), ...(m.faces?.base ? {} : { figure: figureArtKey(sheet.cardKey, m.id) }) }));
   const movement: Movement = r.board ? "board" : r.delve ? "delve" : r.hex ? "hex" : (MOVEMENT[r.world.shape] ?? "scene");
   const others = Object.values(r.world.places).filter((q) => q.id !== p.id);
   return {
@@ -261,7 +262,8 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     coin: r.scene.coin,
     vigor: r.scene.vigor,
     log: r.log,
-    story: r.story ?? [],
+    // The story box tells this scene: what happened here since the last night. A move or a night starts it afresh.
+    story: (r.story ?? []).filter((b) => b.where === spotOf(r) && (b.day ?? 0) > (r.memory?.nights?.at(-1)?.day ?? 0)),
     voices: { cast: sheet.cast.map((c) => ({ name: c.name, pronoun: c.pronoun, ...(people.some((m) => m.id === c.id) ? { here: true } : {}) })), player: sheet.player.name },
     ...(r.delve ? { delve: delveView(sheet, r)! } : {}),
     ...(r.board ? { board: boardView(sheet, r) } : {}),
@@ -309,7 +311,7 @@ export function boardView(sheet: CardSheet, r: PlayRecord): BoardView {
     party: b.party.map((p, i) => {
       const c = cast.get(p.id.replace(/^p_/, ""));
       const card = c?.faces?.base ?? c?.avatarImageId ?? null;
-      const figure = c ? c.id : p.id === "p_player" ? p.id : null;
+      const figure = c ? (c.faces?.base ? null : c.id) : p.id === "p_player" ? p.id : null;
       return { id: p.id, name: p.name, q: p.q, r: p.r, imageId: card, ...(figure ? { art: figureArtKey(sheet.cardKey, figure) } : {}), active: i === b.active && !b.done };
     }),
     supplies: b.supplies,

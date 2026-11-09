@@ -9,6 +9,7 @@
  */
 import type { CardSheet, CardSources } from "../engine/card/types.js";
 import type { LoreCard } from "../engine/world/board.js";
+import { isRefusal } from "../engine/parley/narrate.js";
 import { rankLore } from "./lore-pick.js";
 import { textHash } from "./lore-vectors.js";
 import { playerVoice } from "./story.js";
@@ -153,5 +154,5 @@ export function loreScenePrompt(
 
 export function parseLoreScene(raw: Record<string, unknown>): string | null {
   const t = typeof raw.text === "string" ? raw.text.replace(/\s+\n/g, "\n").trim() : "";
-  return t.length >= 60 ? clip(t, 1600) : null;
+  return t.length >= 60 && !isRefusal(t) ? clip(t, 1600) : null;
 }

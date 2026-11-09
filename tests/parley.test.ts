@@ -297,6 +297,13 @@ describe("Gambit narrator", () => {
     expect(cleanReply(Array(400).fill("word.").join(" ")).split(/\s+/).length).toBeLessThanOrEqual(260);
   });
 
+  test("a refusal is no reply; a character refusing in quotes is", async () => {
+    const { cleanReply } = await import("../src/engine/parley/narrate.js");
+    for (const t of ["I cannot fulfill this request. The prompt asks to generate 'aggressive forced breeding.'", "I'm sorry, but I can't help with that.", "*I can't write this scene.*", "Here is why I won't: I can't comply with that request, as it breaks my content policy."]) expect(cleanReply(t)).toBe("");
+    expect(cleanReply('"I can\'t help you with that," Marta says. "I cannot fulfill your request, stranger."')).toContain("Marta says");
+    expect(cleanReply("I can't believe the price, you think, as Marta folds her arms.")).toContain("Marta");
+  });
+
   test("replay keeps narrated replies", () => {
     const inputs = [{ text: "Hundred crowns, cash.", read: good({ tactic: "interest" }), reply: "She snorts." }];
     const s = replayParley(marta, createParley(marta, "keep"), inputs);

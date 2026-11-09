@@ -124,6 +124,12 @@ describe("what the night can change", () => {
     expect(scenes[0]!.effect).toBeUndefined();
   });
 
+  test("a scene or a rumour the model refused to write is no scene", () => {
+    const scenes = parseNightScenes({ vignettes: [line("I cannot fulfill this request as written."), line("Orla counts the boats in.", { effect: { kind: "word", text: "I'm sorry, but I can't write that rumour." } }), ...filler] }, brief())!;
+    expect(scenes.some((s) => /fulfill/.test(s.text))).toBe(false);
+    expect(scenes.some((s) => s.effect?.kind === "word")).toBe(false);
+  });
+
   test("it needs three real scenes", () => {
     expect(parseNightScenes({ vignettes: [line("Only one real scene is here tonight."), line("short")] }, brief())).toBeNull();
     expect(parseNightScenes({ nothing: true }, brief())).toBeNull();
