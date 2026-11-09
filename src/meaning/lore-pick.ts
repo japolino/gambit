@@ -54,15 +54,16 @@ export interface RankedLore {
   at: number;
 }
 
-/** The entries, most relevant to this chat first. */
+/** The entries, most relevant to this chat first. A global book's entry only counts when this chat uses it: the host has it active, or the chat names it. */
 export function rankLore(src: CardSources): RankedLore[] {
   const card = src.cards.map((c) => [c.description, c.personality, c.scenario, c.firstMes, ...c.alternateGreetings.slice(0, 2)].join("\n")).join("\n");
   const persona = `${src.persona.name} ${src.persona.title} ${src.persona.description}`;
   const chat = src.chat.map((m) => m.content).join("\n");
   return src.lore
-    .map((lore, at) => {
+    .flatMap((lore, at) => {
       const keys = loreKeys(lore);
       const inChat = hits(keys, chat);
+      if (lore.scope === "global" && !lore.active && !inChat) return [];
       let score = 0;
       if (lore.active) score += 100;
       if (lore.constant) score += 60;
@@ -71,8 +72,7 @@ export function rankLore(src: CardSources): RankedLore[] {
       if (hits(keys, persona)) score += 10;
       // Close in meaning to the chat (the user's embedding model): ranks like a keyword hit, without the keyword.
       if (lore.semantic) score += Math.round(SEMANTIC_WEIGHT * lore.semantic);
-      if (lore.scope === "global" && !lore.active && !inChat) score -= 15;
-      return { lore, score, at };
+      return [{ lore, score, at }];
     })
     .sort((a, b) => b.score - a.score || a.at - b.at);
 }

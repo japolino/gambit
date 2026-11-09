@@ -38,9 +38,10 @@ describe("lore-pick", () => {
     expect(order).toEqual(["Live", "Always", "Chat", "Card", "Persona", "Plain"]);
   });
 
-  test("a global book only ranks up when the chat uses it", () => {
+  test("a global book only counts when the chat uses it", () => {
     const lore = [entry("Global", { scope: "global" }), entry("Local")];
-    expect(rankLore(src(lore)).map((r) => r.lore.title)).toEqual(["Local", "Global"]);
+    expect(rankLore(src(lore)).map((r) => r.lore.title)).toEqual(["Local"]);
+    expect(loreText(src(lore), 20_000).text).not.toContain("Global");
     const used = [entry("Global", { scope: "global", keys: ["Mira"] }), entry("Local")];
     expect(rankLore(src(used, "Mira waves.")).map((r) => r.lore.title)[0]).toBe("Global");
   });
