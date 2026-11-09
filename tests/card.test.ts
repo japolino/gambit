@@ -171,6 +171,13 @@ describe("contests from a card", () => {
     expect(contestFrom(higher, sheet.cast[0]!, "")).toMatchObject({ floor: 164, hardFloor: 100 });
   });
 
+  test("a price named in another coin is counted in the purse's currency", () => {
+    const frame = parseFrame({ kind: "haggle", stake: "a room for the night", stake_size: 1, price: 20, lowest_offer: 2, unit: "coppers" }, sheet, "ilse_varga");
+    expect(contestFrom(frame, sheet.cast[0]!, "silver")).toMatchObject({ unit: "silver", start: 2, floor: 1 });
+    expect(contestFrom({ ...frame, price: 3, unit: "gold crowns" }, sheet.cast[0]!, "silver")).toMatchObject({ start: 30 });
+    expect(contestFrom({ ...frame, unit: "marks" }, sheet.cast[0]!, "silver")).toMatchObject({ unit: "silver", start: 20 });
+  });
+
   test("no talk starts out unwinnable: a wall is never higher than the facts on that person can take down", () => {
     const ilse = sheet.cast[0]!.id;
     const frame = (size: 1 | 2 | 3 | 4) => parseFrame({ kind: "persuade", stake: "passage upriver", stake_size: size }, sheet, ilse);

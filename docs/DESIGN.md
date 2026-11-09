@@ -134,7 +134,7 @@ Parley covers every non-combat contest of words: haggling, persuading, intimidat
 
 **Talking is not a contest.** "Talk to someone" puts you in the write box, addressed to them, and the narrator answers in the story. A Parley opens only when a line presses them for something they'd rather not give, or from an explicit chip or drawer button, and its first line says what's on the line.
 
-**A talk starts from the story and leaves something behind.** How they feel about you sets the starting rapport, they carry what they remember into how they read and voice you, and a lie they caught counts against later talks (one they never caught doesn't). A won talk gives you what was at stake, as an item the story holds to; a deal is also paid for from your purse when it's priced in your money, and you can't take one you can't pay. The thread's next revelation comes out only if the talk was about the thread.
+**A talk starts from the story and leaves something behind.** How they feel about you sets the starting rapport, they carry what they remember into how they read and voice you, and a lie they caught counts against later talks (one they never caught doesn't). A won talk gives you what was at stake, as an item the story holds to; a deal is also paid for from your purse when it's priced in your money, and you can't take one you can't pay. A price named in another coin is counted in the sheet's currency, ten coppers to a silver and ten silvers to a gold, and never less than one coin. The thread's next revelation comes out only if the talk was about the thread.
 
 #### 4.1.1 Every NPC has a hidden stance
 

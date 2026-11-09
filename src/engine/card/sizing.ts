@@ -109,16 +109,35 @@ const DEFAULT_PRICE = [25, 50, 100, 200] as const;
 /** A price in these isn't paid out of the purse. Anything else named as a unit is treated as money. */
 const NOT_MONEY = /\b(favou?rs?|hours?|minutes?|days?|weeks?|services?|debts?|secrets?|promises?)\b/i;
 
+/** What one of each coin is worth in the smallest, ten to the next (the usual fantasy purse). */
+const COINS: readonly [RegExp, number][] = [
+  [/\b(coppers?|penn(y|ies)|pence)\b/i, 1],
+  [/\bsilvers?\b/i, 10],
+  [/\bgold\b/i, 100],
+  [/\bplatinum\b/i, 1000],
+];
+const coinWorth = (name: string): number | undefined => COINS.find(([re]) => re.test(name))?.[1];
+
+/** A price named in one coin, in the purse's: never less than one coin for something that costs anything. */
+export function inCurrency(value: number, unit: string | null, currency: string): number {
+  const from = unit ? coinWorth(unit) : undefined;
+  const to = currency ? coinWorth(currency) : undefined;
+  const v = from && to ? (value * from) / to : value;
+  return value > 0 ? Math.max(1, Math.round(v)) : 0;
+}
+
 /** Start, floor, DC, and patience of a framed contest, from tables. */
 export function contestFrom(frame: ContestFrame, c: CastMember, currency: string): ContestDef {
   const prideStep = Math.round((c.temperament.pride - 2) / 2);
   const dc = Math.max(10, Math.min(17, 11 + frame.stakeSize + prideStep));
   if (frame.kind === "haggle") {
-    const start = frame.price && frame.price > 0 ? Math.round(frame.price) : DEFAULT_PRICE[frame.stakeSize - 1]!;
     const money = !frame.unit || !NOT_MONEY.test(frame.unit);
+    // Money is paid from the purse, so it is counted in the purse's currency.
+    const price = (v: number) => (money ? inCurrency(v, frame.unit, currency) : Math.round(v));
+    const start = frame.price && frame.price > 0 ? price(frame.price) : DEFAULT_PRICE[frame.stakeSize - 1]!;
     const share = [0.66, 0.7, 0.74, 0.78, 0.82][c.temperament.greed];
     // A price they already offered is one they'd take.
-    const offered = frame.offered !== undefined && frame.offered < start ? frame.offered : start;
+    const offered = frame.offered !== undefined && price(frame.offered) < start ? price(frame.offered) : start;
     const floor = Math.min(Math.round(start * share), offered);
     return { kind: "haggle", track: "price", stake: frame.stake, money, unit: (money ? currency || frame.unit : frame.unit) || undefined, start, floor, hardFloor: Math.min(Math.round(start * 0.5), floor), dc };
   }
