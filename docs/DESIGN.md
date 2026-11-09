@@ -292,8 +292,8 @@ A skill as stored:
 
 ```json
 {
-  "id": "skill_undertow_litany",
-  "name": "Undertow Litany",
+  "id": "skill_drag_under",
+  "name": "Drag Under",
   "flavor": "She sings the tide backwards, and it remembers who it took.",
   "target": "all_enemies",
   "atoms": [
@@ -320,7 +320,7 @@ Enemies are built from the same language, so a faction that adapts to you (see 4
 
 **A class is:** growth curves (stats per level), one class resource, one passive, a skill tree of 8 to 10 skills (unlocked by class rank), weapon affinities, and a **visual brief** (silhouette, palette, motifs, outfit).
 
-**Starting kits come from the card.** The persona and each companion get a kit built from what the card and lorebook say they can do. The Architect maps that onto atoms, and the budget solver and sim size it, the same path as the Class Forge below. About 8 base classes are still hand-tuned in data (Duelist, Warden, Tidecaller, Hexwright, Scout, Brute, Chorister, Alchemist). They are a tested **fallback** used when a description is too thin to build from, and the genre skin renames them to fit the card. They are not a fixed menu every card must use.
+**Starting kits come from the card.** The persona and each companion get a kit built from what the card and lorebook say they can do. The Architect maps that onto atoms, and the budget solver and sim size it, the same path as the Class Forge below. About 8 base classes are still hand-tuned in data (Duelist, Warden, Sea Priest, Witch, Scout, Brute, Chorister, Alchemist). They are a tested **fallback** used when a description is too thin to build from, and the genre skin renames them to fit the card. They are not a fixed menu every card must use.
 
 **Fusion.** At the Altar, with two classes at rank 3+ and a catalyst item:
 - *Code:* growth curves are a weighted blend plus one mutation, rolled seeded.
@@ -882,12 +882,12 @@ gambit/
 - **The Forge:** describe a class in your own words. The Architect answers in shapes only: element, the stats it leans on, a resource and what fills it, a passive, 4 or 5 skills as atoms, a look, and what it had to change from the request. Code then:
   - keeps a class within a tier room of 10 across its skills, with one signature, and says which skills it lowered;
   - sizes every skill with the budget solver and runs passives at a chance that fits their trigger;
-  - tests the class in sim fights beside a Warden and a Tidecaller, against the same fights with a Duelist. Too strong, its skills drop up to two tiers and then its health and power shrink; too weak, its skills rise up to two tiers.
+  - tests the class in sim fights beside a Warden and a Sea Priest, against the same fights with a Duelist. Too strong, its skills drop up to two tiers and then its health and power shrink; too weak, its skills rise up to two tiers.
 
   You see the full sheet with real numbers, the changes and the test result before you keep it. Keeping it spends a Blank Crest: you start with one, and every finished questline gives another. With no model, the closest base class is renamed from your words.
 - **Fusion at the Altar:** two classes at rank 3 and a catalyst. Bosses and cleared delves leave catalysts.
   - Code blends the stats evenly and adds one seeded mutation toward a stat a parent was strong in.
-  - The resource comes from a hybrid table (Tempo and Resolve make Momentum, Hex and Tide make Omen…). A pair without an entry keeps one parent's resource with a trigger from the other.
+  - The resource comes from a hybrid table (Tempo and Resolve make Momentum, Hex and Tide make Foresight…). A pair without an entry keeps one parent's resource with a trigger from the other.
   - The fusion keeps the two strongest skills of each parent and gets three new ones that may only use the parents' effects, elements and statuses; anything else is dropped or remapped, and the preview says so.
   - Its portrait is drawn as a GPT edit with both parents' portraits as references.
   - Declining gives the catalyst back; one reroll costs a second catalyst.

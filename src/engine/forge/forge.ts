@@ -282,10 +282,10 @@ export function fuseStats(a: ClassDef, b: ClassDef, seed: string): { base: Line;
 const HYBRID: Record<string, Omit<ResourceDef, "id">> = {
   "resolve|tempo": { name: "Momentum", max: 6, start: 0, gain: [{ on: "deal_hit", n: 1 }, { on: "take_hit", n: 1 }], decay: 1 },
   "tempo|tide": { name: "Current", max: 6, start: 1, gain: [{ on: "deal_hit", n: 1 }, { on: "turn_start", n: 1 }], decay: 1 },
-  "hex|tempo": { name: "Cadence", max: 6, start: 0, gain: [{ on: "deal_hit", n: 1 }, { on: "apply_status", n: 1 }], decay: 1 },
-  "resolve|tide": { name: "Undertow", max: 6, start: 1, gain: [{ on: "take_hit", n: 1 }, { on: "turn_start", n: 1 }], decay: 1 },
+  "hex|tempo": { name: "Rhythm", max: 6, start: 0, gain: [{ on: "deal_hit", n: 1 }, { on: "apply_status", n: 1 }], decay: 1 },
+  "resolve|tide": { name: "Swell", max: 6, start: 1, gain: [{ on: "take_hit", n: 1 }, { on: "turn_start", n: 1 }], decay: 1 },
   "hex|resolve": { name: "Grudge", max: 6, start: 0, gain: [{ on: "take_hit", n: 1 }, { on: "apply_status", n: 1 }] },
-  "hex|tide": { name: "Omen", max: 6, start: 1, gain: [{ on: "turn_start", n: 1 }, { on: "apply_status", n: 1 }], decay: 1 },
+  "hex|tide": { name: "Foresight", max: 6, start: 1, gain: [{ on: "turn_start", n: 1 }, { on: "apply_status", n: 1 }], decay: 1 },
 };
 
 /** A fusion's resource: from the hybrid table, else one parent's with a twist from the other. */
@@ -309,7 +309,7 @@ export function fuseResource(a: ClassDef, b: ClassDef, seed: string): { resource
 
 /* ---------------------------- fallbacks ------------------------------ */
 
-const ELEMENT_WORD: Record<Element, string> = { physical: "Steel", fire: "Ember", frost: "Rime", storm: "Thunder", water: "Tide", earth: "Stone", light: "Dawn", shadow: "Dusk", blood: "Crimson" };
+const ELEMENT_WORD: Record<Element, string> = { physical: "Blade", fire: "Fire", frost: "Ice", storm: "Lightning", water: "Water", earth: "Stone", light: "Light", shadow: "Dark", blood: "Blood" };
 const ELEMENT_STATUS: Record<Element, StatusId> = { physical: "vulnerable", fire: "burn", frost: "frost", storm: "stun", water: "slow", earth: "weaken", light: "mark", shadow: "fear", blood: "bleed" };
 
 const mainElement = (c: ClassDef): Element => {
@@ -327,7 +327,7 @@ export function fallbackFusionSkills(a: ClassDef, b: ClassDef, fam: Families): K
   const s1: KitSkill = { name: ea === eb ? `${ELEMENT_WORD[ea]} Flurry` : `${ELEMENT_WORD[ea]} and ${ELEMENT_WORD[eb]}`, flavor: "Both teachers in one motion.", target: "enemy", tier: 2, signature: false, atoms: st ? [hit(ea, 2, 0.7), { op: "status", status: st, chance: "auto", turns: 2, weight: 0.3 }] : [hit(ea, 2)] };
   const s2: KitSkill = { name: `${ELEMENT_WORD[eb]} Wave`, flavor: "It reaches everyone.", target: "all_enemies", tier: 2, signature: false, atoms: fam.ops.has("delay") ? [hit(eb, 1, 0.75), { op: "delay", amount: "auto", weight: 0.25 }] : [hit(eb)] };
   const s3: KitSkill = {
-    name: `${ELEMENT_WORD[ea]} Apex`,
+    name: `${ELEMENT_WORD[ea]} Finisher`,
     flavor: "What neither could do alone.",
     target: "enemy",
     tier: 3,
@@ -544,7 +544,7 @@ export function fallbackAwakenings(s: SkillDef): SkillDef[] {
   const hitAt = atoms.findIndex((a) => a.op === "hit");
   if (hitAt >= 0) {
     const twin = atoms.map((a, i) => (i === hitAt && a.op === "hit" ? { ...a, hits: (a.hits ?? 1) + 1 } : a));
-    out.push(awakenedSkill(s, twin, `${s.name}: Echo`, s.target, "It lands, and then it lands again."));
+    out.push(awakenedSkill(s, twin, `${s.name}: Twice`, s.target, "It lands, and then it lands again."));
   }
   const st = STATUS_FOR_SKILL(s);
   if (s.target.includes("enemy") && !flatAtoms(atoms).some((a) => a.op === "status" && a.status === st)) {
@@ -552,9 +552,9 @@ export function fallbackAwakenings(s: SkillDef): SkillDef[] {
   }
   if (s.target === "enemy") out.push(awakenedSkill(s, atoms, `${s.name}: Wide`, "all_enemies", "It reaches everyone in front of you."));
   if (s.target === "ally" || s.target === "lowest_hp_ally") out.push(awakenedSkill(s, atoms, `${s.name}: Wide`, "all_allies", "It reaches the whole party."));
-  if (s.target.includes("enemy")) out.push(awakenedSkill(s, [...atoms.map((a) => ({ ...a, weight: 0.8 }) as Atom), { op: "on_kill", then: [{ op: "gain", resource: "focus", n: "auto" }], weight: 0.2 }], `${s.name}: Reaper`, s.target, "A finished foe gives something back."));
-  if (out.length < 3) out.push(awakenedSkill(s, [...atoms.map((a) => ({ ...a, weight: 0.8 }) as Atom), { op: "haste_self", amount: "auto", weight: 0.2 }], `${s.name}: Swift`, s.target, "Done before they notice."));
-  if (out.length < 3) out.push(awakenedSkill(s, [...atoms.map((a) => ({ ...a, weight: 0.8 }) as Atom), { op: "shield", power: "auto", self: true, turns: 2, weight: 0.2 }], `${s.name}: Ward`, s.target, "It guards you as it works."));
+  if (s.target.includes("enemy")) out.push(awakenedSkill(s, [...atoms.map((a) => ({ ...a, weight: 0.8 }) as Atom), { op: "on_kill", then: [{ op: "gain", resource: "focus", n: "auto" }], weight: 0.2 }], `${s.name}: Payoff`, s.target, "A finished foe gives something back."));
+  if (out.length < 3) out.push(awakenedSkill(s, [...atoms.map((a) => ({ ...a, weight: 0.8 }) as Atom), { op: "haste_self", amount: "auto", weight: 0.2 }], `${s.name}: Quick`, s.target, "Done before they notice."));
+  if (out.length < 3) out.push(awakenedSkill(s, [...atoms.map((a) => ({ ...a, weight: 0.8 }) as Atom), { op: "shield", power: "auto", self: true, turns: 2, weight: 0.2 }], `${s.name}: Guard`, s.target, "It guards you as it works."));
   return out.slice(0, 3);
 }
 

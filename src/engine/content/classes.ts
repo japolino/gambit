@@ -32,7 +32,7 @@ export const DUELIST: ClassDef = {
       ],
     },
     {
-      id: "duelist_final_measure", name: "Final Measure", flavor: "All the tempo you built, spent in one bar.",
+      id: "duelist_final_measure", name: "All-In Lunge", flavor: "All the tempo you built, spent in one bar.",
       target: "enemy", tier: 3, signature: true, cost: { resource: 3, cooldown: 2 },
       atoms: [
         { op: "spend_all_for_power", perStack: "auto", weight: 0.35 },
@@ -69,7 +69,7 @@ export const WARDEN: ClassDef = {
       atoms: [{ op: "shield", power: "auto" }],
     },
     {
-      id: "warden_iron_verdict", name: "Iron Verdict", flavor: "Every blow she absorbed comes back at once.",
+      id: "warden_iron_verdict", name: "Payback", flavor: "Every blow she absorbed comes back at once.",
       target: "enemy", tier: 3, signature: true, cost: { resource: 3, cooldown: 2 },
       atoms: [
         { op: "hit", element: "physical", scale: "might", power: "auto", stagger: 3, weight: 0.7 },
@@ -83,7 +83,7 @@ export const WARDEN: ClassDef = {
 
 export const TIDECALLER: ClassDef = {
   id: "tidecaller",
-  name: "Tidecaller",
+  name: "Sea Priest",
   base: { hp: 75, focus: 40, might: 7, spirit: 15, guard: 9, will: 13, speed: 13, luck: 9 },
   growth: { hp: 11, focus: 4, might: 0.7, spirit: 2.2, guard: 1, will: 1.6, speed: 0.9, luck: 0.6 },
   resource: { id: "tide", name: "Tide", max: 5, start: 1, gain: [{ on: "turn_start", n: 1 }] },
@@ -91,7 +91,7 @@ export const TIDECALLER: ClassDef = {
   attack: { id: "tide_lash", name: "Brine Lash", target: "enemy", tier: 0, atoms: [{ op: "hit", element: "water", scale: "spirit", power: "auto" }] },
   skills: [
     {
-      id: "tide_mending", name: "Mending Current", flavor: "The sea gives back, sometimes.",
+      id: "tide_mending", name: "Healing Water", flavor: "The sea gives back, sometimes.",
       target: "lowest_hp_ally", tier: 2, cost: { focus: "auto" },
       atoms: [{ op: "heal", power: "auto", weight: 0.8 }, { op: "cleanse", count: 1 }],
     },
@@ -104,7 +104,7 @@ export const TIDECALLER: ClassDef = {
       ],
     },
     {
-      id: "tide_undertow_litany", name: "Undertow Litany", flavor: "She sings the tide backwards, and it remembers who it took.",
+      id: "tide_undertow_litany", name: "Drag Under", flavor: "She sings the tide backwards, and it remembers who it took.",
       target: "all_enemies", tier: 3, signature: true, cost: { resource: 4, cooldown: 3 },
       atoms: [
         { op: "hit", element: "water", scale: "spirit", power: "auto", weight: 0.6 },
@@ -119,33 +119,33 @@ export const TIDECALLER: ClassDef = {
 
 export const HEXWRIGHT: ClassDef = {
   id: "hexwright",
-  name: "Hexwright",
+  name: "Witch",
   base: { hp: 68, focus: 42, might: 6, spirit: 16, guard: 8, will: 12, speed: 14, luck: 10 },
   growth: { hp: 10, focus: 4, might: 0.6, spirit: 2.3, guard: 0.9, will: 1.5, speed: 1, luck: 0.7 },
   resource: { id: "hex", name: "Hex", max: 5, start: 0, gain: [{ on: "apply_status", n: 1 }] },
   passives: [],
   attack: {
-    id: "hex_ember", name: "Ember Script", target: "enemy", tier: 0,
+    id: "hex_ember", name: "Fire Bolt", target: "enemy", tier: 0,
     atoms: [{ op: "hit", element: "fire", scale: "spirit", power: "auto", weight: 0.75 }, { op: "status", status: "burn", chance: "auto", weight: 0.25 }],
   },
   skills: [
     {
-      id: "hex_witchmark", name: "Witchmark", flavor: "A sigil only the dying can read.",
+      id: "hex_witchmark", name: "Evil Eye", flavor: "A sigil only the dying can read.",
       target: "enemy", tier: 1, cost: { focus: "auto" },
       atoms: [{ op: "status", status: "mark", chance: 100, weight: 0 }, { op: "status", status: "weaken", chance: "auto" }],
     },
     {
-      id: "hex_cinder_rite", name: "Cinder Rite", flavor: "Ash falls up.",
+      id: "hex_cinder_rite", name: "Fire Wave", flavor: "Ash falls up.",
       target: "all_enemies", tier: 2, cost: { focus: "auto" },
       atoms: [{ op: "hit", element: "fire", scale: "spirit", power: "auto", weight: 0.65 }, { op: "status", status: "burn", chance: "auto", weight: 0.35 }],
     },
     {
-      id: "hex_frostbind", name: "Frostbind", flavor: "The cold remembers the shape of you.",
+      id: "hex_frostbind", name: "Freeze", flavor: "The cold remembers the shape of you.",
       target: "enemy", tier: 2, cost: { focus: "auto" },
       atoms: [{ op: "hit", element: "frost", scale: "spirit", power: "auto", weight: 0.5 }, { op: "status", status: "frost", stacks: 2, chance: "auto", weight: 0.5 }],
     },
     {
-      id: "hex_unmaking", name: "Unmaking", flavor: "She reads the mark aloud.",
+      id: "hex_unmaking", name: "Curse", flavor: "She reads the mark aloud.",
       target: "enemy", tier: 3, signature: true, cost: { resource: 3, cooldown: 2 },
       atoms: [
         { op: "hit", element: "shadow", scale: "spirit", power: "auto", weight: 0.6 },
