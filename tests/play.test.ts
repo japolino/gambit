@@ -256,6 +256,18 @@ describe("play on a card", () => {
     expect(last().story[0]!.said).toBe("I head to the Drowned Lantern");
   });
 
+  test("a walk next door on the overland takes part of the day, and only a step of the day on the road eats a supply", async () => {
+    const { play, files } = setup({ sheet: { shape: "frontier" } });
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const at = () => files.get(key) as { scene: { placeId: string; time: number }; spent: number; hex: { state: { supplies: number } } };
+    // The tavern is two cells from the docks on this seed.
+    await play.act("u", "chat1", "go:tavern");
+    expect([at().scene.placeId, at().scene.time, at().spent, at().hex.state.supplies]).toEqual(["tavern", 0, 2, 8]);
+    await play.act("u", "chat1", "go:docks");
+    expect([at().scene.placeId, at().scene.time, at().spent, at().hex.state.supplies]).toEqual(["docks", 1, 1, 7]);
+  });
+
   test("writing runs the clock, and enough of it moves the day on", async () => {
     const { play, files } = setup();
     await play.open("u", "chat1");

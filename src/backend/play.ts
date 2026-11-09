@@ -1405,12 +1405,18 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
 
   /* ------------------------------ overland ----------------------------- */
 
-  /** One step on the overland: time passes, supplies run down, arriving at a place makes it the scene. */
+  /** One step on the overland: the clock runs, each step of the day on the road eats a supply, arriving at a place makes it the scene. */
   function hexMove(r: PlayRecord, to: { q: number; r: number }): string | null {
     const res = stepHex(r.hex!.map, r.hex!.state, to);
     r.hex!.state = res.state;
-    r.scene = moveScene(r.world, r.scene, { kind: "wait" });
-    if (res.hungry) r.scene = { ...r.scene, vigor: Math.max(0.2, r.scene.vigor - 0.1) };
+    const clock = spendClock(r.spent ?? 0, "walk");
+    r.spent = clock.spent;
+    if (clock.steps) {
+      const { supplies } = r.hex!.state;
+      r.hex!.state = { ...r.hex!.state, supplies: Math.max(0, supplies - 1) };
+      r.scene = moveScene(r.world, r.scene, { kind: "wait" });
+      if (supplies <= 0) r.scene = { ...r.scene, vigor: Math.max(0.2, r.scene.vigor - 0.1) };
+    }
     if (res.place && r.world.places[res.place]) {
       interest(r, `place:${res.place}`, NOTICE.visit);
       r.scene = { ...r.scene, placeId: res.place, visited: r.scene.visited.includes(res.place) ? r.scene.visited : [...r.scene.visited, res.place] };
@@ -2118,7 +2124,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
             const got = roll + (sheet.player.social.guile ?? 2) >= 10 ? (roll >= 17 ? 3 : 2) : 0;
             r.hex!.state = { ...r.hex!.state, supplies: Math.min(SUPPLY_MAX, r.hex!.state.supplies + got) };
             r.scene = { ...moveScene(r.world, r.scene, { kind: "wait" }), searched: [...r.scene.searched, key] };
-            note(r, got ? `You forage (${roll}) and find ${got} days of supplies.` : `You forage (${roll}) and find nothing to eat.`);
+            note(r, got ? `You forage (${roll}) and find ${got} supplies.` : `You forage (${roll}) and find nothing to eat.`);
             await save(userId, chatId, r);
             break;
           }

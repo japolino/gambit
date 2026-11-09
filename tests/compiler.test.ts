@@ -108,7 +108,7 @@ describe("the honeycomb overland", () => {
     expect(JSON.stringify(buildHex(w, "hex-seed"))).toBe(JSON.stringify(map));
   });
 
-  test("steps reveal cells, spend supplies, and refuse non-neighbours", () => {
+  test("steps reveal cells and refuse non-neighbours", () => {
     const w = world();
     const map = buildHex(w, "hex-seed");
     let s = newHex(map);
@@ -117,7 +117,6 @@ describe("the honeycomb overland", () => {
     const path = hexPath(map, s, goal)!;
     for (const step of path.slice(1)) s = stepHex(map, s, step).state;
     expect(s.q).toBe(goal.q);
-    expect(s.supplies).toBe(8 - (path.length - 1));
     expect(s.seen.length).toBeGreaterThan(before);
     expect(() => stepHex(map, s, { q: s.q + 2, r: s.r })).toThrow();
   });
@@ -214,7 +213,6 @@ describe("the compiler in play", () => {
     await play.hexStep("u", "c1", next.q, next.r);
     expect(last().hex!.wild).toBe(true);
     expect(last().menu.map((h) => h.id)).toContain("camp");
-    expect(last().hex!.supplies).toBe(7);
   });
 
   test("travelling by menu walks the path; camping plays a Meanwhile montage", async () => {

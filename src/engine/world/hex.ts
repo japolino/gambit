@@ -216,14 +216,12 @@ export function newHex(map: HexMap, at?: { q: number; r: number }): HexState {
   return reveal(map, { ...s, seen: known });
 }
 
-export type HexStep = { state: HexState; place: string | null; hungry: boolean };
+export type HexStep = { state: HexState; place: string | null };
 
 /** One step to a neighbouring cell. Throws on an illegal step. */
 export function stepHex(map: HexMap, s: HexState, to: { q: number; r: number }): HexStep {
   const c = map.cells[hexKey(to.q, to.r)];
   if (hexDist(s, to) !== 1) throw new Error("You can only step to a neighbouring cell.");
   if (!passable(c)) throw new Error("Water blocks the way.");
-  const hungry = s.supplies <= 0;
-  const state = reveal(map, { ...s, q: to.q, r: to.r, supplies: Math.max(0, s.supplies - 1) });
-  return { state, place: c.place ?? null, hungry };
+  return { state: reveal(map, { ...s, q: to.q, r: to.r }), place: c.place ?? null };
 }

@@ -112,10 +112,11 @@ export function rollLine(attempt: string, r: BeatRoll): string {
 export const THREAD_DAYS = 3;
 /** This much writing is one step of the day (morning to afternoon, and so on). */
 export const CLOCK_STEP = 3;
-const COST: Record<BeatRoute, number> = { flavor: 1, risk: 2, seek: 2, press: 0, fight: 0, travel: 0 };
+/** A walk is one cell of the overland: three are a step of the day, so a place next door costs part of one. */
+const COST: Record<BeatRoute | "walk", number> = { flavor: 1, risk: 2, seek: 2, press: 0, fight: 0, travel: 0, walk: 1 };
 
-/** What a line spends: how far the clock has run, and how many steps of the day that came to. */
-export function spendClock(spent: number, route: BeatRoute): { spent: number; steps: number } {
+/** What a line or a step on the overland spends: how far the clock has run, and how many steps of the day that came to. */
+export function spendClock(spent: number, route: BeatRoute | "walk"): { spent: number; steps: number } {
   const total = spent + COST[route];
   return { spent: total % CLOCK_STEP, steps: Math.floor(total / CLOCK_STEP) };
 }
