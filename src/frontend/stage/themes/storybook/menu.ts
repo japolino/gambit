@@ -180,7 +180,8 @@ export class BookMenu extends ActionMenu {
       sx = this.stamp(skill.usable ? `Cost · ${skill.cost}` : "Not yet", sx, y + head.height / 2, k, skill.usable ? 0x7a4c1c : 0x8b1a1a);
       if (skill.signature) this.stamp("Signature art", sx + 8 * k, y + head.height / 2, k, 0x8b1a1a);
       y += head.height + 6 * k;
-      const body = skill.usable ? skill.flavor || `${skill.signature ? "The signature art" : "A skill"} of the ${this.mode.kind === "skills" ? this.mode.actor : "party"}${skill.cost && skill.cost !== "Basic" && skill.cost !== "Free" ? `, at the cost of ${skill.cost.toLowerCase()}` : ", free to use"}.` : skill.reason ?? "Not now.";
+      const whose = `${this.mode.kind === "skills" ? this.mode.actor : "the party"}'s`;
+      const body = skill.usable ? skill.flavor || `${skill.signature ? `${whose[0]!.toUpperCase()}${whose.slice(1)} signature art` : `One of ${whose} skills`}${skill.cost && skill.cost !== "Basic" && skill.cost !== "Free" ? `, at the cost of ${skill.cost.toLowerCase()}` : ", free to use"}.` : skill.reason ?? "Not now.";
       this.paragraph(body, r.x, y, pw, size, skill.usable ? INK : 0x5a2a1a, !skill.usable);
     } else if (kind === "target" && skill) {
       y += this.paragraph(`${hint ?? "Choose."}`, r.x, y, pw, size);
