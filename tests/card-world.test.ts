@@ -15,6 +15,20 @@ const card = (name: string, description: string): CardSources["cards"][number] =
 const sources = (name: string, description: string, persona = ""): CardSources => ({ cards: [card(name, description)], persona: { id: persona ? "p1" : null, name: persona, title: "", description: "" }, lore: [], chat: [] });
 const person = (name: string, role = "a guild clerk") => ({ id: name.toLowerCase(), name, role, pronoun: "she" });
 
+test("where someone is found survives the merge with the detailed read, and only for a place the sheet has", () => {
+  const world = sources("Harrowmere", "A frontier town narrated by the world.");
+  const sheet = parseSheet(
+    mergeReads(
+      { places: [{ id: "kettle", name: "The Coiled Kettle", description: "an inn" }], cast: [{ ...person("Ysolde", "lamia innkeeper"), at: "kettle" }, { ...person("Rook", "werewolf"), at: "den" }] },
+      { cast: [{ ...person("Ysolde", "lamia innkeeper"), wants: ["a husband"] }] },
+    ),
+    world,
+    1,
+  );
+  expect(sheet.cast.find((c) => c.name === "Ysolde")).toMatchObject({ at: "kettle", wants: ["a husband"] });
+  expect(sheet.cast.find((c) => c.name === "Rook")?.at).toBeUndefined();
+});
+
 describe("a card that isn't a person", () => {
   const world = sources("Tessera Project [Re] 2.0", RULES);
 

@@ -69,7 +69,7 @@ function nameWords(name: string): string[] {
 }
 
 /**
- * Who is where: a person whose words name a place is there, then a person a place's own words name
+ * Who is where: where the reader says they're found, else a person whose words name a place is there, then a person a place's own words name
  * ("the inn (Ysolde, the back room)"); the rest spread from the start, the main cast at the start.
  */
 function placePeople(sheet: Pick<CardSheet, "cast">, ids: string[], names: Record<string, string>, texts: Record<string, string>, start: string, seed: number): Record<string, string[]> {
@@ -80,7 +80,7 @@ function placePeople(sheet: Pick<CardSheet, "cast">, ids: string[], names: Recor
     const named = ids.find((id) => id !== start && names[id] && norm(names[id]!).length > 2 && text.includes(norm(names[id]!)));
     const words = nameWords(m.name);
     const namedBy = ids.find((id) => words.some((w) => says(texts[id] ?? "", w)));
-    const at = named ?? namedBy ?? (m.main || ids.length === 1 ? start : ids[(seed + i * 7) % ids.length]!);
+    const at = (m.at && ids.includes(m.at) ? m.at : undefined) ?? named ?? namedBy ?? (m.main || ids.length === 1 ? start : ids[(seed + i * 7) % ids.length]!);
     out[at]!.push(m.id);
   });
   return out;

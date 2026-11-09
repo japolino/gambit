@@ -192,7 +192,7 @@ Write this JSON:
  "shape": one of ${SHAPES.map((x) => `"${x}"`).join(", ")},
  "modules": {${MODULES.map((m) => `"${m}": true|false`).join(", ")}},
  "places": [{"id": "short_id", "name": "", "description": "one line", "quote": ""}],
- "cast": [{"id": "short_id", "name": "", "role": "who they are, a few words", "pronoun": "she|he|they"}],
+ "cast": [{"id": "short_id", "name": "", "role": "who they are, a few words", "pronoun": "she|he|they", "at": "the id of the place above where they're usually found, or empty"}],
  "player": {"concept": "who the persona is, one line", "social": {"presence": 0-4, "menace": 0-4, "guile": 0-4}},
  "not_people": ["the name of any [CARD] above that is a game, narrator, setting or scenario rather than a person someone could meet"]
 }
@@ -229,8 +229,9 @@ export function mergeReads(world: Record<string, unknown> | null, people: Record
   const detailed = Array.isArray(p.cast) ? (p.cast as unknown[]) : [];
   const brief = Array.isArray(w.cast) ? (w.cast as unknown[]) : [];
   const name = (x: unknown) => str(obj(x).name, 60);
-  const kept = [...detailed];
-  for (const b of brief) if (!kept.some((k) => sameName(name(k), name(b)))) kept.push(b);
+  // The brief read knows where people are; the detailed one knows the rest of them.
+  const kept = detailed.map((d) => ({ ...obj(brief.find((b) => sameName(name(b), name(d)))), ...obj(d) }));
+  for (const b of brief) if (!kept.some((k) => sameName(name(k), name(b)))) kept.push(obj(b));
   return { ...w, cast: kept, facts: p.facts ?? [] };
 }
 
@@ -428,6 +429,7 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
       voice: str(o.voice, 240) || fromCard?.voice || "",
       look: str(o.look, 300) || fromCard?.look || "",
       main: !!card,
+      ...(str(o.at, 40) ? { at: slug(str(o.at, 40), "place") } : {}),
       ...(card ? { characterId: card.id, avatarImageId: card.imageId, avatarUrl: card.avatarUrl } : {}),
       temperament: { warmth: tier(t.warmth), pride: tier(t.pride), greed: tier(t.greed), fear: tier(t.fear) },
       wants: strList(o.wants),
@@ -504,6 +506,8 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
     places.push({ id: uniqueId(slug(str(o.id, 40) || name, "place"), placeIds), name, description: str(o.description, 300), evidence: { source: ev.source, quote: ev.quote, verified: ev.verified } });
     if (places.length >= 6) break;
   }
+  // Someone said to be at a place the sheet doesn't have stays unplaced.
+  for (const c of cast) if (c.at && !placeIds.has(c.at)) delete c.at;
 
   const m = obj(raw.modules);
   const modules = Object.fromEntries(MODULES.map((k) => [k, k === "parley" ? m[k] !== false : m[k] === true])) as Record<ModuleId, boolean>;

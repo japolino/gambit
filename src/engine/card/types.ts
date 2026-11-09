@@ -39,6 +39,8 @@ export interface CastMember {
   look: string;
   /** The card's own character (or a group member) rather than someone it mentions. */
   main: boolean;
+  /** The place on the sheet where they're usually found, when the sources say so. */
+  at?: string;
   /** Lumiverse character id when this person is a card. */
   characterId?: string;
   /** The card's avatar, the canonical image of this person (4.0). */

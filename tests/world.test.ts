@@ -45,6 +45,11 @@ describe("the card's places", () => {
     expect(w.places.chapel!.people).toEqual(["maren"]);
   });
 
+  test("where the reader says someone is found comes first", () => {
+    const people = [{ id: "rook", name: "Rook", role: "werewolf pack alpha", look: "", main: false, at: "crypt", evidence: ev() }] as never[];
+    expect(buildWorld(sheet("town", { cast: people }), "s").places.crypt!.people).toEqual(["rook"]);
+  });
+
   test("a journey is a line with a next stop; one place is a single scene; no places still gives a scene", () => {
     const j = buildWorld(sheet("journey"), "s");
     expect(j.route).toEqual(["manor", "library", "ward", "crypt"]);
