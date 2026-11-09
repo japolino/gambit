@@ -369,7 +369,8 @@ describe("play on a card", () => {
     // The chat's generation: the note goes last, before the preset's prefill, and nothing before it changes.
     const prompt = [
       { role: "system", content: "preset" },
-      { role: "user", content: line.content, __isChatHistory: true, sourceMessageId: "m1", sourceMessageMetadata: line.metadata },
+      // The host may not hand the line's metadata to the interceptor: the line is known by its words, then by its id.
+      { role: "user", content: line.content, __isChatHistory: true, sourceMessageId: "m1" },
       { role: "assistant", content: "Mm,", partial: true },
     ];
     const out = await play.intercept(prompt as never, { userId: "u", chatId: "chat1", generationType: "normal" } as never);

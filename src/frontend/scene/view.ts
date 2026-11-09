@@ -876,7 +876,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     box.className = "mw vn waiting";
     box.setAttribute("role", "dialog");
     box.setAttribute("aria-label", title || "Scene");
-    box.innerHTML = `<div class="mw-in"><div class="mw-title"></div><div class="mw-body"><div class="mw-card mw-day"><div class="mw-text"><p class="mw-quiet">Writing…</p></div></div></div><div class="mw-hint"></div></div>`;
+    box.innerHTML = `<div class="mw-in"><div class="mw-title">${esc(title)}</div><div class="mw-body"><div class="mw-card mw-day"><div class="mw-text"><p class="mw-quiet">Writing…</p></div></div></div><div class="mw-hint"></div></div>`;
     box.addEventListener("click", () => stepScene(1));
     noteWriting();
     el.append(box);

@@ -1109,12 +1109,36 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const meta: SceneMeta = { id: `${a.day}.${Date.now().toString(36)}`, partner: a.name, castId: a.castId, won: a.won, ...(a.castId ? {} : { look: a.look }) };
     const line = fillNote(noteText(a.won ? "scene.win.line" : "scene.loss.line", await notes.edits(userId)), { player: sheet.player.name, partner: a.name });
     send({ type: "scene.afterglow", chatId, title: sceneTitle(meta), pages: null }, userId);
+    // The generation starts as the line lands, before its id is known here: the interceptor knows the line by its words.
+    linesPosted.set(chatId, { meta, line });
     try {
       await spindle.chat.appendMessage(chatId, { role: "user", content: line, metadata: { gambit: { scene: meta } } } as never, { triggerGeneration: true });
     } catch (err) {
+      linesPosted.delete(chatId);
       log(`scene: ${errText(err)}`);
       send({ type: "scene.afterglow", chatId, title: "", pages: [] }, userId);
     }
+  }
+
+  /** Scene lines just posted, by chat, until the interceptor sees them and records their message id. */
+  const linesPosted = new Map<string, { meta: SceneMeta; line: string }>();
+
+  /**
+   * The adult scene a generation is writing, if its latest line is one: by the line's message id (recorded the first
+   * time, so a swipe finds it), else by the words of a line just posted.
+   */
+  async function sceneFor(userId: string, chatId: string, turn: LlmMessageDTO | undefined): Promise<SceneMeta | null> {
+    const id = turn?.sourceMessageId;
+    if (!id) return null;
+    const r = await load(userId, chatId).catch(() => null);
+    const known = r?.sceneLines?.[id];
+    if (known) return known;
+    const posted = linesPosted.get(chatId);
+    if (!r || !posted || typeof turn.content !== "string" || turn.content.trim() !== posted.line.trim()) return null;
+    linesPosted.delete(chatId);
+    r.sceneLines = Object.fromEntries([...Object.entries(r.sceneLines ?? {}), [id, posted.meta]].slice(-20));
+    await save(userId, chatId, r);
+    return posted.meta;
   }
 
   /** Chats whose running generation is an adult scene, and the scene it is. */
@@ -1763,7 +1787,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       let messages = given;
       // An adult scene's line (its first reply or a swipe): its note goes at the prompt's very end.
       const turn = [...messages].reverse().find((m) => m.role === "user" && (m.__isChatHistory || m.sourceMessageId));
-      const scene = sceneOf(turn?.sourceMessageMetadata);
+      const scene = sceneOf(turn?.sourceMessageMetadata) ?? (await sceneFor(ctx.userId, ctx.chatId, turn));
       if (scene) {
         const sheet = await cards.sheetFor(ctx.userId, ctx.chatId).catch(() => null);
         const kind = scene.won ? "scene.win.note" : "scene.loss.note";

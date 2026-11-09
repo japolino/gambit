@@ -17,6 +17,13 @@ describe("the adult scene after a fight", () => {
     expect(pictureMoments(pages)[0]!.text).toBe(`${pages[0]!.text}\n\n${pages[1]!.text}`);
   });
 
+  test("a preset's headings and markdown emphasis don't reach the pages", () => {
+    const pages = scenePages(`## Response\n\n### Chapter 1: The Claim\n\n${para(1)} *"Mine,"* she says.`);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]!.text.startsWith("Paragraph 1")).toBe(true);
+    expect(pages[0]!.text.endsWith('"Mine," she says.')).toBe(true);
+  });
+
   test("a short reply gets one picture, at its end", () => {
     expect(scenePages("Just this.").map((p) => p.picture)).toEqual([true]);
   });

@@ -99,6 +99,8 @@ export interface PlayRecord {
   loreSpent?: string[];
   /** The adult scene a fight just offered (opt-in per chat): who with, and how the fight went. Gone once the scene moves on. */
   afterglow?: Afterglow;
+  /** Adult scenes' lines by chat message id, so a swipe of one is written as the scene again (play.ts SceneMeta). */
+  sceneLines?: Record<string, { id: string; partner: string; castId: string | null; won: boolean; look?: string }>;
 }
 
 export interface Afterglow {

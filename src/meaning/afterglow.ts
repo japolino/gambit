@@ -21,7 +21,9 @@ export interface ScenePage {
 export function scenePages(reply: string): ScenePage[] {
   const paras = reply
     .split(/\n\s*\n/)
-    .map((p) => p.replace(/\s+/g, " ").trim())
+    // A preset's headings ("## Response", "### Chapter 1") and markdown emphasis aren't the story's words.
+    .map((p) => p.split("\n").filter((l) => !/^\s*#{1,6}\s/.test(l)).join(" "))
+    .map((p) => p.replace(/(\*\*|\*|__)(?=\S)([^*_]+?)\1/g, "$2").replace(/\s+/g, " ").trim())
     .filter(Boolean);
   const pages: string[] = [];
   let held = "";
