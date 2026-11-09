@@ -44,4 +44,18 @@ describe("the per-chat action gate", () => {
     releaseNext();
     await next;
   });
+
+  test("a queued action waits for the running one instead of being dropped, and queued ones keep their order", async () => {
+    const gate = createGate(120_000, Date.now, 1);
+    let release = () => {};
+    const ran: string[] = [];
+    const first = gate.run("chat", () => new Promise<void>((r) => { ran.push("first"); release = r; }));
+    const a = gate.queue("chat", async () => void ran.push("line 1"));
+    const b = gate.queue("chat", async () => void ran.push("line 2"));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ran).toEqual(["first"]);
+    release();
+    await Promise.all([first, a, b]);
+    expect(ran).toEqual(["first", "line 1", "line 2"]);
+  });
 });
