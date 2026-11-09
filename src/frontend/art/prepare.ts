@@ -49,6 +49,8 @@ export interface PreparedArt {
   /** The face (normalized x, y, w, h); null when none was found. */
   face: FaceBox | null;
   stats: FigureStats;
+  /** Height over width: a bust or a square sprite is about 1, a standing figure 1.4 or more. */
+  aspect: number;
 }
 
 const cache = new Map<string, Promise<PreparedArt>>();
@@ -57,7 +59,7 @@ export function prepareArt(url: string, key: boolean): Promise<PreparedArt> {
   const id = `${key ? "k" : "-"}|${url}`;
   let p = cache.get(id);
   if (!p) {
-    p = prepareArtFresh(url, key).catch(() => ({ url, cutout: false, face: null, stats: { coverage: 1, saturation: 1 } }));
+    p = prepareArtFresh(url, key).catch(() => ({ url, cutout: false, face: null, stats: { coverage: 1, saturation: 1 }, aspect: 0 }));
     cache.set(id, p);
   }
   return p;
@@ -74,11 +76,12 @@ export async function prepareArtFresh(url: string, key: boolean): Promise<Prepar
   c.height = img.naturalHeight;
   const ctx = c.getContext("2d", { willReadFrequently: true })!;
   ctx.drawImage(img, 0, 0);
+  const aspect = c.height / c.width;
   let data: ImageData;
   try {
     data = ctx.getImageData(0, 0, c.width, c.height);
   } catch {
-    return { url, cutout: false, face: await faceOf(url), stats: { coverage: 1, saturation: 1 } };
+    return { url, cutout: false, face: await faceOf(url), stats: { coverage: 1, saturation: 1 }, aspect };
   }
   if (key) {
     // The segmentation model first (Cue's cut-out): it cuts figures off busy
@@ -91,14 +94,14 @@ export async function prepareArtFresh(url: string, key: boolean): Promise<Prepar
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.drawImage(drawn, 0, 0, c.width, c.height);
       drawn.close();
-      return { url: URL.createObjectURL(cut.png), cutout: true, face: cut.face, stats: figureStats(ctx.getImageData(0, 0, c.width, c.height).data) };
+      return { url: URL.createObjectURL(cut.png), cutout: true, face: cut.face, stats: figureStats(ctx.getImageData(0, 0, c.width, c.height).data), aspect };
     }
   }
   // What is left is framed: the original picture, or the original behind a rough key.
   const face = await faceOf(url);
-  if (!key || !keyFlatBackground(data.data, c.width, c.height)) return { url, cutout: false, face, stats: figureStats(data.data) };
+  if (!key || !keyFlatBackground(data.data, c.width, c.height)) return { url, cutout: false, face, stats: figureStats(data.data), aspect };
   const stats = figureStats(data.data);
   ctx.putImageData(data, 0, 0);
   const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/png"));
-  return blob ? { url: URL.createObjectURL(blob), cutout: true, rough: true, face, stats } : { url, cutout: false, face, stats };
+  return blob ? { url: URL.createObjectURL(blob), cutout: true, rough: true, face, stats, aspect } : { url, cutout: false, face, stats, aspect };
 }

@@ -113,3 +113,12 @@ export function usableExpression(expr: { coverage: number; saturation: number },
   if (base && base.saturation > 0.08 && expr.saturation < Math.min(0.05, base.saturation * 0.35)) return false;
   return true;
 }
+
+/**
+ * Whether a picture is shown framed, cropped round its face, instead of standing where a figure stands: opaque art
+ * (`coverage` of the base face, so the look holds from mood to mood), or a bust or square sprite (`aspect`, height over
+ * width), which a figure's place would show only the top of.
+ */
+export function framedPicture(coverage: number, aspect: number): boolean {
+  return coverage > 0.97 || (aspect > 0 && aspect < 1.2);
+}

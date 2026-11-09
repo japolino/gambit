@@ -17,7 +17,7 @@ import { expressionArtKey, isExpressionArtKey, momentIndexOf, npcArtKey, placeAr
 import { parleyMoment } from "../../engine/parley/moments.js";
 import { EXPRESSION_FOR_MOOD } from "../../shared/parley-view.js";
 import type { ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
-import { figureStats, usableExpression } from "../art/key-background.js";
+import { figureStats, framedPicture, usableExpression } from "../art/key-background.js";
 import { facePosition, prepareArtFresh as prepareArt } from "../art/prepare.js";
 import type { FaceBox } from "../art/cutout/face-kernel.js";
 import { paintBackground } from "../stage/placeholder.js";
@@ -347,22 +347,27 @@ export function mountParley(
   const artStats = new Map<string, FigureStats>();
   /** Where the face is in each picture, so a framed portrait's crop keeps it. */
   const artFaces = new Map<string, FaceBox | null>();
+  /** Each picture's height over width. */
+  const artAspects = new Map<string, number>();
   function setFace(key: string) {
+    faceKey = key;
     const shownKey = art.has(key) ? key : npcArtKey(npc.id);
     const url = art.get(shownKey);
     if (!url) return;
-    faceKey = key;
-    // Opaque art (a card's avatar or gallery picture, not a cut-out sprite) is
-    // shown as a framed portrait instead of a rectangle pasted on the room.
-    // The base face decides, so the look holds steady from mood to mood.
-    fig.classList.toggle("framed", (baseStats?.coverage ?? artStats.get(shownKey)?.coverage ?? 0) > 0.97);
-    const face = artFaces.get(shownKey) ?? artFaces.get(npcArtKey(npc.id));
-    if (face) fig.style.setProperty("--face", facePosition(face));
-    else fig.style.removeProperty("--face");
+    // Opaque art (a card's avatar or gallery picture) and busts (a card's square
+    // Risu expression) are framed portraits, not rectangles pasted on the room or
+    // heads peeking over the text box. Set with the picture it is for.
+    const frame = () => {
+      fig.classList.toggle("framed", framedPicture(baseStats?.coverage ?? artStats.get(shownKey)?.coverage ?? 0, artAspects.get(shownKey) ?? 0));
+      const face = artFaces.get(shownKey) ?? artFaces.get(npcArtKey(npc.id));
+      if (face) fig.style.setProperty("--face", facePosition(face));
+      else fig.style.removeProperty("--face");
+    };
     const [cur, next] = showing === "a" ? [imgA, imgB] : [imgB, imgA];
-    if (cur.src === url) return;
+    if (cur.src === url) return frame();
     next.src = url;
     next.onload = () => {
+      frame();
       next.classList.add("on");
       cur.classList.remove("on");
       showing = showing === "a" ? "b" : "a";
@@ -718,7 +723,7 @@ export function mountParley(
       // Generated expressions come on a flat ground and are keyed; art sent as drawn (cutout: true) never is.
       const needsKey = cutout === false || (isExpressionArtKey(key) && cutout !== true);
       void prepareArt(url, needsKey)
-        .then(({ url: u, stats, face }) => {
+        .then(({ url: u, stats, face, aspect }) => {
           if (u !== url) objectUrls.push(u);
           if (key === npcArtKey(npc.id)) baseStats = stats;
           // A blank or off-model mood picture never replaces the face it was drawn from.
@@ -729,6 +734,7 @@ export function mountParley(
           art.set(key, u);
           artStats.set(key, stats);
           artFaces.set(key, face);
+          artAspects.set(key, aspect);
           if (key === npcArtKey(npc.id) || key === faceKey) setFace(faceKey);
         })
         .catch(() => {});

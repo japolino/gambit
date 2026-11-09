@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { figureStats, keyFlatBackground, usableExpression } from "./key-background.js";
+import { figureStats, framedPicture, keyFlatBackground, usableExpression } from "./key-background.js";
 
 /** A w x h white image with a dark w/2 square in the middle, and a white dot inside it. */
 function picture(w: number, h: number): Uint8ClampedArray {
@@ -81,5 +81,16 @@ describe("usableExpression", () => {
     // Measured on a real card: muted art at 0.165 against lost renders at 0 and 0.004.
     expect(usableExpression({ coverage: 0.5, saturation: 0.004 }, { saturation: 0.165 })).toBe(false);
     expect(usableExpression({ coverage: 0.5, saturation: 0.12 }, { saturation: 0.165 })).toBe(true);
+  });
+});
+
+describe("framed pictures", () => {
+  test("opaque art and square busts are framed; a cut-out standing figure stands", () => {
+    // Anna's Inlay figure (832x1216, cut out) and her card's Risu expression (600x600, cut out).
+    expect(framedPicture(0.22, 1216 / 832)).toBe(false);
+    expect(framedPicture(0.22, 600 / 600)).toBe(true);
+    expect(framedPicture(1, 1216 / 832)).toBe(true);
+    // Size not known yet: the coverage alone decides.
+    expect(framedPicture(0.22, 0)).toBe(false);
   });
 });

@@ -11,6 +11,7 @@
  *   &journal=1         open "What you know"
  *   &moment=1          play the moment still over the scene
  *   &img=<url>         NPC art (e.g. /api/v1/images/<id> with GAMBIT_PREVIEW_ART set); default a painted cut-out
+ *   &bust=<url>        every mood's face is this picture (a card's square expression sprite)
  *   &place=<url>       place art; default a painted landing
  *   &opaque=1          the painted NPC on its own ground (shown as a framed portrait)
  *   &noart=1           no NPC art (the silhouette)
@@ -25,7 +26,8 @@ import { closeParley, createParley, applyExchange } from "../src/engine/parley/e
 import { DEFAULT_SPEAKER } from "../src/engine/content/parleys.js";
 import { parleyMoment } from "../src/engine/parley/moments.js";
 import type { Fact, ParleyScenario, ParleyState, RefereeRead, Tactic } from "../src/engine/parley/types.js";
-import { momentArtKey, npcArtKey, placeArtKey } from "../src/shared/art-keys.js";
+import { expressionArtKey, momentArtKey, npcArtKey, placeArtKey } from "../src/shared/art-keys.js";
+import { EXPRESSION_FOR_MOOD } from "../src/shared/parley-view.js";
 import { THEMES, type ThemeId } from "../src/shared/scene-view.js";
 import type { ParleyNarrator, ParleyViewMode } from "../src/shared/protocol.js";
 import { mountParley, type ParleyView } from "../src/frontend/parley/view.js";
@@ -413,6 +415,9 @@ view = mountParley(root, scenario, state, journal, mode, { chatBound: q.get("cha
 
 view.setArt(placeArtKey(scenario.id), q.get("place") ?? paintPlace());
 if (q.get("noart") !== "1") view.setArt(npcArtKey(scenario.npc.id), q.get("img") ?? paintFigure(768, 1024, q.get("opaque") === "1"), true);
+// Every mood's face is this picture, as a card's square Risu expression would be.
+const bust = q.get("bust");
+if (bust) for (const ex of new Set(Object.values(EXPRESSION_FOR_MOOD))) if (ex) view.setArt(expressionArtKey(npcArtKey(scenario.npc.id), ex), bust, true);
 
 // A moment for the exchanges that are moments (or the last one), as the backend would send them.
 const momentFor = state.exchanges.filter((ex) => parleyMoment(scenario, ex)).map((ex) => ex.index);
