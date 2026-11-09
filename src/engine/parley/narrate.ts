@@ -32,8 +32,13 @@ export function tellFor(scenario: ParleyScenario, mood: Mood): string {
 }
 
 export function formatValue(scenario: ParleyScenario, v: number): string {
-  const c = scenario.contest;
-  return c.unit ? `${Math.round(v)} ${c.unit}` : `${Math.round(v)}`;
+  return amount(Math.round(v), scenario.contest.unit);
+}
+
+/** "2 coppers", "1 copper": a card names its money in the plural, so one of it drops the s. */
+export function amount(n: number, unit: string | null | undefined): string {
+  if (!unit) return `${n}`;
+  return `${n} ${n === 1 ? unit.replace(/ies$/, "y").replace(/([^s])s$/, "$1") : unit}`;
 }
 
 const STAKE_LEAD: Record<ParleyScenario["contest"]["kind"], string> = {

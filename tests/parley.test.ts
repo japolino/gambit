@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { PARLEYS } from "../src/engine/content/parleys.js";
 import { applyExchange, closeParley, createParley, exchangeFaces, parseOffer, replayParley, tierFromQuality } from "../src/engine/parley/exchange.js";
-import { fallbackReply, immersiveRead, narratorPrompt, outcomeBlock, rollLine, tellFor, whyText } from "../src/engine/parley/narrate.js";
+import { amount, fallbackReply, immersiveRead, narratorPrompt, outcomeBlock, rollLine, tellFor, whyText } from "../src/engine/parley/narrate.js";
 import { echoesFact, similarity } from "../src/engine/parley/similarity.js";
 import { detectorState } from "../src/meaning/card-reader.js";
 import type { ParleyState, RefereeRead } from "../src/engine/parley/types.js";
@@ -350,6 +350,14 @@ describe("what a playthrough turned up", () => {
   test("the stand-in reply never reads out the game's numbers", () => {
     const r = applyExchange(vey, createParley(vey, "fixed"), "Plain words here for the gate.", read());
     expect(fallbackReply(vey, r.state, r.exchange)).not.toMatch(/\d|resistance/i);
+  });
+
+  test("one of a card's money is singular", () => {
+    expect(amount(1, "coppers")).toBe("1 copper");
+    expect(amount(1, "pennies")).toBe("1 penny");
+    expect(amount(2, "coppers")).toBe("2 coppers");
+    expect(amount(1, "gold")).toBe("1 gold");
+    expect(amount(1, "glass")).toBe("1 glass");
   });
 
   test("the detector sees how a long reply ends", () => {

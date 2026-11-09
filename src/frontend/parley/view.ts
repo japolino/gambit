@@ -568,7 +568,7 @@ export function mountParley(
       if (e.kind === "won" || e.kind === "deal") endBox.append(el("div", "end-sub", `Yours now: ${c.stake}.`));
       if (e.kind === "deal") {
         const saved = c.start - e.value;
-        endBox.append(el("div", "end-sub", saved > 0 ? `${saved} ${c.unit ?? ""} under the asking price.` : "At the asking price."));
+        endBox.append(el("div", "end-sub", saved > 0 ? `${formatValue(scenario, saved)} under the asking price.` : "At the asking price."));
       }
       const learned = e.kind === "won" ? (scenario.reveals ?? []).map(journalFact).filter((f): f is string => !!f) : [];
       if (learned.length) {
