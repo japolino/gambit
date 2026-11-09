@@ -84,6 +84,26 @@ describe("describing a look (M4.5)", () => {
 });
 
 describe("art keyed by look", () => {
+  test("Inlay draws in the picked look: an Inlay style by its id, another look by its NAI tags, none under the default", async () => {
+    const fake = createFakeHost({ connections: [connection({ id: "nai", provider: "novelai", model: "nai-diffusion-5-full", is_default: true })] });
+    const host = { ...fake.host, rpcPool: { read: async () => ({ novelai: [{ id: "Soft Water", title: "Soft watercolor", prompt: "watercolor (medium), pastel colors", negativePrompt: "lowres" }] }) } };
+    const api = registerArt(host as never, () => {}, { batchMs: 0, sleep: async () => {}, timeoutMs: 0 });
+    const checked = validateLook(GOOD);
+    if (!checked.ok) throw new Error("bad fixture");
+    await api.addLook(checked.look, "user");
+    expect(api.inlayStyle()).toBeNull();
+    api.handle({ type: "style.pick", lookId: "ukiyo-gold" });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(api.inlayStyle()).toEqual({ look: "ukiyo-gold", positive: GOOD.nai.positive, negative: GOOD.nai.negative });
+    api.handle({ type: "style.pick", lookId: "inlay-soft-water" });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(api.inlayStyle()).toEqual({ look: "inlay-soft-water", artist: "Soft Water" });
+    api.handle({ type: "style.pick", lookId: "painted_dark_fantasy" });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(api.inlayStyle()).toBeNull();
+    await api.dispose();
+  });
+
   test("switching to an imported look draws again under a new key and keeps the old art", async () => {
     const fake = createFakeHost({ connections: [connection({ id: "nai", provider: "novelai", model: "nai-diffusion-5-full", is_default: true })] });
     const sent: ToFrontend[] = [];

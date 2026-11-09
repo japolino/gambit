@@ -9,8 +9,13 @@
  * `inlay_illustrator.pictures.<user>` makes Inlay queue them and answers each one's status. Gambit reads again until
  * the picture is ready. Finished pictures are kept per user (`art/inlay-pictures.json`) so a reloaded page gets them
  * again without a new run.
+ *
+ * Under a look picked in the drawer (not the default), a request carries its style: one of Inlay's own art styles by
+ * id, or the look's NovelAI tags. Inlay draws that run in it instead of its own artist; its stored settings stay. Such
+ * a picture is kept and asked for under the look, like Gambit's own art, so another look draws it again.
  */
 import type { SpindleAPI } from "lumiverse-spindle-types";
+import type { InlayStyle } from "../art/look-file.js";
 
 const OWNER = "inlay_illustrator";
 const SEGMENT = /^[a-z0-9][a-z0-9_-]*$/;
@@ -50,6 +55,8 @@ export interface InlayPictureRequest {
   /** A Lumiverse image id: Inlay draws this picture into that one's setting (an infill on it). Older Inlays ignore it. */
   base?: string;
 }
+/** On the wire: the request with the art style of Gambit's picked look (absent under the default look). */
+type WireRequest = InlayPictureRequest & { style?: { artist: string } | { positive: string; negative: string } };
 export interface InlayPicture {
   imageId: string;
   url: string;
@@ -63,11 +70,17 @@ interface InlayStatus {
 
 export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => void) {
   /** Per user: requests not settled yet (what the published endpoint holds). */
-  const pending = new Map<string, Map<string, InlayPictureRequest>>();
+  const pending = new Map<string, Map<string, WireRequest>>();
   /** Per user: the user segment Inlay answered on (the user id, or "owner"). */
   const answered = new Map<string, string>();
   const waits = new Map<string, Promise<InlayPicture | null>>();
   const kept = new Map<string, Record<string, InlayPicture>>();
+  let styleOf: (userId: string) => InlayStyle | null = () => null;
+  /** A picture drawn in a look's style is kept under that look: picking another one draws it again. */
+  const scoped = (userId: string, key: string): { key: string; style: InlayStyle | null } => {
+    const style = styleOf(userId);
+    return { key: style ? `@look:${style.look}|${key}` : key, style };
+  };
 
   async function store(userId: string): Promise<Record<string, InlayPicture>> {
     let s = kept.get(userId);
@@ -130,15 +143,17 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
    * caller draws it itself.
    */
   function request(userId: string, req: InlayPictureRequest): Promise<InlayPicture | null> {
-    const wk = `${userId}\u0000${req.id}`;
+    const { key, style } = scoped(userId, req.id);
+    const wk = `${userId}\u0000${key}`;
     const running = waits.get(wk);
     if (running) return running;
     const wait = (async (): Promise<InlayPicture | null> => {
-      const have = await known(userId, req.id);
+      const have = await known(userId, key);
       if (have) return have;
-      const wire = inlayPictureId(req.id);
-      const mine = pending.get(userId) ?? new Map<string, InlayPictureRequest>();
-      mine.set(wire, { ...req, id: wire });
+      const wire = inlayPictureId(key);
+      const mine = pending.get(userId) ?? new Map<string, WireRequest>();
+      const drawIn = style && ("artist" in style ? { artist: style.artist } : { positive: style.positive, negative: style.negative });
+      mine.set(wire, { ...req, id: wire, ...(drawIn ? { style: drawIn } : {}) });
       pending.set(userId, mine);
       let until = Date.now() + GIVE_UP_MS;
       // Inlay draws one at a time: waiting in its line isn't taking too long, up to a point.
@@ -154,7 +169,7 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
           }
           if (st.status === "ready" && st.imageId) {
             const pic = { imageId: st.imageId, url: st.url || `/api/v1/images/${st.imageId}` };
-            await remember(userId, req.id, pic);
+            await remember(userId, key, pic);
             log(`inlay pictures: ${req.direction} ${req.id} ready`);
             return pic;
           }
@@ -186,15 +201,21 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
     return wait;
   }
 
-  /** Forget a kept picture: the next request asks Inlay again (its person's looks changed). */
-  async function forget(userId: string, key: string): Promise<void> {
+  /** Forget a kept picture (under the current look): the next request asks Inlay again (its person's looks changed). */
+  async function forget(userId: string, bare: string): Promise<void> {
+    const { key } = scoped(userId, bare);
     const s = await store(userId);
     if (!(key in s)) return;
     delete s[key];
     await spindle.userStorage.setJson(STORE, s, { userId }).catch(() => {});
   }
 
-  return { request, known, forget };
+  /** Where the picked look's style comes from (the art pipeline's); none until set. */
+  function useStyle(of: (userId: string) => InlayStyle | null): void {
+    styleOf = of;
+  }
+
+  return { request, known, forget, useStyle };
 }
 
 const shared = new WeakMap<object, ReturnType<typeof createInlayPictures>>();

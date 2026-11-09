@@ -16,7 +16,7 @@ import type { ArtPriority, ArtStatus, ToBackend, ToFrontend } from "../shared/pr
 import { InsetBridge } from "./inset-bridge.js";
 import type { PixelRect } from "./inset-geometry.js";
 import { DEFAULT_LOOK_ID, LOOKS, LOOK_IDS, lookById, normalizeStyleLock, PROBE_SUBJECTS, probeKey, stylePath, type LookPreset, type StyleLock } from "./looks.js";
-import { fileFromLook, lookFromFile, lookFromInlayArtist, validateLook, type InlayArtist, type LookFile, type LookSource } from "./look-file.js";
+import { fileFromLook, lookFromFile, lookFromInlayArtist, validateLook, type InlayArtist, type InlayStyle, type LookFile, type LookSource } from "./look-file.js";
 import { PixelBridge, type PixelItem } from "./pixel-bridge.js";
 import { imageUrl, type PlanContext } from "./plan-kit.js";
 import { plansFor } from "./plans.js";
@@ -39,6 +39,8 @@ interface KnownLook {
   preset: LookPreset;
   file: LookFile;
   source: LookSource;
+  /** Inlay's id of the art style this look is (source "inlay"). */
+  artistId?: string;
 }
 /**
  * Art is keyed by look (5.2a): changing looks keeps the old art and draws
@@ -91,6 +93,8 @@ export interface ArtApi {
   styleLock(userId?: string): StyleLock | null;
   /** The look requests use now (the lock's, else the default). */
   look(userId?: string): LookPreset;
+  /** The style Inlay draws Gambit's pictures in, or null under the default look (Inlay's own style). */
+  inlayStyle(userId?: string): InlayStyle | null;
   /** Re-read the image connections now. */
   refreshProviders(userId?: string): Promise<ProviderSet>;
   /** Drop a finished key so the next request draws it again. */
@@ -232,7 +236,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
         for (const [id, known] of s.looks) if (known.source === "inlay") s.looks.delete(id);
         for (const artist of list) {
           const file = lookFromInlayArtist(artist);
-          if (file && !lookById(file.id)) s.looks.set(file.id, { preset: lookFromFile(file), file, source: "inlay" });
+          if (file && !lookById(file.id)) s.looks.set(file.id, { preset: lookFromFile(file), file, source: "inlay", artistId: artist.id });
         }
         return;
       } catch {
@@ -701,6 +705,14 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     setCampaign,
     styleLock: (userId) => state(userId).lock,
     look: (userId) => currentLook(state(userId)),
+    inlayStyle: (userId) => {
+      const s = state(userId);
+      const look = currentLook(s);
+      // The default look keeps bare art keys (see scopedKey), the same as no look picked.
+      if (look.id === DEFAULT_LOOK_ID) return null;
+      const artist = s.looks.get(look.id)?.artistId;
+      return artist ? { look: look.id, artist } : { look: look.id, positive: look.nai.positive, negative: look.nai.negative };
+    },
     refreshProviders: (userId) => ensureProviders(state(userId), true),
     addLook: (file, source, userId) => addLook(state(userId), file, source),
     lookUi: (userId) => {

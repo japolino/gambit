@@ -28,6 +28,8 @@ const art = registerArt(spindle, send, { gptConcurrency: 2 });
 let play: ReturnType<typeof createPlay> | null = null;
 // Cut-ins of fights in a chat are drawn by Inlay Illustrator when it is there (backend/inlay-pictures.ts).
 const cutinPictures = { inlay: sharedInlayPictures(spindle, (m) => spindle.log.info(`gambit ${m}`)), send: (msg: ToFrontend, userId: string) => send(msg, userId) };
+// Inlay draws in the look picked in the drawer, as Gambit's own art does.
+cutinPictures.inlay.useStyle((userId) => art.inlayStyle(userId));
 const battles = createBattles(
   spindle,
   send,

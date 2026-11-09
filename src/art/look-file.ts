@@ -162,6 +162,12 @@ export function fileFromLook(p: LookPreset, extra: Partial<Pick<LookFile, "autho
   };
 }
 
+/**
+ * The style of a picture Inlay draws for Gambit under a picked look: one of Inlay's own art styles by id, or the
+ * look's NovelAI tags. `look` keys the picture, so another look draws it again.
+ */
+export type InlayStyle = { look: string } & ({ artist: string } | { positive: string; negative: string });
+
 /** One of Inlay's NovelAI art styles (shared as `inlay_illustrator.artists.<user>`) as a look. */
 export interface InlayArtist {
   id: string;
