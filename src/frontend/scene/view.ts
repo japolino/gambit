@@ -704,6 +704,15 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     field.setSelectionRange(field.value.length, field.value.length);
   }
   let wasWriting = false;
+  // A theme has a fight or a talk staged in its room, over the box.
+  let staged = false;
+  // Keys spent on what took the screen (picking skills in a fight) were commands: the box doesn't take the focus back.
+  function onCoveredKey(e: KeyboardEvent): void {
+    const t = e.composedPath()[0] as HTMLElement | null;
+    if ((hidden || staged) && !(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) wasWriting = false;
+  }
+  // In the capture phase: a fight takes its keys there, before anything else on the window sees them.
+  window.addEventListener("keydown", onCoveredKey, true);
   function noteWriting(): void {
     const active = (el.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
     if (!active?.hasAttribute?.("data-write")) return;
@@ -973,7 +982,15 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     encounter(e) {
       if (destroyed || !current?.r.encounter) return false;
       try {
-        return current.r.encounter(e) === true;
+        const ok = current.r.encounter(e) === true;
+        if (e && ok) {
+          staged = true;
+          noteWriting();
+        } else if (!e && staged) {
+          staged = false;
+          backToWriting();
+        }
+        return ok;
       } catch (err) {
         console.warn("[gambit] theme could not stage the encounter", err);
         return false;
@@ -999,6 +1016,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       closeScene();
       closeZoom();
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onCoveredKey, true);
       el.removeEventListener("pointermove", onMove);
       if (raf) cancelAnimationFrame(raf);
       try {
