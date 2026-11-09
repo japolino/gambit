@@ -5,7 +5,8 @@
 import type { SpindleFrontendContext } from "lumiverse-spindle-types";
 import { ENCOUNTERS } from "../../engine/content/index.js";
 import { PARLEYS } from "../../engine/content/parleys.js";
-import type { CardStatus, ModelsPatch, ModelsState, ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
+import type { CardStatus, ModelsPatch, ModelsState, NotesState, ParleyNarrator, ParleyViewMode } from "../../shared/protocol.js";
+import type { NoteId } from "../../meaning/notes.js";
 import { CARD_CSS, renderCard, type CardActions } from "./card-panel.js";
 
 const ICON = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z"/></svg>`;
@@ -15,6 +16,9 @@ const CSS = `
 .gb section { display: grid; gap: 10px; }
 .gb h3 { margin: 0; font: 600 12px/1.2 system-ui; letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
 .gb .row { display: grid; gap: 8px; }
+.gb .note-ed { display: grid; gap: 4px; font-size: 13px; }
+.gb .note-ed textarea { width: 100%; box-sizing: border-box; font: 12px/1.45 ui-monospace, monospace; resize: vertical; }
+.gb .note-ed button { justify-self: start; }
 .gb button { text-align: left; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--lumiverse-border, rgba(127,127,127,.25));
   background: var(--lumiverse-fill-subtle, rgba(127,127,127,.06)); color: inherit; cursor: pointer; font: inherit; }
 .gb button:hover:not(:disabled) { border-color: var(--lumiverse-primary, #c8a26a); }
@@ -88,6 +92,8 @@ export interface Panel {
   setNarrator(mode: ParleyNarrator): void;
   /** Which connection each kind of model call uses (the Models section). */
   setModels(state: ModelsState): void;
+  /** The words Gambit adds to the chat's own generations (the Story notes section). */
+  setNotes(state: NotesState): void;
   /** The active chat's card status (null while asking), and whether a chat is open at all. */
   setCard(status: CardStatus | null, hasChat: boolean): void;
   setVoice(v: VoiceUi): void;
@@ -112,6 +118,7 @@ export function createPanel(
     card: CardActions;
     demo(): void;
     models: { get(): void; set(patch: ModelsPatch): void };
+    notes: { get(): void; set(id: NoteId, text: string | null): void };
   },
 ): Panel {
   const tab = ctx.ui.registerDrawerTab({
@@ -137,6 +144,7 @@ export function createPanel(
       <div class="describe"><textarea data-describe rows="2" maxlength="800" placeholder="Describe a style…"></textarea><button data-describe-go>Create</button></div>
       <div class="looks" data-looks></div></div></details>
     <details data-models-sec><summary>Models</summary><div class="row" data-models><div class="hint">Loading…</div></div></details>
+    <details data-notes-sec><summary>Story notes</summary><div class="row" data-notes><div class="hint">Loading…</div></div></details>
     <details><summary>Demo and test fights</summary><div class="row">
       <button data-demo>Add the Saltgate demo card</button>
       <button class="primary" data-open>Open the Stage</button>
@@ -195,6 +203,27 @@ export function createPanel(
     }`;
     voiceEl.querySelector<HTMLSelectElement>("[data-voice-pick]")!.addEventListener("change", (e) => v.choose((e.target as HTMLSelectElement).value));
     voiceEl.querySelector("[data-voice-test]")?.addEventListener("click", () => v.test());
+  };
+
+  /* ---------------------------- Story notes ---------------------------- */
+  // What Gambit adds to the chat's own generations: each note is a template, saved when it loses focus.
+  const notesEl = root.querySelector<HTMLElement>("[data-notes]")!;
+  root.querySelector("[data-notes-sec]")!.addEventListener("toggle", (e) => {
+    if ((e.target as HTMLDetailsElement).open) actions.notes.get();
+  });
+  const renderNotes = (st: NotesState) => {
+    notesEl.innerHTML = `<div class="hint">Gambit adds these to your chat's own replies, after your preset. Fields: ${esc(st.fields)}.</div>${st.notes
+      .map(
+        (n) => `<label class="note-ed"><span>${esc(n.label)}${n.text ? " (edited)" : ""}</span><textarea data-note="${esc(n.id)}" rows="${Math.min(8, n.default.split("\n").length + 1)}" maxlength="4000">${esc(n.text ?? n.default)}</textarea>${n.text ? `<button data-note-reset="${esc(n.id)}">Back to the default</button>` : ""}</label>`,
+      )
+      .join("")}`;
+    notesEl.querySelectorAll<HTMLTextAreaElement>("[data-note]").forEach((t) =>
+      t.addEventListener("change", () => {
+        const n = st.notes.find((x) => x.id === t.dataset.note)!;
+        actions.notes.set(n.id, t.value.trim() === n.default.trim() ? null : t.value);
+      }),
+    );
+    notesEl.querySelectorAll<HTMLButtonElement>("[data-note-reset]").forEach((b) => b.addEventListener("click", () => actions.notes.set(b.dataset.noteReset as NoteId, null)));
   };
 
   /* ------------------------------ Models ------------------------------- */
@@ -310,6 +339,7 @@ export function createPanel(
     setResumable: (on) => (openBtn.textContent = on ? "Resume the fight" : "Open the Stage"),
     setNarrator: (m) => paintNarrator(m),
     setModels: (st) => renderModels(st),
+    setNotes: (st) => renderNotes(st),
     setCard: (st, hasChat) => renderCard(cardEl, st, hasChat, actions.card),
     setVoice: (v) => renderVoice(v),
     setMusic: (m) => renderMusic(m),

@@ -205,7 +205,7 @@ describe("memory in play", () => {
     await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" }, contest: { stake: "a favor" } } as never, { chatId: "c1", end: { kind: "walked" }, exchanges: [{ read: { tactic: "bluff" }, bluff: { fact: null, caught: true } }] } as never);
     const out = await play.intercept([{ role: "system", content: "preset" }, { role: "user", content: "hi" }] as never, { chatId: "c1", userId: "u", generationType: "normal" } as never);
     expect(out).toHaveLength(3);
-    expect(String(out[1]!.content)).toMatch(/Mara remembers \(feels wary\): .*caught Wren lying/);
+    expect(String(out.at(-1)!.content)).toMatch(/Mara remembers \(feels wary\): .*caught Wren lying/);
   });
 
   test("resting runs the night: a bloodied place is redrawn, and a group you keep hurting adapts with a rumour", async () => {

@@ -208,6 +208,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       get: () => send({ type: "models.get" }),
       set: (patch) => send({ type: "models.set", patch }),
     },
+    notes: {
+      get: () => send({ type: "notes.get" }),
+      set: (id, text) => send({ type: "notes.set", id, text }),
+    },
   });
   panel.setVoice(voiceUi());
   panel.setMusic(musicUi());
@@ -637,6 +641,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         break;
       case "models.state":
         panel.setModels(msg.state);
+        break;
+      case "notes.state":
+        panel.setNotes(msg.state);
         break;
       case "battle.error":
         if (want === "stage") want = null;

@@ -12,6 +12,7 @@ import { createFxAssets } from "./backend/fx-assets.js";
 import { createGate } from "./backend/gate.js";
 import { sharedInlayPictures } from "./backend/inlay-pictures.js";
 import { modelsFor } from "./backend/models.js";
+import { createNotes } from "./backend/notes.js";
 import { createParleys } from "./backend/parleys.js";
 import { createPlay } from "./backend/play.js";
 import type { ToBackend, ToFrontend } from "./shared/protocol.js";
@@ -34,6 +35,7 @@ const battles = createBattles(
   (state, userId) => void play?.onBattleEnd(state, userId).catch((e) => spindle.log.error(`gambit play end: ${String(e)}`)),
 );
 const fxAssets = createFxAssets(spindle, (msg, userId) => send(msg, userId), (m) => spindle.log.warn(`gambit ${m}`));
+const notes = createNotes(spindle);
 const parleys = createParleys(spindle, (msg, userId) => send(msg, userId), art);
 const cards = createCards(spindle, (msg, userId) => send(msg, userId), parleys);
 play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles, { pictures: cutinPictures.inlay });
@@ -62,13 +64,18 @@ spindle.on("GENERATION_ENDED", (p, userId) => {
   // Order matters: the contest detector must see whether this reply was a Parley narration.
   const wasParley = parleys.awaitingIn(p.chatId);
   void parleys.onGenerationEnded(p.chatId, p.content, userId).catch((e) => spindle.log.error(`gambit narration: ${String(e)}`));
-  if (userId && !wasParley && !p.error) {
-    void cards.afterReply(userId, p.chatId, p.messageId, p.generationType).catch((e) => spindle.log.error(`gambit chip: ${String(e)}`));
-  }
+  // An adult scene's reply is read page by page; it never sets up a contest.
+  void play!
+    .onGenerationEnded(p.chatId, p.error ? "" : p.content, p.messageId)
+    .then((wasScene) => {
+      if (userId && !wasParley && !wasScene && !p.error) return cards.afterReply(userId, p.chatId, p.messageId, p.generationType);
+    })
+    .catch((e) => spindle.log.error(`gambit chip: ${String(e)}`));
 });
 // The player pressed stop: an ending too, or a Parley waiting on this reply never gets its input back.
 spindle.on("GENERATION_STOPPED", (p, userId) => {
   void parleys.onGenerationEnded(p.chatId, p.content, userId).catch((e) => spindle.log.error(`gambit narration: ${String(e)}`));
+  void play!.onGenerationEnded(p.chatId, p.content).catch((e) => spindle.log.error(`gambit scene: ${String(e)}`));
 });
 spindle.on("MESSAGE_DELETED", (p, userId) => {
   const x = p as { chatId?: string; messageId?: string };
@@ -134,6 +141,13 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         break;
       case "card.adult":
         await cards.setAdult(userId, msg.chatId, msg.on);
+        break;
+      case "notes.get":
+        send({ type: "notes.state", state: await notes.state(userId) }, userId);
+        break;
+      case "notes.set":
+        await notes.set(userId, msg.id, msg.text);
+        send({ type: "notes.state", state: await notes.state(userId) }, userId);
         break;
       case "models.get":
         send({ type: "models.state", state: await modelsFor(spindle).state(userId) }, userId);

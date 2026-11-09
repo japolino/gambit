@@ -15,6 +15,7 @@
  */
 import { createFigurePrints } from "./figure-prints.js";
 import { sharedInlayPictures } from "./inlay-pictures.js";
+import { withSuffix } from "./suffix.js";
 import type { InterceptorContextDTO, InterceptorResultDTO, LlmMessageDTO, SpindleAPI } from "lumiverse-spindle-types";
 import type { ArtApi } from "../art/controller.js";
 import type { CharacterDNA } from "../art/specs.js";
@@ -543,8 +544,9 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
         if (lastUser >= 0 && typeof out[lastUser]!.content === "string") {
           out[lastUser] = { ...out[lastUser]!, content: `${out[lastUser]!.content as string}\n\n(OOC — game engine note, not part of my line:\n${content})` };
         }
-        out.push({ role: "system", content });
-        return { messages: out, breakdown: [{ messageIndex: out.length - 1, name: "Gambit Parley" }] };
+        const note: LlmMessageDTO = { role: "system", content };
+        const all = withSuffix(out, note);
+        return { messages: all, breakdown: [{ messageIndex: all.indexOf(note), name: "Gambit Parley" }] };
       };
 
       // 1. The latest line already carries a decided exchange: narrate it.

@@ -338,8 +338,8 @@ describe("a night in play", () => {
 
     // The next day's narrator hears about it.
     const out = await play.intercept([{ role: "system", content: "preset" }, { role: "user", content: "hi" }] as never, { chatId: "c1", userId: "u", generationType: "normal" } as never);
-    expect(String(out[1]!.content)).toContain("Last night, while Wren slept");
-    expect(String(out[1]!.content)).toContain("Orla checks the shelf");
+    expect(String(out.at(-1)!.content)).toContain("Last night, while Wren slept");
+    expect(String(out.at(-1)!.content)).toContain("Orla checks the shelf");
   });
 
   test("a Parley's words reach that night and the next day's narrator", async () => {
@@ -349,8 +349,8 @@ describe("a night in play", () => {
     await play.act("u", "c8", "rest");
     expect(asked[0]!.user).toContain("Here, take the ledger back");
     const out = await play.intercept([{ role: "system", content: "preset" }, { role: "user", content: "hi" }] as never, { chatId: "c8", userId: "u", generationType: "normal" } as never);
-    expect(String(out[1]!.content)).toContain("Here, take the ledger back");
-    expect(String(out[1]!.content)).toContain("Hold to what was said");
+    expect(String(out.at(-1)!.content)).toContain("Here, take the ledger back");
+    expect(String(out.at(-1)!.content)).toContain("Hold to what was said");
   });
 
   test("the next night is told about the last one", async () => {

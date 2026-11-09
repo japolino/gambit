@@ -28,7 +28,10 @@ import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
 import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
 import { cleanReply } from "../engine/parley/narrate.js";
-import { afterglowPrompt, parseAfterglow, pictureMoments, type AfterglowBrief } from "../meaning/afterglow.js";
+import { pictureMoments, scenePages } from "../meaning/afterglow.js";
+import { fillNote, noteText } from "../meaning/notes.js";
+import { createNotes } from "./notes.js";
+import { withSuffix } from "./suffix.js";
 import type { InlayPictures } from "./inlay-pictures.js";
 import { dayLines, effectStamp, fallbackNightScenes, meanwhilePrompt, meanwhileText, morningLines, parseNightScenes, type NightBrief, type NightNames, type NightScene, type NightThread } from "../meaning/meanwhile.js";
 import { slug } from "../meaning/card-reader.js";
@@ -123,6 +126,25 @@ const PARLEY_END_TAG: Record<"won" | "final_offer" | "deal" | "walked" | "refuse
 };
 const view = buildSceneView;
 
+/** What an adult scene's line carries in its metadata (`gambit.scene`): enough to write its note again on a swipe. */
+export interface SceneMeta {
+  id: string;
+  partner: string;
+  castId: string | null;
+  won: boolean;
+  /** How they look, for someone the card doesn't have. */
+  look?: string;
+}
+
+const sceneOf = (meta: unknown): SceneMeta | null => {
+  const s = (meta as { gambit?: { scene?: SceneMeta } } | null | undefined)?.gambit?.scene;
+  return s && typeof s.id === "string" && typeof s.partner === "string" ? s : null;
+};
+
+const sceneTitle = (s: SceneMeta) => (s.won ? `Claiming ${s.partner}` : `Claimed by ${s.partner}`);
+
+const errText = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 160);
+
 /** Italics line by line: one pair of asterisks can't span paragraphs or list items in markdown. */
 export function italicLines(text: string): string {
   return text
@@ -146,6 +168,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
   };
   const load = (userId: string, chatId: string) => spindle.userStorage.getJson<PlayRecord | null>(path(chatId), { fallback: null, userId });
+  const notes = createNotes(spindle);
   /** A thread runs against the clock, and every save settles how it stands. */
   function settleThread(r: PlayRecord): void {
     if (!r.thread) return;
@@ -160,15 +183,6 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     settleThread(r);
     return spindle.userStorage.setJson(path(chatId), r, { userId });
   };
-
-  /** A finished adult scene in the chat as it was read: plain prose and its pictures (an aside, no reply). */
-  async function postScene(chatId: string, content: string): Promise<void> {
-    try {
-      await spindle.chat.appendMessage(chatId, { role: "assistant", content, metadata: { gambit: { aside: true, scene: true } } } as never, { triggerGeneration: false });
-    } catch (err) {
-      log(`could not post to ${chatId}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
 
   /** A short narrated line in the chat, without starting the character's reply. */
   async function aside(chatId: string, text: string): Promise<void> {
@@ -1081,70 +1095,70 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
   }
 
   /**
-   * The adult scene a fight offered (opt-in per chat), read like a visual novel: the narrator writes the pages, Inlay
-   * draws up to three of them from the chat's cast and the user's preset, and the whole scene lands in the chat once
-   * its pictures are in. Taken once: the offer is gone when it starts.
+   * The adult scene a fight offered (opt-in per chat). Taken once: the offer goes when it starts. The player's choice is
+   * posted as their line and the chat writes the scene as an ordinary reply, under the user's own preset; the
+   * interceptor adds the scene's note at the prompt's end (intercept), and the finished reply is read page by page
+   * (sceneEnded).
    */
   async function afterglow(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord): Promise<void> {
     const a = r.afterglow;
-    if (!a || !afterglowHere(r) || !cards.compile) return;
+    if (!a || !afterglowHere(r)) return;
     r.afterglow = undefined;
     await save(userId, chatId, r);
     await show(userId, chatId, sheet, r);
-    const m = a.castId ? withPromoted(sheet, r).cast.find((c) => c.id === a.castId) : undefined;
-    const persona = await spindle.personas.getActive(userId).catch(() => null);
-    const p = r.world.places[r.scene.placeId];
-    const brief: AfterglowBrief = {
-      player: { name: sheet.player.name, persona: persona?.description ?? sheet.player.concept },
-      partner: { name: a.name, role: m?.role ?? "", look: m?.look || a.look, ...(m?.voice ? { voice: m.voice } : {}), ...(m?.wants?.length ? { wants: m.wants } : {}) },
-      won: a.won,
-      claimed: sheet.skin.defeat === "claimed",
-      place: { name: p?.name ?? "here", description: p?.description ?? "", time: TIMES[r.scene.time] ?? "" },
-      before: (r.story ?? []).slice(-3).flatMap((b) => [b.said, b.roll ?? "", b.reply].filter(Boolean)),
-    };
-    send({ type: "scene.afterglow", chatId, title: "", pages: null }, userId);
-    const res = await cards.compile(userId, "afterglow", afterglowPrompt(sheet, brief), 4000, parseAfterglow, () => null, { tries: 2 }).catch((err: unknown) => (log(`afterglow: ${String(err).slice(0, 160)}`), null));
-    const scene = res?.value ?? null;
-    if (!scene) {
+    const meta: SceneMeta = { id: `${a.day}.${Date.now().toString(36)}`, partner: a.name, castId: a.castId, won: a.won, ...(a.castId ? {} : { look: a.look }) };
+    const line = fillNote(noteText(a.won ? "scene.win.line" : "scene.loss.line", await notes.edits(userId)), { player: sheet.player.name, partner: a.name });
+    send({ type: "scene.afterglow", chatId, title: sceneTitle(meta), pages: null }, userId);
+    try {
+      await spindle.chat.appendMessage(chatId, { role: "user", content: line, metadata: { gambit: { scene: meta } } } as never, { triggerGeneration: true });
+    } catch (err) {
+      log(`scene: ${errText(err)}`);
       send({ type: "scene.afterglow", chatId, title: "", pages: [] }, userId);
-      return send({ type: "notice", level: "warn", text: "The scene could not be written. Your narrator connection may have refused it." }, userId);
     }
-    const title = scene.title || (a.won ? `${a.name}, claimed` : `Claimed by ${a.name}`);
-    const h = [...`${chatId}|${a.day}|${a.name}`].reduce((x, ch) => Math.imul(x ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
-    const moments = pictureMoments(scene).map((mo, i) => ({ ...mo, key: `afterglow:${tag(sheet.cardKey)}.${h.toString(36)}.${i}` }));
-    const keyAt = new Map(moments.map((mo) => [mo.page, mo.key]));
-    send({ type: "scene.afterglow", chatId, title, pages: scene.pages.map((pg, i) => ({ text: pg.text, ...(keyAt.has(i) ? { cg: keyAt.get(i)! } : {}) })) }, userId);
-
-    // Remembered, and part of the story the narrator holds to.
-    const fresh = (await load(userId, chatId)) ?? r;
-    if (a.castId) {
-      const n = (mem(fresh).npc[a.castId] ??= { notes: [], affinity: 0 });
-      n.notes = [...n.notes, { day: fresh.scene.day, text: a.won ? `Was claimed by you after a fight` : `Claimed you after a fight`, tone: 1 as const }].slice(-8);
-      n.affinity = Math.min(10, n.affinity + 1);
-    }
-    const last = scene.pages[scene.pages.length - 1]!.text;
-    fresh.story = [...(fresh.story ?? []), { said: "", roll: title, reply: last, day: fresh.scene.day, where: fresh.scene.placeId }].slice(-40);
-    await save(userId, chatId, fresh);
-
-    // Inlay draws each moment over the chat's cast (a moment it can't draw stays words only); the scene lands in the
-    // chat once they are in. In the background: the scene stays playable meanwhile.
-    void sceneToChat(userId, chatId, title, scene.pages, moments).catch((err: unknown) => log(`afterglow: ${String(err).slice(0, 160)}`));
   }
 
-  async function sceneToChat(userId: string, chatId: string, title: string, pages: { text: string }[], moments: { page: number; text: string; key: string }[]): Promise<void> {
-    const drawn = await Promise.all(
-      moments.map(async (mo) => {
-        const pic = pictures ? await pictures.request(userId, { id: mo.key, chatId, direction: "intimate", text: mo.text.slice(0, 1900) }).catch(() => null) : null;
-        if (pic) send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
-        return pic;
-      }),
-    );
-    const at = new Map(moments.map((mo, i) => [mo.page, drawn[i]]));
-    const body = pages.map((pg, i) => {
-      const pic = at.get(i);
-      return pic ? `${pg.text}\n\n![${title.replace(/[[\]]/g, " ")}](${pic.url})` : pg.text;
-    });
-    await postScene(chatId, `**${title}**\n\n${body.join("\n\n")}`);
+  /** Chats whose running generation is an adult scene, and the scene it is. */
+  const scenesWriting = new Map<string, { userId: string; meta: SceneMeta }>();
+
+  /**
+   * An adult scene's reply is in (or was stopped): read it page by page, remember it once, and have Inlay draw its
+   * moments. The pictures go into the chat after the reply, never into it: the reply stays as the model wrote it.
+   */
+  async function sceneEnded(chatId: string, content: string, messageId: string | undefined): Promise<void> {
+    const s = scenesWriting.get(chatId);
+    if (!s) return;
+    scenesWriting.delete(chatId);
+    const { userId, meta } = s;
+    const pages = scenePages(content);
+    const title = sceneTitle(meta);
+    if (!pages.length) return send({ type: "scene.afterglow", chatId, title, pages: [] }, userId);
+    const sheet = await cards.sheetFor(userId, chatId);
+    const r = await load(userId, chatId);
+    const h = [...`${messageId ?? ""}|${content.length}|${content.slice(-40)}`].reduce((x, ch) => Math.imul(x ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
+    const moments = pictureMoments(pages).map((mo, i) => ({ ...mo, key: `scene:${sheet ? tag(sheet.cardKey) : "x"}.${h.toString(36)}.${i}` }));
+    const keyAt = new Map(moments.map((mo) => [mo.page, mo.key]));
+    send({ type: "scene.afterglow", chatId, title, pages: pages.map((pg, i) => ({ text: pg.text, ...(keyAt.has(i) ? { cg: keyAt.get(i)! } : {}) })) }, userId);
+    // Remembered once per scene: a swipe rewrites it, it doesn't happen twice.
+    if (r && !(r.story ?? []).some((b) => b.scene === meta.id)) {
+      if (meta.castId) {
+        const n = (mem(r).npc[meta.castId] ??= { notes: [], affinity: 0 });
+        n.notes = [...n.notes, { day: r.scene.day, text: meta.won ? "Was claimed by you after a fight" : "Claimed you after a fight", tone: 1 as const }].slice(-8);
+        n.affinity = Math.min(10, n.affinity + 1);
+      }
+      r.story = [...(r.story ?? []), { said: "", roll: title, reply: pages[pages.length - 1]!.text, day: r.scene.day, where: r.scene.placeId, scene: meta.id }].slice(-40);
+      await save(userId, chatId, r);
+    }
+    if (!pictures) return;
+    for (const [i, mo] of moments.entries()) {
+      void pictures
+        .request(userId, { id: mo.key, chatId, direction: "intimate", text: mo.text.slice(0, 1900) })
+        .then(async (pic) => {
+          if (!pic) return;
+          send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
+          await picture(chatId, pic.imageId, `${title} (${i + 1}/${moments.length})`);
+        })
+        .catch((err: unknown) => log(`scene picture: ${errText(err)}`));
+    }
   }
 
   /** The page's account of how a fight went, written once it's over. Until then, and if nothing can write, the result line stands. */
@@ -1744,8 +1758,20 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
     },
 
     /** Prompt pipeline: what people here remember goes in as a background note before the reply. */
-    async intercept(messages: LlmMessageDTO[], ctx: InterceptorContextDTO): Promise<LlmMessageDTO[]> {
-      if (ctx.generationType === "quiet" || ctx.generationType === "impersonate" || ctx.isDryRun || !ctx.chatId) return messages;
+    async intercept(given: LlmMessageDTO[], ctx: InterceptorContextDTO): Promise<LlmMessageDTO[]> {
+      if (ctx.generationType === "quiet" || ctx.generationType === "impersonate" || ctx.isDryRun || !ctx.chatId) return given;
+      let messages = given;
+      // An adult scene's line (its first reply or a swipe): its note goes at the prompt's very end.
+      const turn = [...messages].reverse().find((m) => m.role === "user" && (m.__isChatHistory || m.sourceMessageId));
+      const scene = sceneOf(turn?.sourceMessageMetadata);
+      if (scene) {
+        const sheet = await cards.sheetFor(ctx.userId, ctx.chatId).catch(() => null);
+        const kind = scene.won ? "scene.win.note" : "scene.loss.note";
+        const note = fillNote(noteText(kind, await notes.edits(ctx.userId)), { player: sheet?.player.name ?? "", partner: scene.partner, ...(scene.look ? { look: scene.look } : {}) });
+        messages = withSuffix(messages, { role: "system", content: note } as LlmMessageDTO);
+        scenesWriting.set(ctx.chatId, { userId: ctx.userId, meta: scene });
+        send({ type: "scene.afterglow", chatId: ctx.chatId, title: sceneTitle(scene), pages: null }, ctx.userId);
+      }
       const r = await load(ctx.userId, ctx.chatId).catch(() => null);
       if (!r?.memory) return messages;
       const sheet = await cards.sheetFor(ctx.userId, ctx.chatId).catch(() => null);
@@ -1756,12 +1782,14 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const recalled = sheet && query ? await senses.recall(ctx.userId, query, recallPool(sheet, r), ms).catch(() => []) : [];
       const text = sheet ? memoryNote(sheet, r, recalled) : null;
       if (!text) return messages;
-      let at = messages.length;
-      for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.role === "user") {
-        at = i;
-        break;
-      }
-      return [...messages.slice(0, at), { role: "system", content: text } as LlmMessageDTO, ...messages.slice(at)];
+      return withSuffix(messages, { role: "system", content: text } as LlmMessageDTO);
+    },
+
+    /** A generation in a chat ended or was stopped: an adult scene's reply is read page by page. True when it was one. */
+    async onGenerationEnded(chatId: string, content: string | undefined, messageId?: string): Promise<boolean> {
+      if (!scenesWriting.has(chatId)) return false;
+      await sceneEnded(chatId, content ?? "", messageId);
+      return true;
     },
 
     /** Where the scene is, for the reply detector's "where" question (null when there is no open scene to move). */

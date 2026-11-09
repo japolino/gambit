@@ -1,24 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import { italicLines } from "../src/backend/play.js";
-import { parseAfterglow, pictureMoments } from "../src/meaning/afterglow.js";
+import { withSuffix } from "../src/backend/suffix.js";
+import { pictureMoments, scenePages } from "../src/meaning/afterglow.js";
+import { fillNote, noteText } from "../src/meaning/notes.js";
+
+const para = (i: number) => `Paragraph ${i} ${"word ".repeat(30).trim()}.`;
 
 describe("the adult scene after a fight", () => {
-  test("pages are held to at most three pictures, and each picture is drawn from the pages since the last one", () => {
-    const pages = Array.from({ length: 9 }, (_, i) => ({ text: `p${i}`, picture: i % 2 === 1 }));
-    const scene = parseAfterglow({ title: "After", pages })!;
-    expect(scene.pages.filter((p) => p.picture)).toHaveLength(3);
-    expect(pictureMoments(scene)).toEqual([
-      { page: 1, text: "p0\n\np1" },
-      { page: 3, text: "p2\n\np3" },
-      { page: 5, text: "p4\n\np5" },
-    ]);
+  test("a reply becomes pages, short paragraphs joined, with pictures at the ends of its thirds", () => {
+    const reply = [para(1), "A short line.", para(2), para(3), para(4), para(5), para(6)].join("\n\n");
+    const pages = scenePages(reply);
+    expect(pages).toHaveLength(6);
+    expect(pages[1]!.text.startsWith("A short line. Paragraph 2")).toBe(true);
+    expect(pages.map((p) => p.picture)).toEqual([false, true, false, true, false, true]);
+    expect(pictureMoments(pages).map((m) => m.page)).toEqual([1, 3, 5]);
+    expect(pictureMoments(pages)[0]!.text).toBe(`${pages[0]!.text}\n\n${pages[1]!.text}`);
   });
 
-  test("a scene too short is no scene; one with no picture marked gets one early", () => {
-    expect(parseAfterglow({ pages: [{ text: "a" }, { text: "b" }] })).toBeNull();
-    const scene = parseAfterglow({ pages: ["a", "b", "c", "d"].map((text) => ({ text })) })!;
-    expect(scene.pages.map((p) => p.picture)).toEqual([false, true, false, false]);
+  test("a short reply gets one picture, at its end", () => {
+    expect(scenePages("Just this.").map((p) => p.picture)).toEqual([true]);
   });
+
+  test("the notes are templates: the user's edit wins, and a line for a missing look goes", () => {
+    const def = fillNote(noteText("scene.win.note", {}), { player: "Tobin", partner: "Rook" });
+    expect(def).toContain("Tobin won the fight against Rook");
+    expect(def).not.toContain("{{");
+    expect(def).not.toContain("looks like this");
+    expect(fillNote(noteText("scene.loss.line", { "scene.loss.line": "*{{partner}} pins {{player}}.*" }), { player: "Tobin", partner: "Rook" })).toBe("*Rook pins Tobin.*");
+    expect(fillNote("{{look}}", { player: "", partner: "a wolf girl", look: "grey fur" })).toBe("a wolf girl looks like this: grey fur.");
+  });
+});
+
+test("Gambit's notes go at the prompt's very end, before a preset's prefill", () => {
+  const note = { role: "system" as const, content: "note" };
+  expect(withSuffix([{ role: "user", content: "hi" }], note).at(-1)).toBe(note);
+  const out = withSuffix([{ role: "user", content: "hi" }, { role: "assistant", content: "Sure,", partial: true } as never], note);
+  expect(out.map((m) => m.content)).toEqual(["hi", "note", "Sure,"]);
 });
 
 test("an aside is italic line by line, so lists and paragraphs keep their asterisks paired", () => {

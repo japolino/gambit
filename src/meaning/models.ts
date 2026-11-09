@@ -68,7 +68,6 @@ const KIND_ROLE: Record<string, ModelRole> = {
   forge: "reader",
   awaken: "reader",
   meanwhile: "narrator",
-  afterglow: "narrator",
   "night-plain": "helper",
   promote: "narrator",
   "board-scene": "narrator",

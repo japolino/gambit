@@ -33,6 +33,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
   const card = { ...sheet, ...o.sheet };
   const files = new Map<string, unknown>();
   const posted: string[] = [];
+  const messages: { content: string; metadata?: Record<string, unknown> }[] = [];
   const sent: ToFrontend[] = [];
   const started: BattleState[] = [];
   const known: string[] = [];
@@ -43,7 +44,12 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
       getJson: async (p: string, o: { fallback: unknown }) => (files.has(p) ? structuredClone(files.get(p)) : o.fallback),
       setJson: async (p: string, v: unknown) => void files.set(p, structuredClone(v)),
     },
-    chat: { appendMessage: async (_chatId: string, m: { content: string }) => void posted.push(m.content) },
+    chat: {
+      appendMessage: async (_chatId: string, m: { content: string; metadata?: Record<string, unknown> }) => {
+        posted.push(m.content);
+        messages.push(m);
+      },
+    },
     personas: { getActive: async () => ({ description: "A wiry courier." }) },
   };
   const art = { request: () => ({ key: "", state: "queued" }), status: () => null, expect: () => {}, adopt: () => {}, whenDone: () => new Promise(() => {}) };
@@ -71,7 +77,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
   const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, battles);
   const views = () => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : []));
   const last = (): SceneView => views()[views().length - 1]!;
-  return { play, files, posted, sent, started, known, talks, last, fights, reshown };
+  return { play, files, posted, messages, sent, started, known, talks, last, fights, reshown };
 }
 
 /** End a started battle the way the engine would, with the given outcome. */
@@ -349,23 +355,38 @@ describe("play on a card", () => {
     expect(last().place.id).toBe("tavern");
   });
 
-  test("with adult scenes on, a fight offers one; it reads page by page and lands in the chat", async () => {
-    const pages = Array.from({ length: 8 }, (_, i) => ({ text: `Page ${i + 1} of the scene.`, picture: i === 1 || i === 5 }));
-    const compile = async (_u: string, kind: string, _p: unknown, _m: number, parse: (raw: Record<string, unknown>) => unknown) => ({ value: kind === "afterglow" ? parse({ title: "After", pages }) : null });
-    const { play, started, last, sent, posted } = setup({ cards: { adultOn: async () => true, compile } });
+  test("with adult scenes on, a fight offers one: the chat writes it under its own preset, with Gambit's note at the end", async () => {
+    const { play, started, last, sent, messages, files } = setup({ cards: { adultOn: async () => true } });
     await play.open("u", "chat1");
     await play.fight("u", "chat1");
     await play.onBattleEnd(ended(started[0]!, "victory"), "u");
-    const offer = last().menu.find((h) => h.id === "afterglow");
-    expect(offer?.label).toMatch(/^Claim /);
+    const offer = last().menu.find((h) => h.id === "afterglow")!;
+    expect(offer.label).toMatch(/^Claim /);
     await play.act("u", "chat1", "afterglow");
-    const shown = sent.filter((m) => m.type === "scene.afterglow").at(-1) as Extract<ToFrontend, { type: "scene.afterglow" }>;
-    expect(shown.title).toBe("After");
-    expect(shown.pages).toHaveLength(8);
-    expect(shown.pages!.filter((p) => p.cg)).toHaveLength(2);
-    expect(posted.at(-1)).toContain("Page 8 of the scene.");
-    // Taken once.
     expect(last().menu.some((h) => h.id === "afterglow")).toBe(false);
+    const line = messages.at(-1)!;
+    expect(line.content).toMatch(/^\*Wren claims .+\.\*$/);
+    // The chat's generation: the note goes last, before the preset's prefill, and nothing before it changes.
+    const prompt = [
+      { role: "system", content: "preset" },
+      { role: "user", content: line.content, __isChatHistory: true, sourceMessageId: "m1", sourceMessageMetadata: line.metadata },
+      { role: "assistant", content: "Mm,", partial: true },
+    ];
+    const out = await play.intercept(prompt as never, { userId: "u", chatId: "chat1", generationType: "normal" } as never);
+    expect(out.slice(0, 2)).toEqual(prompt.slice(0, 2) as never);
+    expect(String(out.at(-2)!.content)).toContain("won the fight");
+    expect(out.at(-1)!.content).toBe("Mm,");
+    const reply = Array.from({ length: 6 }, (_, i) => `Page ${i + 1}. ${"word ".repeat(30).trim()}.`).join("\n\n");
+    expect(await play.onGenerationEnded("chat1", reply, "m2")).toBe(true);
+    const shown = sent.filter((m) => m.type === "scene.afterglow").at(-1) as Extract<ToFrontend, { type: "scene.afterglow" }>;
+    expect(shown.pages).toHaveLength(6);
+    expect(shown.pages!.filter((p) => p.cg)).toHaveLength(3);
+    // A swipe rewrites the scene; it is remembered once.
+    await play.intercept(prompt as never, { userId: "u", chatId: "chat1", generationType: "swipe" } as never);
+    await play.onGenerationEnded("chat1", reply, "m2");
+    const story = (files.get("play/chat1.json") as { story: { scene?: string }[] }).story;
+    expect(story.filter((b) => b.scene)).toHaveLength(1);
+    expect(await play.onGenerationEnded("chat1", reply, "m2")).toBe(false);
   });
 
   test("a Parley's end is on the page when you come back, and the scene is refreshed", async () => {

@@ -9,6 +9,7 @@ import type { Action, BattleEvent, BattleState } from "../engine/types.js";
 import type { Exchange, ParleyScenario, ParleyState, SocialStat } from "../engine/parley/types.js";
 import type { CardSheet, ContestChip, ModuleId, Tier } from "../engine/card/types.js";
 import type { DelveMove } from "../engine/world/delve.js";
+import type { NoteId } from "../meaning/notes.js";
 import type { SceneView, ThemeId } from "./scene-view.js";
 import type { ForgeOp, ForgeView } from "./forge-view.js";
 import type { FxManifest } from "./fx.js";
@@ -33,6 +34,15 @@ export interface CardStatus {
   /** Adult scenes after fights are on (opt-in, off by default). */
   adult: boolean;
   error?: string;
+}
+
+/* ---------------------------- story notes ---------------------------- */
+
+/** The notes Gambit adds to the chat's own generations, with the user's edits (meaning/notes.ts). */
+export interface NotesState {
+  /** The fields a note can use, in words. */
+  fields: string;
+  notes: { id: NoteId; label: string; default: string; /** The user's edit, when there is one. */ text?: string }[];
 }
 
 /* ---------------------------- models -------------------------------- */
@@ -177,6 +187,9 @@ export type ToBackend =
   | { type: "card.talk"; chatId: string; castId: string; kind?: ContestChip["kind"]; chipId?: string }
   | { type: "card.chips"; chatId: string; on: boolean }
   | { type: "card.adult"; chatId: string; on: boolean }
+  // story notes: the words Gambit adds to the chat's generations, editable
+  | { type: "notes.get" }
+  | { type: "notes.set"; id: NoteId; text: string | null }
   | { type: "card.demo" }
   // models: which connection each kind of call uses
   | { type: "models.get" }
@@ -258,6 +271,7 @@ export type ToFrontend =
   | { type: "card.starting"; chatId: string; castName: string }
   // models
   | { type: "models.state"; state: ModelsState }
+  | { type: "notes.state"; state: NotesState }
   // art
   | { type: "scene.state"; view: SceneView }
   /** A beat's reply as it is written, until the next scene.state carries it. */

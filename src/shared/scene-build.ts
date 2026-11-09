@@ -62,7 +62,7 @@ export interface PlayRecord {
   theme: ThemeId;
   log: string[];
   /** Lines written in the scene, and what came of them. */
-  story?: { said: string; roll: string | null; reply: string; found?: string | null; day?: number; where?: string }[];
+  story?: { said: string; roll: string | null; reply: string; found?: string | null; day?: number; where?: string; /** The adult scene this beat is (play.ts SceneMeta id). */ scene?: string }[];
   /** How far the clock has run toward the next step of the day (engine/story/beat.ts). */
   spent?: number;
   /** The last day of the thread, and how it came out. */
