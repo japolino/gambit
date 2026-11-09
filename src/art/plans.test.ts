@@ -62,7 +62,7 @@ describe("route order", () => {
     expect(labels({ kind: "portrait", character: HERO }, anchored)).toEqual(["gpt:gpt-anchored", "gpt:gpt", "nai:nai-v5"]);
     expect(plansFor(anchored, "k", { kind: "background", location: { id: "l", name: "Market", description: "stalls" } }, 1)[0]!.descriptor.refs).toEqual(["gate"]);
     expect(labels({ kind: "portrait", character: HERO, parents: [{ imageId: "p1" }, { imageId: "p2" }] }, anchored)[0]).toBe("gpt:gpt-fusion");
-    expect(labels({ kind: "monster_phase2", monster: monsterBrief({ id: "w", name: "W", visual: { brief: "wolf", palette: "", rig: "standing" } }), phase1: { imageId: "p1" }, change: "burning" }, anchored)[0]).toBe("gpt:gpt-edit-phase1");
+    expect(labels({ kind: "monster_phase2", monster: monsterBrief({ id: "w", name: "W", talks: false, visual: { brief: "wolf", palette: "", rig: "standing" } }), phase1: { imageId: "p1" }, change: "burning" }, anchored)[0]).toBe("gpt:gpt-edit-phase1");
     expect(labels({ kind: "icon_sheet", icons: [{ key: "i1", brief: "a potion" }] }, ctx({ nai: NAI, nai45: null, gpt: null }))).toEqual([]);
   });
 });
@@ -134,6 +134,17 @@ describe("prompts", () => {
     expect(b.gpt.prompt).toContain("transparent background");
     expect(b.gpt.prompt).toContain("No text");
     expect(b.nai).toMatchObject({ width: 1024, height: 1024 });
+  });
+
+  test("a foe who is a person is drawn as one; a creature stays a creature", () => {
+    const foe = (brief: string, talks: boolean) => buildPrompt({ kind: "monster", monster: monsterBrief({ id: "f", name: "Foe", talks, visual: { brief, palette: "", rig: "standing" } }) }, LOOKS.modern_anime, { naiAlpha: true });
+    const knight = foe("A proud noblewoman encased in polished silver plate armor", true);
+    expect(knight.nai.prompt).toStartWith("1girl, solo");
+    expect(knight.nai.prompt).not.toContain("no humans");
+    expect(knight.nai.negative).not.toContain("1girl");
+    expect(foe("guild thief with twin daggers and a hooded cloak", true).nai.prompt).toStartWith("1other, solo");
+    expect(foe("a talking dragon with emerald scales", true).nai.prompt).toStartWith("no humans, solo, monster, creature");
+    expect(foe("bloated drowned dockhand, barnacles on grey skin", false).nai.prompt).toStartWith("no humans");
   });
 
   test("older NAI models get a white background instead", () => {

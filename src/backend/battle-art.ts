@@ -6,7 +6,7 @@
  */
 import type { ArtApi } from "../art/controller.js";
 import { cutinAction } from "../art/directions.js";
-import { dnaFromClass, monsterBrief, type CharacterDNA, type MonsterBrief } from "../art/specs.js";
+import { dnaFromClass, monsterBrief, type CharacterDNA } from "../art/specs.js";
 import { CLASSES, MONSTERS } from "../engine/content/index.js";
 import type { BattleState, Combatant, SkillDef } from "../engine/types.js";
 import { actionArtKey, cutinArtKey, isFigureArtKey } from "../shared/art-keys.js";
@@ -73,7 +73,7 @@ export function requestBattleArt(art: ArtApi, state: BattleState, userId: string
         const into = def.phase2?.into;
         if (into) {
           const key = `monster:${into.id}`;
-          const brief: MonsterBrief = { id: into.id, name: into.name, brief: into.visual.brief, palette: into.visual.palette, rig: into.visual.rig };
+          const brief = monsterBrief(into);
           void art.whenDone(c.art, userId).then((first) => {
             if (first.state === "ready" && first.imageId) {
               art.request(key, { kind: "monster_phase2", monster: brief, phase1: { imageId: first.imageId }, change: into.visual.brief }, 1, userId);

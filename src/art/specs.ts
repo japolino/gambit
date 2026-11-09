@@ -61,6 +61,8 @@ export interface MonsterBrief {
   brief: string;
   palette: string;
   rig: RigKind;
+  /** A person (a knight, a priestess), drawn as one; absent for a creature. */
+  person?: CharacterDNA["sex"];
 }
 
 export interface LocationBrief {
@@ -114,14 +116,30 @@ export const ICONS_PER_SHEET = 16;
 /* From engine definitions                                              */
 /* ------------------------------------------------------------------ */
 
-export function monsterBrief(def: Pick<MonsterDef, "id" | "name" | "visual">): MonsterBrief {
-  return { id: def.id, name: def.name, brief: def.visual.brief, palette: def.visual.palette, rig: def.visual.rig };
+const WOMAN = /\b(girls?|wom[ae]n|lady|ladies|maidens?|princess|queen|empress|duchess|priestess|nuns?|witch|sorceress|enchantress|huntress|heroine|noblewoman|mistress|matron|sisters?|daughters?|wife|female|waitress|succubus)\b/i;
+const MAN = /\b(boys?|m[ae]n(?!-)|gentleman|lord|prince|king|emperor|duke|priest|monk|wizard|sorcerer|nobleman|brothers?|sons?|husband|male|incubus)\b/i;
+const CREATURE = /\b(creature|beast|monster|animal|dragon|drake|wyrm|wyvern|wolf|wolves|hound|dog|cat|bear|boar|serpent|snake|spider|insect|moth|bat|rat|bird|fish|shark|slime|ooze|blob|golem|elemental|construct|drone|robot|mech|machine|automaton|ghost|wisp|shade|spirit|undead|zombie|skeleton|horror|abomination|swarm|plant|tree|treant|tentacles?)\b/i;
+
+/**
+ * Whether a foe is a person (and which) or a creature: a noun for a woman or a man makes a person, a creature's noun a
+ * creature; otherwise someone who talks is a person and something that doesn't is a creature.
+ */
+export function foePerson(brief: string, talks: boolean): CharacterDNA["sex"] | undefined {
+  if (WOMAN.test(brief)) return "girl";
+  if (MAN.test(brief)) return "boy";
+  if (CREATURE.test(brief) || !talks) return undefined;
+  return /\b(she|her)\b/i.test(brief) ? "girl" : /\b(he|his|him)\b/i.test(brief) ? "boy" : "other";
+}
+
+export function monsterBrief(def: Pick<MonsterDef, "id" | "name" | "visual" | "talks">): MonsterBrief {
+  const person = foePerson(def.visual.brief, def.talks);
+  return { id: def.id, name: def.name, brief: def.visual.brief, palette: def.visual.palette, rig: def.visual.rig, ...(person ? { person } : {}) };
 }
 
 /** Phase 2 brief of a monster (its `phase2.into.visual`), or null. */
 export function monsterPhase2Brief(def: Pick<MonsterDef, "id" | "name" | "phase2">): MonsterBrief | null {
   const into = def.phase2?.into;
-  return into ? { id: `${def.id}:phase2`, name: into.name || def.name, brief: into.visual.brief, palette: into.visual.palette, rig: into.visual.rig } : null;
+  return into ? { ...monsterBrief(into), id: `${def.id}:phase2`, name: into.name || def.name } : null;
 }
 
 /**
@@ -427,12 +445,15 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
     case "monster_phase2": {
       const m = spec.monster;
       const change = spec.kind === "monster_phase2" ? spec.change : "";
-      const prompt = join("no humans, solo, monster, creature", style, m.brief, change, RIG_TAGS[m.rig], "centered", naiPaletteTags(m.palette), bg.pos);
-      const negative = baseNeg(join("human, 1girl, 1boy, scenery, multiple views, cropped, out of frame, border"));
+      const who = m.person ? "character" : "creature";
+      const prompt = join(m.person ? `${countTag(m.person)}, solo` : "no humans, solo, monster, creature", style, m.brief, change, RIG_TAGS[m.rig], "centered", naiPaletteTags(m.palette), bg.pos);
+      const negative = baseNeg(join(m.person ? "multiple people" : "human, 1girl, 1boy", "scenery, multiple views, cropped, out of frame, border"));
       const subject =
         spec.kind === "monster_phase2"
-          ? `Transform the creature in the reference image into its second phase: ${spec.change}. It must stay recognisably the same creature: silhouette, colours and key features carry over. ${m.name}: ${m.brief}.`
-          : `A fantasy creature, ${m.name}: ${m.brief}.`;
+          ? `Transform the ${who} in the reference image into its second phase: ${spec.change}. It must stay recognisably the same ${who}: silhouette, colours and key features carry over. ${m.name}: ${m.brief}.`
+          : m.person
+            ? `A fantasy character, ${m.name}, one person alone: ${m.brief}.`
+            : `A fantasy creature, ${m.name}: ${m.brief}.`;
       return out(prompt, negative, [], sentences(subject, RIG_TEXT[m.rig], gptPaletteSentence(m.palette), gptTail));
     }
     case "background":

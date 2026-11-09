@@ -450,7 +450,7 @@ The lock above is the 0.1 shape, not the goal. The goal is the same idea as Cue'
 | Expressions (6 per character), poses, cut-in poses | **NAI V5 "reference inset"** (Cue's technique): an inpainting request on a split canvas, with the canonical render kept on the left half and the new expression or pose painted on the right | V5 has no character reference, but inpainting next to the original copies identity *and* style. Already built and calibrated in Cue | Inset (inpainting) |
 | Same, second route | **GPT Image edits** with the canonical portrait as reference, `input_fidelity: high`, transparent background | For painted or real looks, or when the inset drifts | Reference image |
 | Same, third route | NAI v4.5 with precise reference | Last fallback for anime looks | Director reference |
-| Monsters and bosses | NAI v5, transparent background (native alpha on V5) | Large, detailed, striking single images | One image per monster |
+| Monsters and bosses | NAI v5, transparent background (native alpha on V5). A foe who is a person (a noun for a woman or a man in its brief, or one who talks and isn't named as a creature) is drawn as one person; only creatures get the creature tags and `no humans` | Large, detailed, striking single images | One image per monster |
 | Boss phase 2 or corrupted variants | GPT Image edit of phase 1 | Recognizably the same creature, transformed | Reference image |
 | Location backgrounds | NAI v5 or GPT, wide format | One per location, reused | Style anchor |
 | Scarred or changed locations | **GPT Image edit of the original background** | You recognize the place you changed | Reference image |
