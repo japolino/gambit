@@ -25,7 +25,7 @@
 import { BOARD_SKINS } from "../board-skins.js";
 import { esc, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import { drawCorridor } from "./command/corridor.js";
-import { canvas, coverDraw, cursorUrl, ditherToPalette, frameSvg, loadImage, PALETTE_LABEL, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "./command/pixels.js";
+import { canvas, coverDraw, cursorUrl, frameSvg, loadImage, mangaToPalette, PALETTE_LABEL, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "./command/pixels.js";
 import { diskBoxSvg, driveSvg, drawRoom, floppySvg, lampSvg, monitorSvg, refCardSvg } from "./command/props.js";
 import { commandCss } from "./command/style.js";
 import { beatsHtml, canWrite, isWriting, wireWrite, writeFormHtml } from "./write.js";
@@ -316,13 +316,12 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     return pic(`place|${url}|${w}x${h}|${pal}`, async () => {
       const im = await loadImage(url);
       const reg = await registerFor(url);
+      const big = canvas(w * 3, h * 3);
+      const bg = big.getContext("2d", { willReadFrequently: true })!;
+      bg.imageSmoothingQuality = "high";
+      coverDraw(bg, im, im.naturalWidth, im.naturalHeight, w * 3, h * 3, 0.5, 0.55);
       const c = canvas(w, h);
-      const g = c.getContext("2d", { willReadFrequently: true })!;
-      g.imageSmoothingQuality = "high";
-      coverDraw(g, im, im.naturalWidth, im.naturalHeight, w, h, 0.5, 0.55);
-      const d = g.getImageData(0, 0, w, h);
-      ditherToPalette(d, reg, look());
-      g.putImageData(d, 0, 0);
+      c.getContext("2d")!.putImageData(await mangaToPalette(big, reg, look()), 0, 0);
       return c;
     });
   }
@@ -370,27 +369,31 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         sx = (iw - sw) / 2;
         sy = Math.min(ih - sh, ih * 0.02);
       }
-      const c = canvas(w, h);
-      const g = c.getContext("2d", { willReadFrequently: true })!;
+      // Drawn at 3x for the manga treatment.
+      const W = w * 3, H = h * 3;
+      const big = canvas(W, H);
+      const g = big.getContext("2d", { willReadFrequently: true })!;
       g.imageSmoothingQuality = "high";
-      // Everyone on plain black, as sprite windows were: same ground for keyed and cut-out art.
-      g.fillStyle = "#000";
-      g.fillRect(0, 0, w, h);
       if (cutout) {
         // Hard-edge the cutout: soft or half-keyed fringe (a keyed bust's leftovers) goes, the figure stays.
-        const t = canvas(w, h);
+        const t = canvas(W, H);
         const tg = t.getContext("2d", { willReadFrequently: true })!;
         tg.imageSmoothingQuality = "high";
-        tg.drawImage(im, sx, sy, sw, sh, 0, 0, w, h);
-        const td = tg.getImageData(0, 0, w, h);
+        tg.drawImage(im, sx, sy, sw, sh, 0, 0, W, H);
+        const td = tg.getImageData(0, 0, W, H);
         for (let i = 3; i < td.data.length; i += 4) td.data[i] = td.data[i]! < 200 ? 0 : 255;
         tg.putImageData(td, 0, 0);
         g.drawImage(t, 0, 0);
-      } else g.drawImage(im, sx, sy, sw, sh, 0, 0, w, h);
+      } else g.drawImage(im, sx, sy, sw, sh, 0, 0, W, H);
       const reg = await registerFor(bg);
-      const d = g.getImageData(0, 0, w, h);
-      ditherToPalette(d, reg, { ...look(), contrast: 1.25, lift: 14 });
-      g.putImageData(d, 0, 0);
+      const out = canvas(w, h);
+      out.getContext("2d")!.putImageData(await mangaToPalette(big, reg, { ...look(), contrast: 1.25, lift: 14 }, 0), 0, 0);
+      // Everyone on plain black, as sprite windows were: same ground for keyed and cut-out art.
+      const c = canvas(w, h);
+      const cg = c.getContext("2d")!;
+      cg.fillStyle = "#000";
+      cg.fillRect(0, 0, w, h);
+      cg.drawImage(out, 0, 0);
       return c;
     });
   }
@@ -1161,12 +1164,12 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       el.dataset.cmd = url;
       void (async () => {
         const im = await loadImage(url);
+        const big = canvas(960, 540);
+        const bg = big.getContext("2d", { willReadFrequently: true })!;
+        bg.imageSmoothingQuality = "high";
+        coverDraw(bg, im, im.naturalWidth, im.naturalHeight, 960, 540);
         const c = canvas(320, 180);
-        const g = c.getContext("2d", { willReadFrequently: true })!;
-        coverDraw(g, im, im.naturalWidth, im.naturalHeight, 320, 180);
-        const d = g.getImageData(0, 0, 320, 180);
-        ditherToPalette(d, PALETTES[pal], look());
-        g.putImageData(d, 0, 0);
+        c.getContext("2d")!.putImageData(await mangaToPalette(big, PALETTES[pal], look()), 0, 0);
         const out = c.toDataURL();
         el.dataset.cmd = out;
         el.style.backgroundImage = `url("${out}")`;

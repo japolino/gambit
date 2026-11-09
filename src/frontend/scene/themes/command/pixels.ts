@@ -1,11 +1,14 @@
 /**
  * Pixel plumbing for the Command theme: the EGA / CGA / mono palettes, an
  * ordered (Bayer 8x8) dither that maps any picture onto a palette at the
- * screen's own virtual resolution, the 8x8 glyph tiles the frames and
+ * screen's own virtual resolution (art goes through the manga treatment
+ * first, mangaToPalette, so its line art survives), the 8x8 glyph tiles the frames and
  * meters are built from, and the frame SVG (double white rules that end in
  * chevron caps around inline labels, the way the old crawler screens drew
  * their windows). Everything here is drawn once and cached.
  */
+
+import { mangaColor, runManga } from "../../../art/manga.js";
 
 export type Rgb = [number, number, number];
 export type PaletteId = "ega" | "cga" | "mono";
@@ -86,6 +89,26 @@ export function ditherToPalette(img: ImageData, pal: Rgb[], look: DitherLook = {
     d[i + 2] = c[2];
     d[i + 3] = 255;
   }
+}
+
+/**
+ * The manga treatment (../../../art/manga.ts) on the palette: `c` is the
+ * picture drawn at 3x the output size (see-through where it will stand on
+ * black: `ground` as in mangaKernel). Each pixel's light is pulled a third
+ * of the way to its local-contrast tone (mangaColor; pulled further,
+ * saturated colours jump to the wrong palette entry), dithered onto
+ * `pal` as ditherToPalette does with a little less contrast, and the ink
+ * lines go over it in the palette's darkest colour.
+ */
+export async function mangaToPalette(c: HTMLCanvasElement, pal: Rgb[], look: DitherLook = {}, ground = 1): Promise<ImageData> {
+  const w = Math.round(c.width / 3), h = Math.round(c.height / 3);
+  const m = await runManga(c.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, w * 3, h * 3).data, w, h, ground);
+  const img = new ImageData(mangaColor(m, 0.35), w, h);
+  const d = img.data;
+  ditherToPalette(img, pal, { ...look, contrast: (look.contrast ?? 1.25) * 0.92 });
+  const ink = pal.reduce((a, b) => (b[0] * 0.3 + b[1] * 0.59 + b[2] * 0.11 < a[0] * 0.3 + a[1] * 0.59 + a[2] * 0.11 ? b : a));
+  for (let i = 0; i < w * h; i++) if (m.line[i] && d[i * 4 + 3]) d.set([ink[0], ink[1], ink[2], 255], i * 4);
+  return img;
 }
 
 /** Load an image (cached per URL). */

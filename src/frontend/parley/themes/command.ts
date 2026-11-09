@@ -21,7 +21,7 @@
 import type { ParleyTheme, ParleyThemeCtx, ParleyDecor } from "./types.js";
 import { BIT } from "../style.js";
 import { mountShell, type Geo, type Rect } from "../../stage/themes/command/shell.js";
-import { canvas, coverDraw, ditherToPalette, frameSvg, glyph, grilleTile, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "../../scene/themes/command/pixels.js";
+import { canvas, coverDraw, frameSvg, glyph, grilleTile, mangaToPalette, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "../../scene/themes/command/pixels.js";
 import { VOICES } from "../../scene/themes/command/style.js";
 
 const BLUE = "#0000AA";
@@ -545,6 +545,8 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     return plateCanvas && plateCanvas.width ? plateCanvas : null;
   }
   const ARTM = 4;
+  /** What the place canvas holds (or is being made): its art, palette and size. */
+  let placeJob = "";
   /** The nameplate's rows at the view's foot (name in its rule, the role under it). */
   let roleLines: string[] = [];
   const plateRows = () => roleLines.length + 2;
@@ -562,27 +564,28 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       place.height = H;
     }
     const g = place.getContext("2d", { willReadFrequently: true })!;
+    const key = src ? `${src instanceof HTMLImageElement ? src.src : "painted"}|${pal}` : "";
+    if (`${key}|${W}x${H}` === placeJob) return;
+    placeJob = `${key}|${W}x${H}`;
     g.fillStyle = "#000";
     g.fillRect(0, 0, W, H);
     if (!src) return;
     const sw = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
     const sh = src instanceof HTMLImageElement ? src.naturalHeight : src.height;
-    const key = `${src instanceof HTMLImageElement ? src.src : "painted"}|${pal}`;
     if (key !== regKey) {
       regKey = key;
       reg = pal === "ega" ? registerOf(src, PALETTES.ega, lookOf(pal), 6) : PALETTES[pal];
     }
-    g.imageSmoothingQuality = "high";
-    coverDraw(g, src, sw, sh, W, H, 0.5, 0.55);
-    const d = g.getImageData(0, 0, W, H);
-    // The place sits a step back behind the person before it is dithered.
-    for (let i = 0; i < d.data.length; i += 4) {
-      d.data[i] = d.data[i]! * 0.8;
-      d.data[i + 1] = d.data[i + 1]! * 0.8;
-      d.data[i + 2] = d.data[i + 2]! * 0.8;
-    }
-    ditherToPalette(d, reg, lookOf(pal));
-    g.putImageData(d, 0, 0);
+    const big = canvas(W * 3, H * 3);
+    const bg = big.getContext("2d", { willReadFrequently: true })!;
+    bg.imageSmoothingQuality = "high";
+    coverDraw(bg, src, sw, sh, W * 3, H * 3, 0.5, 0.55);
+    const job = placeJob;
+    const look = lookOf(pal);
+    // The place sits a step back behind the person.
+    void mangaToPalette(big, reg, { ...look, lift: look.lift - 45 }).then((d) => {
+      if (job === placeJob && !destroyed) g.putImageData(d, 0, 0);
+    });
   }
 
   /** The face shown now: the img with "on", else the first with a src. */
@@ -605,7 +608,14 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     if (!force && key === figKey) return;
     figKey = key;
     let W: number, H: number, ox: number, oy: number;
-    const g0 = (cv: HTMLCanvasElement) => cv.getContext("2d", { willReadFrequently: true })!;
+    // The figure is drawn at 3x for the manga treatment (art/manga.ts), in its own w x h units.
+    let big = canvas(1, 1);
+    const g0 = () => {
+      big = canvas(W * 3, H * 3);
+      const g = big.getContext("2d", { willReadFrequently: true })!;
+      g.setTransform(3, 0, 0, 3, 0, 0);
+      return g;
+    };
     if (phone) {
       // The strip has room for a head: head and shoulders, the whole height of the strip, in the middle.
       figWin.style.display = "none";
@@ -615,9 +625,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       const ih = im.naturalHeight;
       if (framed) {
         W = Math.min(sw8, Math.round(H * 1.1));
-        figCv.width = W;
-        figCv.height = H;
-        const fg = g0(figCv);
+        const fg = g0();
         fg.fillStyle = "#000";
         fg.fillRect(0, 0, W, H);
         fg.imageSmoothingQuality = "high";
@@ -629,9 +637,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
         const tallness = bh / Math.max(1, bw);
         const k = H / (bh * (tallness > 2 ? 0.4 : tallness > 1.4 ? 0.55 : 0.8));
         W = Math.min(sw8, Math.round(bw * k) + 4);
-        figCv.width = W;
-        figCv.height = H;
-        const fg = g0(figCv);
+        const fg = g0();
         fg.clearRect(0, 0, W, H);
         fg.imageSmoothingQuality = "high";
         fg.drawImage(im, b.head * iw - W / 2 / k, b.y0 * ih, W / k, H / k, 0, 0, W, H);
@@ -652,9 +658,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       H = (fh - 2) * 8;
       ox = (fx + 1) * c;
       oy = (fy + 1) * c;
-      figCv.width = W;
-      figCv.height = H;
-      const g = g0(figCv);
+      const g = g0();
       g.fillStyle = "#000";
       g.fillRect(0, 0, W, H);
       g.imageSmoothingQuality = "high";
@@ -672,17 +676,23 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       W = Math.min(cw * 8, Math.round(bw * k) + 4);
       ox = Math.round((cw * 8 - W) / 2) * v;
       oy = (free * 8 - H) * v;
-      figCv.width = W;
-      figCv.height = H;
-      const g = g0(figCv);
+      const g = g0();
       g.clearRect(0, 0, W, H);
       g.imageSmoothingQuality = "high";
       const sx = b.head * iw - W / 2 / k;
       g.drawImage(im, sx, b.y0 * ih, W / k, H / k, 0, 0, W, H);
     }
-    const g = g0(figCv);
-    const d = g.getImageData(0, 0, W, H);
-    ditherToPalette(d, reg, { ...lookOf(pal), contrast: 1.25, lift: 14 });
+    const made = `${key}|${W}x${H}`;
+    if (figMade?.key !== made) figMade = { key: made, d: mangaToPalette(big, reg, { ...lookOf(pal), contrast: 1.25, lift: 14 }, 0) };
+    void figMade.d.then((d) => {
+      if (figKey === key && !destroyed) showFigure(d, framed, ox, oy, v);
+    });
+  }
+  /** What the figure's picture was made from, and the picture. */
+  let figMade: { key: string; d: Promise<ImageData> } | null = null;
+  function showFigure(src: ImageData, framed: boolean, ox: number, oy: number, v: number): void {
+    const W = src.width, H = src.height;
+    const d = new ImageData(new Uint8ClampedArray(src.data), W, H);
     if (!framed) {
       // A one-pixel black edge so the figure stands off the place, as sprites did.
       const a = new Uint8Array(W * H);
@@ -696,7 +706,9 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
         }
       }
     }
-    g.putImageData(d, 0, 0);
+    figCv.width = W;
+    figCv.height = H;
+    figCv.getContext("2d")!.putImageData(d, 0, 0);
     Object.assign(figCv.style, { left: `${ox}px`, top: `${oy}px`, width: `${W * v}px`, height: `${H * v}px` });
   }
 
@@ -869,18 +881,20 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   const ditherImg = (img: HTMLImageElement) => {
     const url = img.getAttribute("src");
     if (!url || doneEl.get(img) === url) return;
-    const run = () => {
+    const run = async () => {
       if (!img.naturalWidth || img.getAttribute("src") !== url) return;
       const r = w.view;
       const W = isPhone() ? Math.ceil(root.clientWidth / PHONE_V) : (r.w - 2) * 8;
       const H = isPhone() ? Math.ceil(root.clientHeight / PHONE_V) : (r.h - 2) * 8;
-      const c = canvas(W, H);
-      const g = c.getContext("2d", { willReadFrequently: true })!;
-      coverDraw(g, img, img.naturalWidth, img.naturalHeight, W, H);
+      const big = canvas(W * 3, H * 3);
+      const bg = big.getContext("2d", { willReadFrequently: true })!;
+      bg.imageSmoothingQuality = "high";
+      coverDraw(bg, img, img.naturalWidth, img.naturalHeight, W * 3, H * 3);
       try {
-        const d = g.getImageData(0, 0, W, H);
-        ditherToPalette(d, reg, lookOf(pal));
-        g.putImageData(d, 0, 0);
+        const d = await mangaToPalette(big, reg, lookOf(pal));
+        if (img.getAttribute("src") !== url) return;
+        const c = canvas(W, H);
+        c.getContext("2d")!.putImageData(d, 0, 0);
         const out = c.toDataURL();
         doneEl.set(img, out);
         img.src = out;
@@ -890,8 +904,8 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       }
     };
     doneEl.set(img, url);
-    if (img.complete) run();
-    else img.addEventListener("load", run, { once: true });
+    if (img.complete) void run();
+    else img.addEventListener("load", () => void run(), { once: true });
   };
   const mm = new MutationObserver(() => [moment, momentTabs].forEach((el) => el.querySelectorAll<HTMLImageElement>("img").forEach(ditherImg)));
   for (const el of [moment, momentTabs]) mm.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
