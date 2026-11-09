@@ -69,7 +69,7 @@ Gambit does not ship a world. It reads one from the card the player selected.
 4. **The chat so far.**
 5. **Gambit's own additions,** only where 1 to 4 say nothing, each marked as Gambit-added.
 
-**The Card Reader.** When the player turns Gambit on for a chat, the Architect reads those sources and writes a **Card Sheet**: JSON, validated, and frozen in the answer ledger.
+**The Card Reader.** When the player turns Gambit on for a chat, the Architect reads those sources and writes a **Card Sheet**: JSON, validated, and frozen in the answer ledger. A people read that comes back with no facts at all is asked once more (live, the same card gave 0 and then 8), and the second answer counts if it has some.
 
 **A card isn't always a person.** Many cards are a game, a narrator or a setting. The reader names those under `not_people`, and code keeps them out of the cast, so a card's rules never reach the narrator as someone's role and a game never joins the party. A person the reader forgot still goes back in; a card it left out stays out only when the reader said so, its text says it runs a game, or its name reads as a title. With nobody else read, the card stays as a neutral stand-in, without its rules. Cards can also ask for status lines at the end of every reply: the narrator is told prose only, and `cleanReply` cuts any that slip through.
 

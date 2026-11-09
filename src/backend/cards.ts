@@ -525,9 +525,17 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
   async function architectRead(userId: string, src: CardSources, fresh = false): Promise<CardSheet> {
     const now = Date.now();
     const prompts = readerPrompts(src);
-    const [world, people] = await Promise.all([askRaw(userId, "read-world", prompts.world, 3200, fresh), askRaw(userId, "read-people", prompts.people, 3500, fresh)]);
+    const [world, first] = await Promise.all([askRaw(userId, "read-world", prompts.world, 3200, fresh), askRaw(userId, "read-people", prompts.people, 3500, fresh)]);
     const secs = (ms: number) => `${Math.round(ms / 1000)} s`;
-    log(`read: world ${world.raw ? `ok (${world.by})` : `failed (${world.why})`} in ${secs(world.ms)}, people ${people.raw ? `ok (${people.by})` : `failed (${people.why})`} in ${secs(people.ms)}`);
+    log(`read: world ${world.raw ? `ok (${world.by})` : `failed (${world.why})`} in ${secs(world.ms)}, people ${first.raw ? `ok (${first.by})` : `failed (${first.why})`} in ${secs(first.ms)}`);
+    // A people read with no facts at all is often a model skipping half the question (live: 0 facts, then 8 for the same card): ask once more.
+    // A stored answer has had its second ask already.
+    let people = first;
+    if (first.raw && first.by === "model" && !(Array.isArray(first.raw.facts) && first.raw.facts.length)) {
+      const again = await askRaw(userId, "read-people", prompts.people, 3500, true);
+      log(`read: people came back with no facts, asked again: ${again.raw ? `${Array.isArray(again.raw.facts) ? again.raw.facts.length : 0} facts` : `failed (${again.why})`} in ${secs(again.ms)}`);
+      if (again.raw && Array.isArray(again.raw.facts) && again.raw.facts.length) people = again;
+    }
     // The last read's prompts, answers, and outcome, for diagnosing a model that will not answer or answers oddly.
     void spindle.userStorage
       .setJson("cards/debug/last-read.json", { at: now, world: { ...world, prompt: prompts.world }, people: { ...people, prompt: prompts.people } }, { userId })
