@@ -53,6 +53,9 @@ export interface Embedded {
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const contentOf = (res: unknown): string => (typeof res === "string" ? res : ((res as GenerationResponseDTO | null)?.content ?? ""));
 
+/** Finish reasons that mean the reply was cut off by the model or its provider, not finished. */
+export const cutOff = (reason: string | undefined): boolean => !!reason && !/^(stop|end_turn|stop_sequence|length|max_tokens|tool_calls|eos)$/i.test(reason);
+
 export function createModels(spindle: SpindleAPI) {
   const log = (m: string) => {
     try {
@@ -178,7 +181,11 @@ export function createModels(spindle: SpindleAPI) {
         for await (const chunk of spindle.generate.quietStream(request(userId, a, conns, req) as never)) {
           got = true;
           if (chunk.type === "token") text += chunk.token;
-          else if (chunk.type === "done" && chunk.content) text = chunk.content;
+          else if (chunk.type === "done") {
+            // A model that stopped itself (a safety block, Gemini's PROHIBITED_CONTENT) left half a reply: no reply.
+            if (cutOff(chunk.finish_reason)) throw new Error(`the model stopped: ${chunk.finish_reason}`);
+            if (chunk.content) text = chunk.content;
+          }
           onToken?.(text);
         }
         return text;

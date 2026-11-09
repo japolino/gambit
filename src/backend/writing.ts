@@ -28,6 +28,8 @@ export async function writeWithRetry(
       text = await ask("narrator");
       break;
     } catch (err) {
+      // Half a reply from a stream that broke or was cut off is not a reply.
+      text = "";
       log(`narrator failed (${why(err)})`);
       const wait = isRateLimit(err) ? retryMs[tries] : undefined;
       if (wait === undefined) break;
@@ -38,6 +40,7 @@ export async function writeWithRetry(
     try {
       text = await ask("helper");
     } catch (err) {
+      text = "";
       log(`helper couldn't narrate either (${why(err)})`);
     }
   }
