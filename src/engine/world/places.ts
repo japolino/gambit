@@ -357,7 +357,7 @@ export function clockTo(s: SceneState, time: number): SceneState {
 
 /**
  * The chat says who is at this place. Someone here isn't anywhere else; someone gone is at another place they're
- * known at, or the first other one, so they can still be found.
+ * known at, or next door, so they can still be found.
  */
 export function seatPeople(world: World, placeId: string, here: readonly string[], away: readonly string[]): World {
   if (!world.places[placeId] || (!here.length && !away.length)) return world;
@@ -367,7 +367,7 @@ export function seatPeople(world: World, placeId: string, here: readonly string[
   places[placeId] = { ...at, people: [...at.people, ...here.filter((m) => !at.people.includes(m))] };
   for (const m of away) {
     if (Object.values(places).some((p) => p.people.includes(m))) continue;
-    const other = Object.keys(places).find((id) => id !== placeId);
+    const other = at.exits.find((id) => places[id]) ?? Object.keys(places).find((id) => id !== placeId);
     if (other) places[other] = { ...places[other]!, people: [...places[other]!.people, m] };
   }
   return { ...world, places };

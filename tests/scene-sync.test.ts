@@ -20,14 +20,19 @@ describe("the scene follows the chat", () => {
     expect(whenQuestion("morning").when).toBeDefined();
   });
 
-  test("it only asks about people here or named in the chat's words", () => {
+  test("it only asks about people named in the chat's words: someone here it doesn't mention stays", () => {
     const q = whoQuestions(people, [{ content: "Cy Rook kicked the door in." }]);
-    expect(Object.keys(q).sort()).toEqual(["here_ann", "here_cy"]);
+    expect(Object.keys(q)).toEqual(["here_cy"]);
   });
 
   test("a name inside another word isn't the person", () => {
     const q = whoQuestions(people, [{ content: "They rowboat over the Bosphorus." }]);
-    expect(Object.keys(q)).toEqual(["here_ann"]);
+    expect(Object.keys(q)).toEqual([]);
+  });
+
+  test("someone only talked about doesn't leave", () => {
+    const r = sceneFromAnswers({ time: "morning", people }, { here_ann: said("unsaid", 0.9) });
+    expect(r).toEqual({ here: [], away: [] });
   });
 
   test("only sure answers change anything", () => {
@@ -57,10 +62,12 @@ describe("the scene follows the chat", () => {
     expect(w.places.yard!.people).toEqual([]);
   });
 
-  test("someone who leaves can still be found", () => {
-    const w = seatPeople(world(), "hall", [], ["ann"]);
+  test("someone who leaves goes next door, and nobody else moves", () => {
+    const w0 = { shape: "town", start: "hall", places: { hall: { ...place("hall", ["ann", "bo"]), exits: ["cellar"] }, yard: place("yard", ["cy"]), cellar: place("cellar", []) } } as unknown as World;
+    const w = seatPeople(w0, "hall", [], ["ann"]);
     expect(w.places.hall!.people).toEqual(["bo"]);
-    expect(w.places.yard!.people).toEqual(["cy", "ann"]);
+    expect(w.places.cellar!.people).toEqual(["ann"]);
+    expect(w.places.yard!.people).toEqual(["cy"]);
   });
 
   test("nothing said, nothing changed", () => {

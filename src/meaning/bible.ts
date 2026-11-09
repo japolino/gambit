@@ -258,18 +258,22 @@ export interface SceneNow {
 }
 
 /**
- * "Is this person there", for whoever the scene has here and whoever the chat just named.
- * Nobody else is asked about: a person the chat doesn't mention stays where the scene has them.
+ * "Is this person there", for whoever the chat just named. Nobody else is asked about: a person the chat doesn't
+ * mention stays where the scene has them, and so does one it only talks about.
  */
 export function whoQuestions(people: SceneNow["people"], lines: readonly { content: string }[]): Questions {
-  const asked = people.filter((m) => m.here || named(m.name, lines)).slice(0, 10);
+  const asked = people.filter((m) => named(m.name, lines)).slice(0, 10);
   return Object.fromEntries(
     asked.map((m) => [
       `here_${m.id}`,
       {
         type: "choice" as const,
         instructions: `After the latest turn, is ${m.name} physically there in the scene with the player?`,
-        criteria: { here: `${m.name} is there`, away: `${m.name} is not there: only talked about, gone, or somewhere else` },
+        criteria: {
+          here: `${m.name} is there`,
+          away: `${m.name} is shown leaving, or shown somewhere else`,
+          unsaid: `The text doesn't show where ${m.name} is: only talked about, or not clear`,
+        },
       },
     ]),
   );
