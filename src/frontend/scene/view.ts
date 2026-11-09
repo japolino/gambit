@@ -658,6 +658,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     }
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     if (el.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return;
+    // A fight or a talk staged over the room owns the keys, and so do the last ones pressed as it hands the screen back.
+    if (staged || Date.now() - backAt < SETTLE_MS) return;
     if (e.key === "/" && !journalOpen && !mw) {
       // Every theme's keys are its commands, so typing takes a key of its own to start. A reply on its way doesn't stop you.
       const field = writeField();
@@ -707,6 +709,9 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   let wasWriting = false;
   // A theme has a fight or a talk staged in its room, over the box.
   let staged = false;
+  /** When a fight or a talk last gave the screen back. */
+  let backAt = 0;
+  const SETTLE_MS = 600;
   // Keys spent on what took the screen (picking skills in a fight) were commands: the box doesn't take the focus back.
   function onCoveredKey(e: KeyboardEvent): void {
     const t = e.composedPath()[0] as HTMLElement | null;
@@ -991,6 +996,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
           noteWriting();
         } else if (!e && staged) {
           staged = false;
+          backAt = Date.now();
           backToWriting();
         }
         return ok;
@@ -1006,6 +1012,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       el.classList.add("gone");
     },
     show() {
+      if (hidden) backAt = Date.now();
       hidden = false;
       el.classList.remove("gone");
       layer?.resize();

@@ -115,6 +115,8 @@ export function createPanel(
     resumeParley(): void;
     setParleyMode(mode: ParleyViewMode): void;
     setNarrator(mode: ParleyNarrator): void;
+    /** The drawer's tab was opened. */
+    shown(): void;
     card: CardActions;
     demo(): void;
     models: { get(): void; set(patch: ModelsPatch): void };
@@ -129,6 +131,7 @@ export function createPanel(
     keywords: ["rpg", "battle", "combat", "game"],
     iconSvg: ICON,
   });
+  const offShown = tab.onActivate(() => actions.shown());
   const removeStyle = ctx.dom.addStyle(CSS);
   const root = document.createElement("div");
   root.className = "gb";
@@ -350,6 +353,7 @@ export function createPanel(
       parleyHint.textContent = journalSize ? `Journal: ${journalSize} fact${journalSize === 1 ? "" : "s"}` : "";
     },
     destroy: () => {
+      offShown();
       removeStyle?.();
       tab.destroy();
     },

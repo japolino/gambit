@@ -412,7 +412,7 @@ export function mountParley(
       });
       hand.append(card);
     });
-    if (!facts.length) journalList.append(el("li", "empty", "Nothing yet. Others in Saltgate may know things."));
+    if (!facts.length) journalList.append(el("li", "empty", "Nothing yet. Others here may know things."));
   }
   function bumpValue(from: number, to: number) {
     if (from === to) return;

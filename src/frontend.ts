@@ -55,6 +55,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   let parleyState: { state: ParleyState; scenario: ParleyScenario; journal: string[] } | null = null;
   /** The card status of the chat on screen. */
   let card: CardStatus | null = null;
+  /** The chat the drawer last asked about: its status is the one to show, whatever the host says mid-load. */
+  let cardChat: string | null = null;
   // Voice (6.4): the host's TTS, off until the player turns it on.
   const voice = createVoice((ctx as unknown as { tts?: Parameters<typeof createVoice>[0] }).tts);
   let ttsConnections: { id: string; name: string }[] = [];
@@ -194,6 +196,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     },
     setParleyMode: (mode) => send({ type: "parley.view", mode }),
     setNarrator: (mode) => send({ type: "parley.narrator", mode }),
+    shown: () => refreshCard(true),
     card: {
       enable: (on) => withChat((chatId) => send({ type: "card.enable", chatId, on })),
       reread: () => withChat((chatId) => send({ type: "card.read", chatId })),
@@ -316,12 +319,18 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     (chip) => panel.setStatus(`${chip.label} Open the Gambit drawer and press Talk.`),
   );
 
-  /** Ask for the card status of whatever chat is on screen. */
-  function refreshCard(): void {
+  /**
+   * Ask for the card status of whatever chat is on screen, and its fight and Parley to resume. Opening the drawer asks again
+   * (`keep`): a status lost on a reload is asked for, a status in hand is kept, and a Parley that ended unseen loses its Resume.
+   */
+  function refreshCard(keep = false): void {
     const chatId = activeChatId();
-    card = null;
-    panel.setCard(null, !!chatId);
-    if (chatId) send({ type: "card.status", chatId });
+    if (!keep || !card || card.chatId !== chatId) {
+      cardChat = chatId;
+      card = null;
+      panel.setCard(null, !!chatId);
+      if (chatId) send({ type: "card.status", chatId });
+    }
     // The drawer's Resume buttons are for this chat's fight and Parley: the backend sends them again.
     if (!stage) {
       current = null;
@@ -652,7 +661,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         else panel.setStatus(msg.error);
         break;
       case "card.status":
-        if (msg.status.chatId !== activeChatId()) break;
+        if (msg.status.chatId !== cardChat) break;
         card = msg.status;
         panel.setCard(card, true);
         break;
