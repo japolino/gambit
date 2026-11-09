@@ -251,7 +251,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const dnMark = $(".scrollmark.dn", term.body);
   // The commands are its letters and digits, so the line you write is a row of its own, always in sight under the scroll.
   const write = wireWrite(ctx, $<HTMLFormElement>("form.wr", term.body), {
-    maxRows: 4,
+    maxRows: 6,
     onGrow: (px) => {
       tx.style.bottom = `${px}px`;
       dnMark.style.bottom = `${px}px`;
@@ -999,7 +999,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     } else {
       b.log.forEach((l, i) => lines.push(`<div class="l log ch${i === b.log.length - 1 ? " last" : ""}">${esc(l)}</div>`));
       if (b.desc) lines.push(`<div class="l desc">${b.isNew ? `<span class="new">NEW</span> ` : ""}${esc(b.desc)}</div>`);
-      if (isWriting(v)) lines.push(beatsHtml(v.story));
+      if (isWriting(v)) lines.push(beatsHtml(v.story, false));
       lines.push(`<div class="l hd"></div>`);
       items.forEach((m, i) => {
         const k = keyOf(i);

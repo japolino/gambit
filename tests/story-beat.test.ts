@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { beatWorked, CLOCK_STEP, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, threadEnd, type BeatRead } from "../src/engine/story/beat.js";
-import { fallbackReply, foeByWords, foeFromAnswers, foeQuestions, parseRead, readFromAnswers, rulesRead, type StoryContext } from "../src/meaning/story.js";
+import { fallbackReply, foeByWords, foeFromAnswers, foeQuestions, narratorPrompt, parseRead, readFromAnswers, rulesRead, saysAttack, stands, type StoryContext } from "../src/meaning/story.js";
 
 const social = { presence: 2, menace: 1, guile: 3 } as const;
 const read: BeatRead = { route: "risk", attempt: "Sneaking past", stat: "guile", difficulty: 1, target: "orla", to: null };
@@ -143,5 +143,36 @@ describe("reading a line", () => {
     expect(rulesRead("I search the desk", people).route).toBe("seek");
     expect(rulesRead("I head to the docks", people, places)).toMatchObject({ route: "travel", to: "docks" });
     expect(rulesRead("I pour the tea and sit down", people).route).toBe("flavor");
+  });
+});
+
+describe("what the playtest turned up", () => {
+  const said = (choice: string, p = 0.9) => ({ type: "choice", choice, probabilities: { [choice]: p } }) as never;
+  const ctx: StoryContext = { premise: "", tone: "", player: { name: "Tam", concept: "" }, place: { name: "Quay", description: "" }, time: "dusk", people: [], places: [], goal: null, recent: [], memory: null };
+
+  test("unsure it's a journey but sure where to: the scene goes too", () => {
+    expect(readFromAnswers({ route: said("travel", 0.4), to: said("new") }, [], [])).toMatchObject({ route: "travel", to: "new" });
+    expect(readFromAnswers({ route: said("flavor"), to: said("docks", 0.3) }, [], ["docks"])).toMatchObject({ route: "flavor" });
+    expect(readFromAnswers({ route: said("flavor"), to: said("staying") }, [], ["docks"])).toMatchObject({ route: "flavor", to: null });
+    expect(parseRead(`{"route":"flavor","to":"new"}`, [], [])?.route).toBe("travel");
+  });
+
+  test("saying in so many words that you attack is an attack, and only then", () => {
+    expect(saysAttack("Whatever is down there making these men sick, I attack it")).toBe(true);
+    expect(saysAttack("I draw and attack")).toBe(true);
+    expect(saysAttack("I don't attack him")).toBe(false);
+    expect(saysAttack("I will not attack")).toBe(false);
+    expect(saysAttack("They attack the gate")).toBe(false);
+  });
+
+  test("what was won long ago still stands for the narrator", () => {
+    const old = { text: "", reply: "You won the argument. The king presses his signet ring into your palm." };
+    const filler = Array.from({ length: 8 }, (_, i) => ({ text: `line ${i}`, reply: `reply ${i}` }));
+    const c = { ...ctx, recent: [old, { text: "I look", reply: "Dust.", found: "A hidden door" }, ...filler] };
+    expect(stands(c)).toEqual([old.reply, "A hidden door"]);
+    const brief = narratorPrompt(c, "I hold up the ring.", "", "flavor");
+    expect(brief.user).toContain("signet ring");
+    expect(brief.system).toContain("never say it's missing");
+    expect(stands({ ...ctx, recent: filler.slice(0, 6) })).toEqual([]);
   });
 });

@@ -331,6 +331,15 @@ export function mountParley(
     e.preventDefault();
     send();
   });
+  // "/" reaches the box from anywhere in the talk, as in the scene.
+  const onSlash = (e: KeyboardEvent) => {
+    const t = e.composedPath()[0] as HTMLElement | null;
+    if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || t?.tagName === "TEXTAREA" || t?.tagName === "INPUT" || !input.offsetParent) return;
+    e.preventDefault();
+    input.focus();
+  };
+  window.addEventListener("keydown", onSlash);
+  if (!matchMedia("(pointer: coarse)").matches) requestAnimationFrame(() => input.offsetParent && input.focus({ preventScroll: true }));
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
@@ -438,7 +447,7 @@ export function mountParley(
   let pendingYou: HTMLElement | null = null;
   function addYou(text: string): HTMLElement {
     const you = el("div", "you");
-    you.append(el("div", "speaker", "You"), el("div", "prose", text));
+    you.append(el("div", "speaker", "You"), el("div", "prose", curlyQuotes ? smartQuotes(text) : text));
     log.append(you);
     turnStart = you;
     scrollDown();
@@ -542,7 +551,8 @@ export function mountParley(
     form.classList.toggle("hidden", over || finalOffer);
     actions.classList.toggle("hidden", over);
     hint.classList.toggle("hidden", over);
-    input.disabled = sayBtn.disabled = busy;
+    // The box itself never locks: you can go on writing while they answer, it just can't be sent yet.
+    sayBtn.disabled = busy;
     dealBtn.textContent = `${finalOffer ? "Take the final offer" : "Take it"} at ${formatValue(scenario, state.value)}`;
     dealBtn.disabled = walkBtn.disabled = busy;
     endBox.textContent = "";
@@ -771,6 +781,7 @@ export function mountParley(
       vv?.removeEventListener("resize", fit);
       vv?.removeEventListener("scroll", fit);
       window.removeEventListener("resize", fit);
+      window.removeEventListener("keydown", onSlash);
       fitWatch?.disconnect();
       try {
         decor?.destroy?.();

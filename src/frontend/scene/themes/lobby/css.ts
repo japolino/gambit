@@ -266,10 +266,13 @@ button.lb-talk:hover > .art { filter: drop-shadow(0 0 ${U(16)} rgba(230,185,90,.
 .lb-log p:nth-last-child(2) { opacity: .7; } .lb-log p:nth-last-child(3) { opacity: .5; } .lb-log p:nth-last-child(n+4) { opacity: .38; }
 .lb-feed.open .lb-log { max-height: ${U(420)}; overflow: auto; }
 /* Writing: the story in a smoked-glass drawer like the log's, wider for reading, and the slot under it. */
-.lb-feed.writing { width: ${U(780)}; }
-.lb:not(.phone).writing .lb-talk { bottom: ${U(650)}; }
+.lb-feed.writing { width: ${U(700)}; max-height: ${U(650)}; }
+.lb:not(.phone).writing .lb-stage > *, .lb:not(.phone).writing .lb-scene > * { --hc: 41cqw; }
+.lb:not(.phone).writing .lb-talk { bottom: ${U(690)}; }
+.lb-feed.writing > * { flex: none; }
+.lb-feed.writing > .lb-story { flex: 0 1 auto; min-height: 0; }
 .lb-feed.writing:not(.open) .lb-log { display: none; }
-.lb-story { display: none; position: relative; max-height: ${U(290)}; overflow-y: auto; margin: 0 0 ${U(8)} ${U(14)}; padding: ${U(14)} ${U(22)} ${U(10)} ${U(26)}; background: linear-gradient(90deg, rgba(10,8,6,.95) 0%, rgba(10,8,6,.9) 85%, rgba(10,8,6,.55) 100%); border-left: 1px solid #c8aa6e; scrollbar-width: thin; scrollbar-color: #8c6d3b transparent; }
+.lb-story { display: none; position: relative; max-height: ${U(420)}; overflow-y: auto; margin: 0 0 ${U(8)} ${U(14)}; padding: ${U(14)} ${U(22)} ${U(10)} ${U(26)}; background: linear-gradient(90deg, rgba(10,8,6,.95) 0%, rgba(10,8,6,.9) 85%, rgba(10,8,6,.55) 100%); border-left: 1px solid #c8aa6e; scrollbar-width: thin; scrollbar-color: #8c6d3b transparent; }
 .lb-feed.writing .lb-story { display: block; }
 .lb-story .beat { margin: 0 0 ${U(12)}; }
 .lb-story .beat:last-child { margin-bottom: 0; }
@@ -465,6 +468,7 @@ button.lb-talk:hover { transform: none; }
 .lb.phone .lb-log .lc, .lb.phone .lb-log::after { display: none; }
 /* Read down: the place, the story, the slot, then the news. */
 .lb.phone .lb-banner { order: -3; }
+.lb.phone .lb-feed.writing { max-height: none; }
 .lb.phone .lb-story { order: -2; max-height: none; overflow: visible; margin: 0; padding: 10px 12px; background: rgba(10,8,6,.94); border-left: 0; }
 .lb.phone .lb-say { order: -1; margin: 0; padding: 8px; background: rgba(10,8,6,.94); }
 .lb.phone .lb-say textarea { font-size: 16px; min-height: 44px; padding: 10px 12px; }

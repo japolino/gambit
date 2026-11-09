@@ -26,7 +26,7 @@ import { modelsFor } from "./models.js";
 import { beatWorked, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, THREAD_DAYS, threadEnd, type BeatRead } from "../engine/story/beat.js";
 import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
-import { beatTokens, beatWords, fallbackReply as storyFallback, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
+import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
 import { cleanReply } from "../engine/parley/narrate.js";
 import { dayLines, effectStamp, fallbackNightScenes, meanwhilePrompt, meanwhileText, morningLines, parseNightScenes, type NightBrief, type NightNames, type NightScene, type NightThread } from "../meaning/meanwhile.js";
 import { slug } from "../meaning/card-reader.js";
@@ -513,7 +513,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         place: { name: place?.name ?? "Here", description: place?.description ?? "" },
         time: TIMES[r.scene.time] ?? "",
         people: withPromoted(sheet, r).cast.filter((c) => place?.people.includes(c.id)).map((c) => c.name),
-        lines: night.length ? night : (r.story ?? []).slice(-3).map((b) => b.reply),
+        lines: night.length ? night : (r.story ?? []).map((b) => b.reply).filter(Boolean).slice(-3),
       },
       pieces,
       new Set(Object.values(r.music ?? {})),
@@ -539,7 +539,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       people: withPromoted(sheet, r).cast.filter((c) => place?.people.includes(c.id)).map((c) => ({ id: c.id, name: c.name, role: c.role, voice: c.voice })),
       places: Object.values(r.world.places).filter((p) => p.id !== r.scene.placeId).map((p) => ({ id: p.id, name: p.name })),
       goal: r.thread && !r.threadEnd ? r.thread.goal : null,
-      recent: (r.story ?? []).map((b) => ({ text: b.said, reply: !b.said && b.roll ? `${b.roll}. ${b.reply}`.trim() : b.reply })),
+      recent: (r.story ?? []).map((b) => ({ text: b.said, reply: !b.said && b.roll ? `${b.roll}. ${b.reply}`.trim() : b.reply, ...(b.found ? { found: b.found } : {}) })),
       memory: memoryNote(sheet, r),
     };
   }
@@ -549,14 +549,15 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const models = modelsFor(spindle);
     const people = story.people.map((p) => p.id);
     const places = story.places.map((p) => p.id);
+    const sure = (read: BeatRead): BeatRead => (read.route === "flavor" && saysAttack(line) ? { ...read, route: "fight", stat: "menace", attempt: "Using force" } : read);
     const answers = await models.decide(userId, routeState(story, line), routeQuestions(story), 6_000, "story").catch(() => null);
     const typed = answers ? readFromAnswers(answers, people, places) : null;
-    if (typed) return typed;
+    if (typed) return sure(typed);
     const asked = judgePrompt(story, line);
     const said = await models
       .quiet(userId, "helper", { messages: [{ role: "system", content: asked.system }, { role: "user", content: asked.user }], parameters: { temperature: 0.1 }, signal: AbortSignal.timeout(15_000) })
       .catch((err: unknown) => (log(`story judge: ${String(err).slice(0, 160)}`), ""));
-    return parseRead(said, people, places) ?? storyRules(line, story.people, story.places);
+    return sure(parseRead(said, people, places) ?? storyRules(line, story.people, story.places));
   }
 
   /** The next thing to come out of the thread, once found. */
@@ -1698,7 +1699,12 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       };
 
       // The systems that take over from here: the line is their opening move.
+      // Whatever takes over, the line was written: it stays in the story, before how it came out.
+      const wrote = () => {
+        r.story = [...(r.story ?? []), { said: line, roll: null, reply: "", day: dayBefore, where: r.scene.placeId }].slice(-40);
+      };
       if (read.route === "press") {
+        wrote();
         await save(userId, chatId, r);
         await show(userId, chatId, sheet, r);
         const kind: ContestKind = read.stat === "menace" ? "intimidate" : read.stat === "guile" ? "deceive" : "persuade";
@@ -1707,6 +1713,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (read.route === "fight") {
         const aimed = fightTarget(read, named(withPromoted(sheet, r).cast.find((c) => c.id === read.target)?.name ?? "", [{ content: line }]));
         if (read.to) await go(read.to);
+        wrote();
         await save(userId, chatId, r);
         await postBeat(chatId, line, null);
         return fight(userId, chatId, aimed ? { lead: aimed } : { line });

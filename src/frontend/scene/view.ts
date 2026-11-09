@@ -147,7 +147,7 @@ const CSS = `
 @container (min-aspect-ratio: 3 / 2) {
   .gs .mw-in { width: min(1240px, 92%); }
   .gs .mw-card:has(.mw-art:not(.none)) { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: center; gap: 24px; }
-  .gs .mw-card:has(.mw-art:not(.none)) .mw-text { text-align: left; max-height: 76cqh; overflow: hidden; }
+  .gs .mw-card:has(.mw-art:not(.none)) .mw-text { text-align: left; max-height: 76cqh; overflow-y: auto; scrollbar-width: thin; }
   .gs .mw-art { max-height: 70cqh; }
 }
 .gs > .fg { z-index: 40; }
@@ -647,17 +647,23 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   function onKey(e: KeyboardEvent): void {
     // Seen from the window, anything inside a shadow root is the host: ask for what really has the key.
     const t = e.composedPath()[0] as HTMLElement | null;
+    if (mw?.items && !el.classList.contains("gone") && (e.key === " " || e.key === "Enter")) {
+      e.preventDefault();
+      nextMeanwhile();
+      return;
+    }
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-    if (el.classList.contains("gone") || view.busy || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key === "/" && !journalOpen) {
-      // Every theme's keys are its commands, so typing takes a key of its own to start.
-      const field = [...el.querySelectorAll<HTMLElement>("[data-write]")].find((f) => f.offsetParent);
+    if (el.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "/" && !journalOpen && !mw) {
+      // Every theme's keys are its commands, so typing takes a key of its own to start. A reply on its way doesn't stop you.
+      const field = writeField();
       if (field) {
         e.preventDefault();
         field.focus();
         return;
       }
     }
+    if (view.busy) return;
     if (view.board) {
       if (board.key(e)) e.preventDefault();
       return;
@@ -674,6 +680,24 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     a.step(move);
   }
   window.addEventListener("keydown", onKey);
+
+  /* ------------------ Back to the box, after what took the screen ------------------ */
+  // A talk, a fight or a night takes the screen away. Whoever was writing comes back still writing;
+  // anyone using the keys as commands keeps them as commands.
+  const writeField = () => [...el.querySelectorAll<HTMLElement>("[data-write]")].find((f) => f.offsetParent);
+  let wasWriting = false;
+  function noteWriting(): void {
+    const active = (el.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
+    if (!active?.hasAttribute?.("data-write")) return;
+    wasWriting = true;
+    // Nothing typed from here on should land in a box nobody can see.
+    active.blur();
+  }
+  function backToWriting(): void {
+    if (!wasWriting || mw || el.classList.contains("gone")) return;
+    wasWriting = false;
+    requestAnimationFrame(() => writeField()?.focus({ preventScroll: true }));
+  }
 
   /* ---------------------- A picture from the album, large ---------------------- */
   // Here and not in the themes: every theme shows the album, and the journal stays open under it.
@@ -737,6 +761,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     mw.box.remove();
     mw = null;
     if (over) a.nightEnd?.();
+    backToWriting();
   }
   function nextMeanwhile(): void {
     if (!mw?.items) return;
@@ -754,6 +779,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     const lines = today.length ? `<ul class="mw-list">${today.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : `<p class="mw-quiet">A quiet day.</p>`;
     box.innerHTML = `<div class="mw-in"><div class="mw-title">Meanwhile…</div><div class="mw-body"><div class="mw-card mw-day"><div class="mw-text"><span class="mw-kicker">The day behind you</span>${lines}</div></div></div><div class="mw-hint">The world moves</div></div>`;
     box.addEventListener("click", nextMeanwhile);
+    noteWriting();
     el.append(box);
     mw = { day, items: null, morning: [], i: 0, box, timer: 0, openedAt: Date.now(), since: 0 };
     // Nothing came back: never leave the player stuck behind the curtain.
@@ -862,6 +888,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     },
     hide() {
       closeZoom();
+      noteWriting();
       hidden = true;
       el.classList.add("gone");
     },
@@ -871,6 +898,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       layer?.resize();
       kick();
       renderTheme();
+      backToWriting();
     },
     destroy() {
       destroyed = true;

@@ -114,7 +114,7 @@ export function deedsPlain(deeds: readonly Deed[]): string[] {
 export function dayLines(beats: readonly DayBeat[], deeds: readonly Deed[], chat: NightBrief["chat"] = [], max = 5): string[] {
   const done = deedsPlain(deeds);
   const counted = [...new Set(done)].map((x) => `${x}.`);
-  const said = beats.filter((b) => b.said).map((b) => `“${clip(b.said, 70)}”${beatWent(b)}`);
+  const said = beats.filter((b) => b.said).map((b) => `“${clip(b.said.replace(/^["“”]+|["“”]+$/g, ""), 70)}”${beatWent(b)}`);
   const talk = said.length ? [] : chat.filter((m) => m.isUser).slice(-3).map((m) => `“${clip(m.content.replace(/\s+/g, " ").trim(), 70)}”`);
   // What you did carries the weight, and the latest of what you said brings it up to now.
   return [...counted.slice(-3), ...said, ...talk].slice(-max);
@@ -153,7 +153,7 @@ export function meanwhilePrompt(sheet: CardSheet, bible: Bible | null, b: NightB
   const free = b.people.filter((p) => p.free).map((p) => p.id);
   const touched = [...touchedPlaces(b)];
   const today = [
-    ...b.beats.filter((x) => x.said).map((x) => `- At ${b.places.find((p) => p.id === x.where)?.name ?? "the scene"}: "${clip(x.said, 180)}"${x.roll ? ` [${x.roll}]` : ""} -> ${clip(x.reply, 180)}${x.found ? ` (found: ${clip(x.found, 100)})` : ""}`),
+    ...b.beats.filter((x) => x.said).map((x) => `- At ${b.places.find((p) => p.id === x.where)?.name ?? "the scene"}: "${clip(x.said, 180)}"${x.roll ? ` [${x.roll}]` : ""}${x.reply ? ` -> ${clip(x.reply, 180)}` : ""}${x.found ? ` (found: ${clip(x.found, 100)})` : ""}`),
     ...(b.talks ?? []).map((t) => `- Talked with ${t.who}. ${b.player || "The player"} said: ${t.said.map((s) => `"${clip(s, 200)}"`).join(" / ")}. ${t.who} last answered: "${clip(t.reply, 220)}". How it ended: ${t.ended}.`),
     ...deedsPlain(b.deeds).map((x) => `- ${x}`),
     ...b.chat.map((m) => `- ${m.name}: ${clip(m.content.replace(/\s+/g, " ").trim(), 220)}`),

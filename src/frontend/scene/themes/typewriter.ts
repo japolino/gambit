@@ -67,11 +67,10 @@ export const TYPEWRITER_CSS = `
 .tw[hidden] { display: none; }
 .tw-m { position: relative; }
 .tw-m > svg { position: relative; z-index: 2; display: block; width: 100%; height: auto; overflow: visible; pointer-events: none; filter: drop-shadow(0 5px 9px rgba(0,0,0,.75)); }
-.tw-page { position: absolute; z-index: 1; left: 9%; right: 20%; bottom: 84%; box-sizing: border-box; padding: 7px 10px 13px; background: linear-gradient(180deg, #f6efdc, #eadfc4 80%, #b9ac8c); box-shadow: 0 -2px 8px rgba(0,0,0,.45), inset 0 0 0 1px rgba(90,70,35,.2); transform: translateX(var(--tw-shift, 0)); transition: transform .07s linear; cursor: text; }
+.tw-page { position: absolute; z-index: 1; left: 9%; right: 20%; bottom: 84%; box-sizing: border-box; padding: 7px 10px calc(2.6% + 5px); background: linear-gradient(180deg, #f6efdc, #eadfc4 80%, #b9ac8c); box-shadow: 0 -2px 8px rgba(0,0,0,.45), inset 0 0 0 1px rgba(90,70,35,.2); transform: translateX(var(--tw-shift, 0)); transition: transform .07s linear; cursor: text; }
 .tw-page textarea { display: block; width: 100%; box-sizing: border-box; min-height: 1.3em; margin: 0; padding: 0; border: 0; border-radius: 0; outline: 0; resize: none; overflow: hidden; background: transparent; color: #1a1510; caret-color: #8f1a1e; font: 700 max(15px, 1.9cqh)/1.3 "American Typewriter", "Courier Prime", "Courier New", Courier, monospace; }
 .tw-page textarea::placeholder { color: #6a5c42; opacity: 1; font-weight: 400; }
 .tw-page:focus-within { background: linear-gradient(180deg, #fffaea, #f1e7cd 80%, #b9ac8c); }
-.tw-page:has(textarea:disabled) { filter: brightness(.82); }
 .tw-m > button { position: absolute; z-index: 3; right: 0; bottom: 86%; width: 18%; min-width: 58px; min-height: 34px; padding: 0 2px; border: 2px solid #8d8a7c; border-radius: 17px; background: radial-gradient(ellipse at 50% 30%, #3a3833, #0d0c0a); box-shadow: 0 0 0 1px #000, 0 3px 6px rgba(0,0,0,.7); color: #efe6d0; font: 800 max(10px, 1.25cqh)/1 "Gambit Cinzel", Georgia, serif; letter-spacing: .06em; cursor: pointer; transition: transform .06s; }
 .tw-m > button:hover:not(:disabled), .tw-m > button:focus-visible { border-color: #e8d9a8; color: #fff; outline: 0; }
 .tw-m > button:active:not(:disabled) { transform: translateY(2px); }
@@ -87,12 +86,12 @@ export const TYPEWRITER_CSS = `
 @keyframes twFeed { 0% { translate: 0 0; } 40% { translate: 0 -9px; } 100% { translate: 0 0; } }
 /* A reply on its way: the machine is writing it. */
 @keyframes twStrike { 0%, 70%, 100% { transform: none; } 80% { transform: translateY(-5px); } }
-.tw:has(textarea:disabled) .tbar { animation: twStrike .9s linear infinite; }
-.tw:has(textarea:disabled) .tbar:nth-of-type(3n) { animation-delay: .3s; }
-.tw:has(textarea:disabled) .tbar:nth-of-type(3n+1) { animation-delay: .6s; }
+.tw.busy .tbar { animation: twStrike .9s linear infinite; }
+.tw.busy .tbar:nth-of-type(3n) { animation-delay: .3s; }
+.tw.busy .tbar:nth-of-type(3n+1) { animation-delay: .6s; }
 @media (prefers-reduced-motion: reduce) {
   .tw .cg, .tw-page, .tw .k { transition: none; }
-  .tw.ret .tw-page, .tw:has(textarea:disabled) .tbar { animation: none; }
+  .tw.ret .tw-page, .tw.busy .tbar { animation: none; }
 }
 `;
 
@@ -165,7 +164,7 @@ function bell(): void {
 }
 
 /** The shared write box, with a machine answering it. */
-export function wireTypewriter(ctx: ThemeCtx, form: HTMLFormElement, maxRows = 3): WriteBox {
+export function wireTypewriter(ctx: ThemeCtx, form: HTMLFormElement, maxRows = 7): WriteBox {
   const keys = [...form.querySelectorAll<SVGGElement>(".k")];
   const bars = [...form.querySelectorAll<SVGLineElement>(".tbar")];
   const flick = (el: Element | undefined, cls: string, ms: number) => {
@@ -174,6 +173,13 @@ export function wireTypewriter(ctx: ThemeCtx, form: HTMLFormElement, maxRows = 3
     setTimeout(() => el.classList.remove(cls), ms);
   };
   let returnTimer: ReturnType<typeof setTimeout> | undefined;
+  // A room that keeps its words above the machine moves them up as the page rises, rather than be covered by it.
+  const page = form.querySelector<HTMLElement>(".tw-page")!;
+  new ResizeObserver(() => {
+    form.style.setProperty("--tw-page", `${page.offsetHeight}px`);
+    const words = form.parentElement?.querySelector<HTMLElement>(".txt");
+    if (words) words.scrollTop = words.scrollHeight;
+  }).observe(page);
   const write = wireWrite(ctx, form, {
     maxRows,
     onSend: () => {

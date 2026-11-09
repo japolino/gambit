@@ -44,7 +44,8 @@ const COMMON = `
   .dr .say, .dr.d3 .say { position: relative; left: auto; right: auto; top: auto; bottom: auto; width: auto; height: auto; min-height: 0; translate: none; margin: 0; padding: 8px 14px; display: flex; flex-direction: column;
     background: #120e0b; border-top: 2px solid #e2b763; z-index: 6; overflow: hidden; }
   .dr .say .aw-bg { display: none; }
-  .dr .dr-tw { width: 100%; padding-top: 46px; margin: 2px 0 -30px; }
+  .dr .dr-tw { width: 100%; padding-top: max(46px, calc(var(--tw-page, 46px) - 6px)); margin: 2px 0 -30px; }
+  .dr .say.writing .txt { margin-top: 0; -webkit-mask-image: none; mask-image: none; }
   .dr .dr-tw .tw-page textarea { font-size: 16px; }
   .dr .say.writing .txt, .dr.d3 .say.writing .txt { max-height: none; }
   .dr .say .txt, .dr.d3 .say .txt { flex: 1 1 auto; min-height: 0; max-height: none; padding: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; justify-content: flex-start; }

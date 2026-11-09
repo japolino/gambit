@@ -123,7 +123,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const pageEl = $<HTMLDivElement>(".sb-dlg .page");
   const txt = $<HTMLDivElement>(".sb-dlg .txt");
   const fol = $<HTMLDivElement>(".sb-folio");
-  const write = wireWrite(ctx, $<HTMLFormElement>(".sb-say"));
+  const write = wireWrite(ctx, $<HTMLFormElement>(".sb-say"), { maxRows: 4 });
   const skirtEl = $<HTMLDivElement>(".sb-skirt");
   const tags = $<HTMLDivElement>(".sb-tags");
   const apFrame = $<HTMLDivElement>(".sb-ap .fr");

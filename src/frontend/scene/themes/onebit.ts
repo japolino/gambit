@@ -95,7 +95,7 @@ const CSS = `
 .gs.onebit .mw-title { font: calc(var(--ob-f) * 2)/1 "Gambit 8bit", monospace; color: ${CSS_PAPER}; letter-spacing: 0; }
 .gs.onebit .mw.waiting .mw-title { animation: obBlink 1s steps(1, end) infinite; }
 .gs.onebit .mw-art { border: var(--ob-u) solid ${CSS_PAPER}; box-shadow: none; background-color: ${CSS_INK}; image-rendering: pixelated; }
-.gs.onebit .mw-text { font: var(--ob-f)/1.7 "Gambit 8bit", monospace; color: ${CSS_PAPER}; }
+.gs.onebit .mw-text { font: var(--ob-f)/1.7 "Gambit 8bit", monospace; color: ${CSS_PAPER}; max-height: 62cqh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: ${CSS_PAPER} ${CSS_INK}; }
 .gs.onebit .mw-card, .gs.onebit .mw-list li, .gs.onebit .mw-art::before, .gs.onebit .mw-art.arrived::before { animation: none; }
 .gs.onebit .mw-why, .gs.onebit .mw-change, .gs.onebit .mw-kicker, .gs.onebit .mw-list { font-size: 1em; font-weight: 400; letter-spacing: 0; text-transform: none; opacity: 1; line-height: inherit; }
 .gs.onebit .mw-change::before { font-size: 1em; }
@@ -190,11 +190,13 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   write.field.addEventListener("click", (e) => {
     const f = write.field;
     if (f.selectionStart !== f.selectionEnd) return;
-    const at = (Math.floor(e.offsetY / u / 10) + promptFirst) * promptCols + Math.round(e.offsetX / u / 8);
-    f.setSelectionRange(Math.min(at, f.value.length), Math.min(at, f.value.length));
+    const line = promptLines[Math.floor(e.offsetY / u / 10) + promptFirst] ?? promptLines[promptLines.length - 1];
+    if (!line) return;
+    const at = Math.min(line.from + Math.round(e.offsetX / u / 8), line.to);
+    f.setSelectionRange(at, at);
     paint();
   });
-  let promptCols = 40;
+  let promptLines: { from: number; to: number }[] = [];
   let promptFirst = 0;
   /** Lines of the story scrolled back from its end; where the newest beat starts, to show a phone. */
   let chronBack = 0;
@@ -893,8 +895,23 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   /** How many columns a typed line runs to: a "> " before it and the WRITE key after. */
   const colsFor = (chars: number) => Math.max(8, chars - 2 - 7);
+  /** Where a typed line wraps: at spaces, as the story does, cutting only a word longer than the line. Ends are exclusive; a space at a break stays on the line above. */
+  function typedLines(value: string, cols: number): { from: number; to: number }[] {
+    const out: { from: number; to: number }[] = [];
+    let from = 0;
+    while (value.length - from > cols) {
+      const room = value.slice(from, from + cols + 1);
+      const space = Math.max(room.lastIndexOf(" "), room.lastIndexOf("\n"));
+      const to = space > 0 ? from + space + 1 : from + cols;
+      out.push({ from, to });
+      from = to;
+    }
+    out.push({ from, to: value.length });
+    return out;
+  }
+  const PROMPT_ROWS = 5;
   function promptHeight(chars: number): number {
-    const rows = Math.min(3, Math.floor(write.field.value.length / colsFor(chars)) + 1);
+    const rows = Math.min(PROMPT_ROWS, typedLines(write.field.value, colsFor(chars)).length);
     return Math.max(L?.mode === "tall" || isPhone() ? rowMin() : 0, rows * 10) + 5;
   }
 
@@ -907,19 +924,25 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     fb.hline(r.x - 1, r.y + 1, r.w + 2, PAPER);
     fb.text(f, r.x, top + 1, ">", PAPER);
     const textX = r.x + 11;
-    const cols = colsFor(chars);
     const value = field.value;
+    const wrapped = typedLines(value, colsFor(chars));
     const typing = (root.getRootNode() as Document | ShadowRoot).activeElement === field;
     const rows = Math.max(1, Math.floor(rowsH / 10));
     const caret = field.selectionEnd ?? value.length;
-    const first = Math.max(0, Math.floor(caret / cols) - rows + 1);
-    promptCols = cols;
+    /** Which line a place in the text falls on, and how far along. */
+    const placeOf = (i: number) => {
+      let n = wrapped.findIndex((l, k) => i < l.to || k === wrapped.length - 1);
+      if (n < 0) n = 0;
+      return { n, col: i - wrapped[n]!.from };
+    };
+    const first = Math.max(0, placeOf(caret).n - rows + 1);
+    promptLines = wrapped;
     promptFirst = first;
     if (!value && !typing) fb.text(f, textX, top + 1, "WHAT DO YOU DO?", PAPER);
     for (let row = 0; row < rows; row++) {
-      const from = (first + row) * cols;
-      if (from >= value.length && from !== 0) break;
-      const shown = value.slice(from, from + cols).replace(/\s/g, " ");
+      const line = wrapped[first + row];
+      if (!line) break;
+      const shown = value.slice(line.from, line.to).replace(/\s/g, " ");
       fb.text(f, textX, top + 1 + row * 10, [...shown].map((c) => plain(c)[0] ?? " ").join(""), PAPER);
     }
     if (typing) {
@@ -928,9 +951,10 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const on = a !== caret || ctx.reducedMotion || time % 1 < 0.65;
       if (on) {
         for (let i = a; i <= Math.max(a, caret - (a !== caret ? 1 : 0)); i++) {
-          const cy = Math.floor(i / cols) - first;
+          const at = placeOf(i);
+          const cy = at.n - first;
           if (cy < 0 || cy >= rows) continue;
-          const cell = { x: textX + (i % cols) * 8 - 1, y: top + cy * 10, w: 9, h: 10 };
+          const cell = { x: textX + at.col * 8 - 1, y: top + cy * 10, w: 9, h: 10 };
           fb.fill(cell, PAPER);
           const ch = value[i];
           if (ch && ch.trim()) fb.text(f, cell.x + 1, cell.y + 1, plain(ch)[0] ?? " ", INK);
@@ -944,7 +968,8 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     else fb.box(key, PAPER);
     fb.text(f, key.x + 2, key.y + Math.floor((key.h - 8) / 2), "WRITE", value.trim() || lit("say:send") ? INK : PAPER);
     hits.push({ key: "say:send", r: key, label: "Write it", run: () => write.send() });
-    if (ctx.box(v).busy) fb.stipple({ x: r.x - 1, y: top, w: r.w + 2, h: rowsH });
+    // A reply on its way: you can write on, but it can't go yet.
+    if (ctx.box(v).busy) fb.stipple(key);
     Object.assign(sayForm.style, { left: `${textX * u}px`, top: `${top * u}px`, width: `${(key.x - textX - 2) * u}px`, height: `${rowsH * u}px` });
   }
 

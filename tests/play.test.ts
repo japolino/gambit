@@ -156,7 +156,8 @@ describe("play on a card", () => {
     await play.say("u", "chat1", "I threaten Mara until she talks");
     expect(talks).toEqual([{ castId: "mara", kind: "intimidate", line: "I threaten Mara until she talks" }]);
     expect(last().busy).toBeUndefined();
-    expect(last().story).toEqual([]);
+    // What you wrote stays written: the talk's ending follows it.
+    expect(last().story.map((b: { said: string }) => b.said)).toEqual(["I threaten Mara until she talks"]);
   });
 
   test("naming someone who isn't here brings them into the scene", async () => {

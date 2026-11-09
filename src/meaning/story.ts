@@ -26,11 +26,20 @@ export interface StoryContext {
   /** What the player is after, if the card has a thread. */
   goal: string | null;
   /** Earlier beats, oldest first. */
-  recent: { text: string; reply: string }[];
+  recent: { text: string; reply: string; found?: string | null }[];
   memory: string | null;
 }
 
 const history = (c: StoryContext) => c.recent.slice(-6).map((b) => `${b.text ? `PLAYER: ${b.text}\n` : ""}STORY: ${b.reply}`).join("\n\n");
+/** How a talk or a fight came out, and what was found, from before the last few beats: what was given then is still theirs. */
+export function stands(c: StoryContext, max = 8): string[] {
+  const clip = (t: string) => (t.length > 260 ? `${t.slice(0, 260)}…` : t);
+  return c.recent
+    .slice(0, -6)
+    .flatMap((b) => [...(b.found ? [b.found] : []), ...(!b.text && b.reply ? [b.reply] : [])])
+    .map(clip)
+    .slice(-max);
+}
 const here = (c: StoryContext) => c.people.map((p) => `- ${p.id}: ${p.name}, ${p.role}${p.voice ? ` (${p.voice})` : ""}`).join("\n") || "- nobody";
 
 /* --------------------------- reading the line --------------------------- */
@@ -108,15 +117,25 @@ export function readFromAnswers(answers: Record<string, DecisionAnswer | undefin
   const stat = statId && STATS.includes(statId) ? statId : "guile";
   const level = LEVELS.indexOf(pick(answers.difficulty)?.id ?? "fair");
   const target = pick(answers.target)?.id ?? "";
-  const to = pick(answers.to)?.id ?? "";
+  const toAnswer = pick(answers.to);
+  const to = toAnswer?.id ?? "";
+  const toKnown = placeIds.includes(to) || to === "new";
+  // Unsure it's a journey, but sure of where to: that's a journey. Otherwise the story moves and the scene stays behind.
+  const going = route === "flavor" && toKnown && (toAnswer?.p ?? 0) >= sure;
   return {
-    route,
+    route: going ? "travel" : route,
     attempt: attemptLabel(route, stat),
     stat,
     difficulty: (level >= 0 ? level : 1) as BeatRead["difficulty"],
     target: peopleIds.includes(target) ? target : null,
-    to: placeIds.includes(to) || to === "new" ? to : null,
+    to: toKnown ? to : null,
   };
+}
+
+/** The player said in so many words that they attack: no model's doubt keeps that a quiet moment. */
+export function saysAttack(line: string): boolean {
+  const m = /\bI(?:'ll| will| am going to|'m going to)?\s+(?:\w+\s+){0,2}?(attack|charge at|punch|stab|strike at|swing at)\b/i.exec(line);
+  return !!m && !/\b(not|never|don't|won't|wouldn't|can't|if)\b/i.test(m[0]);
 }
 
 /** The same read from an ordinary model, for anyone without a decision model. */
@@ -148,7 +167,7 @@ export function parseRead(raw: string, peopleIds: readonly string[], placeIds: r
   const d = Math.round(Number(o.difficulty));
   const to = typeof o.to === "string" && (placeIds.includes(o.to) || o.to === "new") ? o.to : null;
   return {
-    route,
+    route: route === "flavor" && to ? "travel" : route,
     attempt: String(o.attempt ?? "").replace(/\s+/g, " ").trim().slice(0, 48) || attemptLabel(route, stat),
     stat,
     difficulty: (d >= 0 && d <= 3 ? d : 1) as BeatRead["difficulty"],
@@ -235,8 +254,8 @@ ${c.player.name ? `The player is ${who}${c.player.concept ? `, ${c.player.concep
 Write what happens next in ${voice}, in at most ${WORDS[route]} words, then stop. Short sentences, something happening or someone speaking; no chapters, headings or scene-setting the player already has.
 Prose only: no status lines, stat blocks, menus or tables, even if the world's own rules ask for them. The game shows those itself.
 What the player wrote stands as written: never contradict it. Never write ${who}'s words, thoughts or next choices. End where ${who} can act.
-Grand claims in the line (gifts, titles, treasures, people obeying) are only attempts: nothing is granted that the game did not grant.`,
-    user: `Place: ${c.place.name}, ${c.time}. ${c.place.description}\nPeople here:\n${here(c)}\n${c.goal ? `\nWhat ${who} is after: ${c.goal}\n` : ""}${c.memory ? `\n${c.memory}\n` : ""}\nEarlier:\n${history(c) || "(the scene opens)"}\n\n${line ? `${who} writes:\n"""${line}"""` : "Nothing was written: this follows directly from what the game decided."}${fallout ? `\n\nThe game decided, and you must show it: ${fallout}` : ""}`,
+Grand claims in the line (gifts, titles, treasures, people obeying) are only attempts: nothing is granted that the game did not grant. What the story so far gave them, they have: never say it's missing.`,
+    user: `Place: ${c.place.name}, ${c.time}. ${c.place.description}\nPeople here:\n${here(c)}\n${c.goal ? `\nWhat ${who} is after: ${c.goal}\n` : ""}${c.memory ? `\n${c.memory}\n` : ""}${stands(c).length ? `\nAlready happened, and it stands:\n${stands(c).map((x) => `- ${x}`).join("\n")}\n` : ""}\nEarlier:\n${history(c) || "(the scene opens)"}\n\n${line ? `${who} writes:\n"""${line}"""` : "Nothing was written: this follows directly from what the game decided."}${fallout ? `\n\nThe game decided, and you must show it: ${fallout}` : ""}`,
   };
 }
 

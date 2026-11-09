@@ -83,3 +83,16 @@ describe("every theme offers it", () => {
     expect(host).toContain("[data-write]");
   });
 });
+
+describe("the words on the page", () => {
+  test("a book's quotes open and close, a terminal's stay as typed", () => {
+    const b = [beat({ said: '"I am awake," I say', reply: "" })];
+    expect(beatsHtml(b)).toContain("\u201cI am awake,\u201d");
+    expect(beatsHtml(b, false)).toContain("&quot;I am awake,&quot;");
+  });
+
+  test("a find the narrator already showed isn't printed twice", () => {
+    expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "There: a hidden door, behind the shelf." })])).not.toContain('class="found"');
+    expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "Dust everywhere." })])).toContain('class="found"');
+  });
+});
