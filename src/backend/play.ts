@@ -9,6 +9,7 @@ import type { ArtApi } from "../art/controller.js";
 import { advance, createBattle } from "../engine/battle.js";
 import { chooseAction } from "../engine/ai.js";
 import { encounterFrom, foeFromCast, partyFromSheet, playerPerson, type SheetFoe } from "../engine/card/foes.js";
+import { isChild } from "../engine/card/child.js";
 import { kitClass } from "../engine/card/kits.js";
 import { freshNames } from "../engine/card/naming.js";
 import type { CardSheet, CardSources } from "../engine/card/types.js";
@@ -1104,16 +1105,21 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
     r.battleId = undefined;
     r.afterglow = undefined;
-    // An adult scene (opt-in per chat) with someone who can be talked to: one you beat, or the one who claimed you. A
-    // loss that sends you back robbed has nobody to have it with.
-    const talks = (c: (typeof enemies)[number]) => !!state.meta?.monsters?.[c.defId]?.talks;
+    // An adult scene (opt-in per chat) with someone who can be talked to and is no child: one you beat, or the one who
+    // claimed you. A loss that sends you back robbed has nobody to have it with.
+    const t = tag(sheet.cardKey);
+    const foeIdOf = (id: string) => id.replace(`${t}.`, "").replace(/_p2$/, "").replace(/~.*$/, "");
+    const adult = (c: (typeof enemies)[number]) => {
+      const person = sheet.cast.find((p) => p.id === castIdOf(sheet, c.defId));
+      const foe = sheet.foes?.find((f) => f.id === foeIdOf(c.defId));
+      return !isChild(c.name, state.meta?.monsters?.[c.defId]?.visual.brief, foe?.look, person?.role, person?.look);
+    };
+    const talks = (c: (typeof enemies)[number]) => !!state.meta?.monsters?.[c.defId]?.talks && adult(c);
     const partner = !onPage ? null : state.outcome === "victory" ? (enemies.find(talks) ?? null) : claimer && talks(claimer) ? claimer : null;
     const offer: Afterglow | null = partner && (await cards.adultOn?.(userId, chatId)) ? { name: partner.name, castId: castIdOf(sheet, partner.defId), won: state.outcome === "victory", look: state.meta?.monsters?.[partner.defId]?.visual.brief ?? "", day: r.scene.day, placeId: spotOf(r) } : null;
     // Classes (M7): ranks from wins, catalysts from bosses, skills ready to awaken.
     for (const l of forge.afterBattle(r, state, !!state.meta?.boss)) line += ` ${l}`;
     // The deed ledger (4.6): who fell, who was spared or recruited, and how you fought.
-    const t = tag(sheet.cardKey);
-    const foeIdOf = (id: string) => id.replace(`${t}.`, "").replace(/_p2$/, "").replace(/~.*$/, "");
     const where = r.delve?.placeId ?? (wildCell(r) ? `wild_${wildCell(r)}` : state.outcome === "victory" ? r.scene.placeId : (r.scene.visited[r.scene.visited.length - 1] ?? r.scene.placeId));
     const deeds = deedsFromBattle(state, r.scene.day, where, foeIdOf, state.meta?.tally);
     const m = mem(r);

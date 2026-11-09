@@ -564,6 +564,24 @@ describe("play on a card", () => {
     expect(robbed.last().menu.some((h) => h.id === "afterglow")).toBe(false);
   });
 
+  test("no adult scene with a child, won or claimed; adults called young or little still get one", async () => {
+    const foe = (id: string, name: string, look: string) => ({ ...fallbackFoes("low fantasy")[0]!, id, name, look, talks: true });
+    const offered = async (foes: unknown[], outcome: "victory" | "defeat") => {
+      const { play, started, last } = setup({ sheet: { foes, skin: { ...sheet.skin, defeat: "claimed" } }, cards: { adultOn: async () => true } });
+      await play.open("u", "chat1");
+      await play.fight("u", "chat1");
+      await play.onBattleEnd(ended(started[0]!, outcome), "u");
+      await until(() => last().menu.some((h) => h.id === "afterglow"), 300);
+      return last().menu.some((h) => h.id === "afterglow");
+    };
+    const recruit = [foe("recruit", "Maturation Recruit", "Young rabbit-girl soldier, one of the one-month-old offspring")];
+    expect(await offered(recruit, "victory")).toBe(false);
+    expect(await offered(recruit, "defeat")).toBe(false);
+    const adults = [foe("woman", "Bandit", "a young woman with a notched blade"), foe("knight", "Knight", "a youthful knight"), foe("sister", "Little Sister", "the boss's little sister (24)")];
+    expect(await offered(adults, "victory")).toBe(true);
+    expect(await offered(adults, "defeat")).toBe(true);
+  });
+
   test("a scene the host fails to write closes the reader with a notice, and the offer comes back", async () => {
     const { play, started, last, sent } = setup({ cards: { adultOn: async () => true } });
     await play.open("u", "chat1");
