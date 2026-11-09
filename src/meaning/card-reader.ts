@@ -34,6 +34,7 @@ import {
 } from "../engine/card/types.js";
 import type { Questions } from "./referee.js";
 import { sameName } from "../engine/card/names.js";
+import { inferTradition, TRADITION_IDS, type NamingId } from "../engine/card/naming.js";
 import { loreText } from "./lore-pick.js";
 
 /** The card's people plus the named ones the read keeps (promotions add more in play). */
@@ -190,6 +191,7 @@ Write this JSON:
  "tone": "a few words",
  "skin": {"genre": "", "currency": "what money is called, or empty", "stats": {"presence": "one word for charm/authority here", "menace": "one word for threat/force", "guile": "one word for cunning/deceit"}, "fight": "what a fight is here", "defeat": "rout" or "claimed"},
  "shape": one of ${SHAPES.map((x) => `"${x}"`).join(", ")},
+ "names": the naming tradition its people and places fit best, going by the names the sources use and where the world is set, one of ${TRADITION_IDS.map((x) => `"${x}"`).join(", ")},
  "modules": {${MODULES.map((m) => `"${m}": true|false`).join(", ")}},
  "places": [{"id": "short_id", "name": "", "description": "one line", "quote": ""}],
  "cast": [{"id": "short_id", "name": "", "role": "who they are, a few words", "pronoun": "she|he|they", "at": "the id of the place above where they're usually found, or empty"}],
@@ -346,6 +348,7 @@ export function fallbackSheet(src: CardSources, now: number, note = "The card re
     places,
     modules: { ...NO_MODULES },
     shape: "scene",
+    names: inferTradition(src.cards.map((c) => `${c.scenario} ${c.tags.join(" ")}`).join(" "), src.cards.map((c) => c.name)),
     player: basePlayer(src),
     notes: [note],
   };
@@ -517,6 +520,7 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
   const p = obj(raw.player);
   const social = obj(p.social);
   const coin = Math.round(Number(p.coin));
+  const names = str(raw.names, 20).toLowerCase() as NamingId;
   return {
     ...base,
     by: "architect",
@@ -534,6 +538,7 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
     places: places.length ? places : base.places,
     modules,
     shape: (SHAPES as readonly string[]).includes(shapeIn) ? shapeIn : places.length > 1 ? "town" : "scene",
+    names: TRADITION_IDS.includes(names) ? names : inferTradition(`${str(skin.genre, 60)} ${str(raw.tone, 80)} ${str(raw.premise, 500)}`, [...cast.map((c) => c.name), ...places.map((pl) => pl.name)]),
     player: {
       ...base.player,
       concept: str(p.concept, 160) || base.player.concept,

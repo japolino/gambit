@@ -106,7 +106,7 @@ export function createForge(d: ForgeDeps) {
     const da = defOf(a);
     const db = defOf(b);
     const fam = familiesOf(da, db);
-    const draft = (await ask<FusionDraft | null>(userId, "fusion", fusionPrompt(da, db, fam, sheet.skin.genre), 1400, (raw) => parseFusion(raw, da), () => null, fresh)).value;
+    const draft = (await ask<FusionDraft | null>(userId, "fusion", fusionPrompt(da, db, fam, sheet.skin.genre), 1400, (raw) => parseFusion(raw, da, db), () => null, fresh)).value;
     const seed = `${da.id}+${db.id}:${salt}`;
     const fused = fuseClasses(da, db, draft, seed);
     const tested = balance(fused.def, fused.changes);
@@ -147,7 +147,7 @@ export function createForge(d: ForgeDeps) {
         if (t.length < 8) return warn(userId, "Describe the class in a sentence or two.");
         await work(async () => {
           const closest = baseClassFor(t);
-          const res = await ask(userId, "forge", forgePrompt(t, sheet.skin.genre), 1600, parseForge, () => fallbackForge(t, closest));
+          const res = await ask(userId, "forge", forgePrompt(t, sheet.skin.genre), 1600, (raw) => parseForge(raw, t), () => fallbackForge(t, closest));
           const notes = [...res.value.changes];
           const def = classFromDraft(res.value, `${chatId}:${t}`, notes);
           const tested = balance(def, notes);

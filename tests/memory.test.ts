@@ -19,6 +19,7 @@ import {
   type Deed,
 } from "../src/engine/memory/memory.js";
 import { fallbackNight, parsePromotion } from "../src/meaning/night.js";
+import { canonOf } from "../src/engine/card/naming.js";
 import type { BattleState, MonsterDef } from "../src/engine/types.js";
 import type { ToFrontend } from "../src/shared/protocol.js";
 import type { SceneView } from "../src/shared/scene-view.js";
@@ -154,8 +155,9 @@ describe("Notice", () => {
 
   test("a promotion's steps must point at real places; the night only scars a place you touched", () => {
     const places = new Set(["docks", "tavern"]);
-    expect(parsePromotion({ dossier: "d", item: { name: "Ring" }, steps: [{ text: "a", where: "docks" }, { text: "b", where: "nowhere" }] }, "X", places)).toBeNull();
-    expect(parsePromotion({ dossier: "d", item: { name: "Ring" }, steps: [{ text: "a", where: "docks" }, { text: "b", where: "tavern" }] }, "X", places)?.steps).toHaveLength(2);
+    const names = { places: [], people: [], canon: canonOf("") };
+    expect(parsePromotion({ dossier: "d", item: { name: "Ring" }, steps: [{ text: "a", where: "docks" }, { text: "b", where: "nowhere" }] }, "X", places, names)).toBeNull();
+    expect(parsePromotion({ dossier: "d", item: { name: "Ring" }, steps: [{ text: "a", where: "docks" }, { text: "b", where: "tavern" }] }, "X", places, names)?.steps).toHaveLength(2);
     const deeds: Deed[] = [{ day: 1, kind: "killed", target: "b", name: "B", n: 4, place: "docks", method: "fire" }];
     expect(fallbackNight(deeds, 1).scars[0]).toMatchObject({ place: "docks", flag: "burned" });
   });

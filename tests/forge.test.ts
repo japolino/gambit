@@ -87,7 +87,7 @@ describe("fusion", () => {
     expect(out.map((a) => a.op)).toEqual(["hit"]);
     expect((out[0] as { element: string }).element).not.toBe("storm");
     expect(notes).toHaveLength(3);
-    const draft = parseFusion({ name: "Ashblade", identity: "x", skills: [{ name: "Frost Heal", target: "ally", tier: 2, atoms: [{ op: "heal" }] }, { name: "Hex Cut", target: "enemy", tier: 3, signature: true, atoms: [{ op: "hit", element: "shadow" }, { op: "status", status: "burn" }] }] }, D)!;
+    const draft = parseFusion({ name: "Ashblade", identity: "x", skills: [{ name: "Frost Heal", target: "ally", tier: 2, atoms: [{ op: "heal" }] }, { name: "Hex Cut", target: "enemy", tier: 3, signature: true, atoms: [{ op: "hit", element: "shadow" }, { op: "status", status: "burn" }] }] }, D, H)!;
     const f = fuseClasses(D, H, draft, "s");
     expect(f.changes.some((c) => c.includes("Frost Heal was dropped"))).toBe(true);
     const made = f.def.skills.slice(4);
@@ -128,7 +128,7 @@ describe("the Forge", () => {
   };
 
   test("parses a draft; drops what isn't an atom; keeps a class inside its tier room", () => {
-    const d = parseForge(raw)!;
+    const d = parseForge(raw, "A war-chef who fights with cleavers")!;
     expect(d.skills.map((s) => s.name)).toEqual(["Cleaver", "Feast", "Flambé", "Chef's Kiss"]);
     const notes: string[] = [];
     const c = classFromDraft(d, "seed", notes);
@@ -144,8 +144,8 @@ describe("the Forge", () => {
   });
 
   test("junk does not parse", () => {
-    expect(parseForge({ name: "X", skills: [] })).toBeNull();
-    expect(parseForge({})).toBeNull();
+    expect(parseForge({ name: "X", skills: [] }, "")).toBeNull();
+    expect(parseForge({}, "")).toBeNull();
   });
 
   test("with no model, the closest base class is renamed from the words", () => {

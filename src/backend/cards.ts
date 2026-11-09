@@ -677,7 +677,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
         biblePrompt(sheet, src ? sourcesText(src, 10_000) : sheet.premise),
         2500,
         (raw) => {
-          const parsed = parseBible(raw, sheet, verify);
+          const parsed = parseBible(raw, sheet, verify, Date.now(), all);
           if (!parsed) rejected = raw;
           return parsed;
         },
@@ -718,10 +718,10 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
           armoryPrompt(sheet, src ? sourcesText(src, 12_000) : sheet.premise),
           4000,
           (raw) => {
-            const parsed = parseArmory(raw, sheet, verify);
+            const parsed = parseArmory(raw, sheet, verify, all);
             return parsed.by === "architect" ? parsed : null;
           },
-          () => parseArmory(null, sheet, verify),
+          () => parseArmory(null, sheet, verify, all),
         );
         const a = r.value;
         log(`armory ${sheet.cardName}: ${a.by} (${r.by}${r.why ? `: ${r.why}` : ""}), ${a.foes.length} foes (${a.foes.map((f) => `${f.name}:${f.role}${f.tier}`).join(", ")}), ${a.kits.length} kits`);

@@ -29,6 +29,8 @@ export interface StoryContext {
   /** Earlier beats, oldest first. */
   recent: { text: string; reply: string; found?: string | null }[];
   memory: string | null;
+  /** Names drawn for anyone new the narrator brings in (engine/card/naming.ts). */
+  names?: string[];
 }
 
 const history = (c: StoryContext) => c.recent.slice(-6).map((b) => `${b.text ? `PLAYER: ${b.text}\n` : ""}STORY: ${b.reply}`).join("\n\n");
@@ -276,6 +278,7 @@ export function narratorPrompt(c: StoryContext, line: string, fallout: string, r
 ${self ? `The player is ${self}. That is for you, not the world: the people here know only what they can see and what the story so far has shown them, never ${who}'s past, secrets or aims.` : ""}
 Write what happens next in ${voice}, in at most ${WORDS[route]} words, then stop. Short sentences, something happening or someone speaking; no chapters, headings or scene-setting the player already has.
 Prose only: no status lines, stat blocks, menus or tables, even if the world's own rules ask for them. The game shows those itself.
+Call the people here only by the names listed for them, never another name or a nickname the story hasn't used.${c.names?.length ? ` Anyone else who needs a name takes one of these: ${c.names.join(", ")}; the rest stay unnamed ("the barkeep").` : ""}
 What the player wrote stands as written: never contradict it. Never write ${who}'s words, thoughts or next choices. End where ${who} can act.
 Grand claims in the line (gifts, titles, treasures, people obeying) are only attempts: nothing is granted that the game did not grant. What the story so far gave them, they have: never say it's missing.`,
     user: `Place: ${c.place.name}, ${c.time}. ${c.place.description}\nPeople here:\n${here(c)}\n${c.goal ? `\nWhat ${who} is after, which nobody here knows unless the story has shown it: ${c.goal}\n` : ""}${c.memory ? `\n${c.memory}\n` : ""}${stands(c).length ? `\nAlready happened, and it stands:\n${stands(c).map((x) => `- ${x}`).join("\n")}\n` : ""}\nEarlier:\n${history(c) || "(the scene opens)"}\n\n${line ? `${who} writes:\n"""${line}"""` : "Nothing was written: this follows directly from what the game decided."}${fallout ? `\n\nThe game decided, and you must show it: ${fallout}` : ""}`,

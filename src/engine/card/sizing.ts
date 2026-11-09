@@ -4,6 +4,7 @@
  * start, floor, DC, and patience from tables. Pure and deterministic.
  */
 import type { ContestDef, ContestKind, Fact, Mood, NpcDef, ParleyScenario, Speaker } from "../parley/types.js";
+import { freshNames } from "./naming.js";
 import type { CardSheet, CastMember, ContestFrame, SheetFact, Tier } from "./types.js";
 
 const TEMPERAMENT = [0.1, 0.3, 0.5, 0.7, 0.9] as const;
@@ -192,6 +193,7 @@ export function scenarioFromSheet(sheet: CardSheet, frame: ContestFrame, chatId:
     speaker: speakerFrom(sheet),
     opening: frame.opening || "…",
     reveals: secrets,
+    names: freshNames(sheet, "given", `parley:${c.id}`, 3),
     card: {
       cardKey: sheet.cardKey,
       castId: c.id,

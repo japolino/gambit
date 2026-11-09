@@ -5,7 +5,7 @@ import { createPlay } from "../src/backend/play.js";
 import { fallbackFoes } from "../src/engine/card/foes.js";
 import { addHexPlace, buildHex, cellOf, hexDist, hexKey, hexPath, newHex, passable, stepHex } from "../src/engine/world/hex.js";
 import { addPlace, buildWorld } from "../src/engine/world/places.js";
-import { fallbackBible, gaps, parseBible, parsePlaceFromChat, fallbackPlaceFromChat, whereQuestion } from "../src/meaning/bible.js";
+import { bibleNames, fallbackBible, gaps, parseBible, parsePlaceFromChat, fallbackPlaceFromChat, whereQuestion } from "../src/meaning/bible.js";
 import { fallbackPlaces, placeNameFrom } from "../src/meaning/fallbacks.js";
 import type { ToFrontend } from "../src/shared/protocol.js";
 import type { SceneView } from "../src/shared/scene-view.js";
@@ -53,7 +53,9 @@ describe("the World Bible", () => {
       factions: [{ name: "The Wardens", want: "Hold the line", members: ["ash", "nobody"] }],
     };
     const b = parseBible(raw, base() as never, (q) => q.includes("Bone Hills"))!;
-    expect(b.places.map((p) => p.name)).toEqual(["The Bone Hills", "Saltmere", "The Sunken Keep", "Hollow Road"]);
+    // "Saltmere" is in no source, so it is made up and takes a drawn name.
+    expect(b.places.map((p) => p.name)).toEqual(["The Bone Hills", bibleNames(base() as never).places[0]!, "The Sunken Keep", "Hollow Road"]);
+    expect(parseBible(raw, base() as never, () => false, 1, "Saltmere lies grey under the hills.")!.places[1]!.name).toBe("Saltmere");
     expect(b.places[0]!.evidence.verified).toBe(true);
     expect(b.places[0]!.near).toBe("town");
     expect(b.places[1]!.evidence.verified).toBe(false);

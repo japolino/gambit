@@ -3,6 +3,8 @@
  * the model is missing, slow, or its answer fails the checks. Seeded and
  * pure, so the same card always gets the same stand-ins.
  */
+import { freshNames } from "../engine/card/naming.js";
+import { normName as baseNorm } from "../engine/card/names.js";
 import type { CardSheet, SheetPlace } from "../engine/card/types.js";
 
 const hash = (s: string): number => {
@@ -21,67 +23,67 @@ export function genreOf(sheet: Pick<CardSheet, "skin" | "premise" | "tone">): Ge
   return "fantasy";
 }
 
-/** Place names by genre: [name, one line, kind words the world rules read]. */
+/** Place names by genre: [name, one line]. {P} takes a real place name and {S} a surname, drawn for the card. */
 const PLACES: Record<Genre, [string, string][]> = {
   fantasy: [
-    ["The Crossroads Inn", "A low inn with rooms to rent where every road meets"],
-    ["The Old Market", "A crowded market of stalls, smoke and haggling"],
-    ["The Shrine on the Hill", "A weathered shrine where travellers leave offerings"],
-    ["The Watchtower", "A lonely tower over the road, half its stones fallen"],
-    ["The Deepwood", "A dark forest where the paths close behind you"],
-    ["The Sunken Crypt", "A crypt under the old chapel, flooded and haunted"],
-    ["The Smithy", "A forge that never cools, ringing day and night"],
-    ["The River Docks", "Wet planks, barges and gulls at the river's bend"],
+    ["The Inn at {P}", "A low inn with rooms to rent where every road meets"],
+    ["{P} Market", "A crowded market of stalls, smoke and haggling"],
+    ["The Shrine above {P}", "A weathered shrine where travellers leave offerings"],
+    ["{P} Watchtower", "A lonely tower over the road, half its stones fallen"],
+    ["{P} Wood", "A dark forest where the paths close behind you"],
+    ["The Crypt under {P}", "A crypt under the old chapel, flooded and haunted"],
+    ["{S}'s Forge", "A forge that never cools, ringing day and night"],
+    ["{P} Docks", "Wet planks, barges and gulls at the river's bend"],
   ],
   modern: [
-    ["The Corner Cafe", "A small cafe that stays open later than it should"],
-    ["The Station", "A busy train station, its board always delayed"],
+    ["{S}'s Cafe", "A small cafe that stays open later than it should"],
+    ["{P} Station", "A busy train station, its board always delayed"],
     ["The Rooftop", "A rooftop above the city lights, out of the wind"],
     ["The Back Alley", "A narrow alley behind the bars, where deals happen"],
-    ["The Old Apartment", "A cramped apartment with a view of the street"],
+    ["The Apartment on {P} Street", "A cramped apartment with a view of the street"],
     ["The Night Market", "Stalls and neon under the overpass"],
-    ["The Abandoned Subway Tunnel", "A sealed tunnel under the city, dark and dripping"],
-    ["The Park", "A quiet park with a pond and too many crows"],
+    ["The Old {P} Line Tunnel", "A sealed subway tunnel under the city, dark and dripping"],
+    ["{P} Park", "A quiet park with a pond and too many crows"],
   ],
   scifi: [
     ["The Docking Ring", "Airlocks, cargo crates and shuttle traffic"],
     ["The Mess Hall", "Long tables, recycled air and the best gossip aboard"],
-    ["The Bazaar Deck", "A market deck of traders and black-market stalls"],
+    ["{S}'s Bazaar", "A market deck of traders and black-market stalls"],
     ["The Med Bay", "White light and quiet machines"],
     ["The Observation Dome", "Glass, stars, and a long way down"],
-    ["The Derelict Hull", "A dead ship's corridors, cold and drifting"],
+    ["The Wreck of the {P}", "A dead ship's corridors, cold and drifting"],
     ["The Engine Room", "Heat, noise and warning lights"],
-    ["The Habitat Gardens", "Hydroponic gardens under grow lamps"],
+    ["{P} Gardens", "Hydroponic gardens under grow lamps"],
   ],
   horror: [
-    ["The Parlor", "A dusty parlor with covered furniture and a ticking clock"],
-    ["The Chapel", "A small chapel whose candles are always lit"],
-    ["The Graveyard", "Leaning stones and a gate that will not close"],
+    ["The Parlor at {S} House", "A dusty parlor with covered furniture and a ticking clock"],
+    ["{P} Chapel", "A small chapel whose candles are always lit"],
+    ["{P} Graveyard", "Leaning stones and a gate that will not close"],
     ["The Cellar", "A cellar under the house, dark and damp"],
-    ["The Village Pub", "A pub where the locals stop talking when you enter"],
+    ["The {S} Arms", "A pub where the locals stop talking when you enter"],
     ["The Woods Path", "A path into the woods that the map does not show"],
-    ["The Catacombs", "Bones in the walls and passages that branch forever"],
-    ["The Lighthouse", "A dark lighthouse over the rocks"],
+    ["The Catacombs under {P}", "Bones in the walls and passages that branch forever"],
+    ["{P} Lighthouse", "A dark lighthouse over the rocks"],
   ],
 };
 
-const normName = (s: string) => s.toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]+/g, " ").trim();
+const normName = (s: string) => baseNorm(s).replace(/^the\s+/, "").replace(/'/g, "");
 
-/** Up to `n` stand-in places for this genre, none named like one the card already has. */
-export function fallbackPlaces(sheet: Pick<CardSheet, "skin" | "premise" | "tone" | "places" | "cardKey">, n: number, wantDelve = false): SheetPlace[] {
+/** Up to `n` stand-in places for this genre, each with its own drawn name, none named like one the card already has. */
+export function fallbackPlaces(sheet: Pick<CardSheet, "skin" | "premise" | "tone" | "places" | "cardKey" | "cast" | "player" | "cardName" | "names">, n: number, wantDelve = false): SheetPlace[] {
   const genre = genreOf(sheet);
-  const have = new Set(sheet.places.map((p) => normName(p.name)));
-  const pool = PLACES[genre].filter(([name]) => !have.has(normName(name)));
-  const start = hash(sheet.cardKey) % Math.max(1, pool.length);
-  const ordered = [...pool.slice(start), ...pool.slice(0, start)];
+  const start = hash(sheet.cardKey) % PLACES[genre].length;
+  const ordered = [...PLACES[genre].slice(start), ...PLACES[genre].slice(0, start)];
   // A delve shape needs somewhere to explore: put the first underground place first.
-  if (wantDelve) ordered.sort((a, b) => Number(/crypt|tunnel|hull|catacomb|cellar/i.test(b[0])) - Number(/crypt|tunnel|hull|catacomb|cellar/i.test(a[0])));
-  return ordered.slice(0, Math.max(0, n)).map(([name, description]) => ({
-    id: `x_${normName(name).replace(/ /g, "_")}`,
-    name,
-    description,
-    evidence: { source: "gambit", quote: "", verified: false },
-  }));
+  if (wantDelve) ordered.sort((a, b) => Number(/crypt|tunnel|wreck|catacomb|cellar/i.test(b[0])) - Number(/crypt|tunnel|wreck|catacomb|cellar/i.test(a[0])));
+  const picked = ordered.slice(0, Math.max(0, n));
+  const places = freshNames(sheet, "place", "fallback", picked.length);
+  const surnames = freshNames(sheet, "surname", "fallback", picked.length, places);
+  const have = new Set(sheet.places.map((p) => normName(p.name)));
+  return picked
+    .map(([template, description], i) => ({ name: template.replace("{P}", places[i] ?? "").replace("{S}", surnames[i] ?? ""), description }))
+    .filter((p) => !have.has(normName(p.name)))
+    .map(({ name, description }) => ({ id: `x_${normName(name).replace(/ /g, "_")}`, name, description, evidence: { source: "gambit", quote: "", verified: false } }));
 }
 
 export interface ThreadDraft {

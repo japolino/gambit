@@ -130,6 +130,8 @@ export interface ParleyScenario {
   };
   /** What the player can pay, when the talk began. */
   purse?: number;
+  /** Names drawn for anyone else the narrator has to name (engine/card/naming.ts). */
+  names?: string[];
   /** Built from a Card Sheet (docs/DESIGN.md 4.0) rather than hand-written. */
   card?: {
     cardKey: string;

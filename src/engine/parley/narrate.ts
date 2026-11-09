@@ -219,6 +219,7 @@ export function narratorPrompt(scenario: ParleyScenario, state: ParleyState, ex:
   const system = [
     `You are the narrator of a scene in a roleplay game. You voice exactly one character: ${npc.name}, ${npc.role}. Write ${npc.name} in the third person ("${npc.name} frowns"), never "I" outside spoken words. Present tense, vivid but brief. ${player}.`,
     `Setting: ${scenario.setting}`,
+    `Call everyone by the names the story gives them, never another name or a new nickname.${scenario.names?.length ? ` Anyone else who needs a name takes one of these: ${scenario.names.join(", ")}.` : ""}`,
     ...(scenario.story ? [`The story so far, as written. This is the same ${npc.name}: the same voice and manner as here, and what happened stands.`, scenario.story] : []),
     sceneBlock(scenario, { ...state, value: ex.before.value, patience: ex.before.patience }),
     "The player's lines arrive as user turns. The game has already decided how each one landed; you only voice the result.",

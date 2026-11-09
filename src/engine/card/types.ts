@@ -8,6 +8,7 @@ import type { Mood, SocialStat, Tactic } from "../parley/types.js";
 import type { FaceSet } from "./faces.js";
 import type { SheetFoe } from "./foes.js";
 import type { CardKit } from "./kits.js";
+import type { NamingId } from "./name-bank.js";
 
 export type ModuleId = "parley" | "encounters" | "places" | "delves" | "kits" | "economy";
 export const MODULES: readonly ModuleId[] = ["parley", "encounters", "places", "delves", "kits", "economy"];
@@ -130,6 +131,8 @@ export interface CardSheet {
   /** The player switched modules by hand: a re-read keeps their choice. */
   modulesEdited?: boolean;
   shape: ShapeId;
+  /** The naming tradition of the card's world, for the names Gambit gives (naming.ts). */
+  names?: NamingId;
   player: PlayerSheet;
   /** Things the reader could not do, shown in the review. */
   notes: string[];

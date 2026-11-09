@@ -10,6 +10,7 @@ import { advance, createBattle } from "../engine/battle.js";
 import { chooseAction } from "../engine/ai.js";
 import { encounterFrom, foeFromCast, partyFromSheet, type SheetFoe } from "../engine/card/foes.js";
 import { kitClass } from "../engine/card/kits.js";
+import { freshNames } from "../engine/card/naming.js";
 import type { CardSheet, CardSources } from "../engine/card/types.js";
 import { camp as boardCamp, dealBoard, moveTo as boardMove, openLore, skip as boardSkip, winFight, type Board, type BoardEvent, type LoreCard } from "../engine/world/board.js";
 import { boardLore, glimpse, loreScenePrompt, parseLoreScene } from "../meaning/board-deck.js";
@@ -21,7 +22,7 @@ import { addPlace, applyTraits, buildWorld, clockTo, moveScene, newScene, search
 import { createSenses } from "./senses.js";
 import { PLACE_TRAITS as PLACE_FLAGS, type CompanionLike } from "../meaning/senses.js";
 import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
-import { fallbackPlaceFromChat, named, parsePlaceFromChat, placeFromChatPrompt, type Bible } from "../meaning/bible.js";
+import { chatPlaceNames, fallbackPlaceFromChat, named, parsePlaceFromChat, placeFromChatPrompt, type Bible } from "../meaning/bible.js";
 import { modelsFor } from "./models.js";
 import { beatWorked, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, THREAD_DAYS, threadEnd, type BeatRead, type BeatRoute } from "../engine/story/beat.js";
 import type { ContestKind } from "../engine/parley/types.js";
@@ -57,7 +58,7 @@ import {
   caughtLies,
   rapportFrom,
 } from "../engine/memory/memory.js";
-import { fallbackPromotion, parsePromotion, promotedId, promotePrompt } from "../meaning/night.js";
+import { fallbackPromotion, parsePromotion, promotedId, promoteNames, promotePrompt } from "../meaning/night.js";
 import { baseClassFor } from "../engine/card/foes.js";
 import { bookOf, createForge } from "./forge.js";
 import { rankOf } from "../engine/forge/forge.js";
@@ -623,6 +624,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       goal: r.thread && !r.threadEnd ? r.thread.goal : null,
       recent: (r.story ?? []).map((b) => ({ text: b.said, reply: !b.said && b.roll ? `${b.roll}. ${b.reply}`.trim() : b.reply, ...(b.found ? { found: b.found } : {}) })),
       memory: memoryNote(sheet, r),
+      names: freshNames(sheet, "given", `story:${r.scene.placeId}`, 4, [...Object.values(r.world.places).map((p) => p.name), ...withPromoted(sheet, r).cast.map((c) => c.name), ...(r.story ?? []).map((b) => b.reply)]),
     };
   }
 
@@ -1287,7 +1289,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       const companion = kind === "bond";
       const mentionedIn = recent.filter((l) => l.content.includes(name.split(" ")[0]!)).map((l) => l.content).slice(-3);
       const fallback = () => fallbackPromotion(name, places, `${chatId}:${key}`, companion);
-      const job = async () => (cards.compile ? (await cards.compile(userId, "promote", promotePrompt(sheet, { name, known, lore }, places, mentionedIn, companion), 900, (raw) => parsePromotion(raw, name, placeIds), fallback, { tries: 1 })).value : fallback());
+      const names = promoteNames(sheet, name, [...places.map((p) => p.name), ...m0.promoted.map((p) => p.name), ...m0.recruits.map((x) => x.name)], [lore, known, ...mentionedIn]);
+      const job = async () => (cards.compile ? (await cards.compile(userId, "promote", promotePrompt(sheet, { name, known, lore }, places, mentionedIn, companion, names), 900, (raw) => parsePromotion(raw, name, placeIds, names), fallback, { tries: 1 })).value : fallback());
       const draft = await (cards.jaot ? cards.jaot.run(`promote:${chatId}:${key}`, priority, job) : job()).catch(fallback);
       const r = (await load(userId, chatId)) ?? r0;
       const m = mem(r);
@@ -1569,7 +1572,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     await show(userId, chatId, sheet, r, "Writing what you find…");
     const party = r.board?.party.map((p) => p.name) ?? [sheet.player.name || "You"];
     const recent = (await cards.recent?.(userId, chatId, 3).catch(() => [])) ?? [];
-    const prompt = loreScenePrompt(sheet, card, tier, r.board ? boardPlace(r, r.board) : "the way", party, recent);
+    const names = freshNames(sheet, "given", `lore:${card.id}`, 3, [...withPromoted(sheet, r).cast.map((c) => c.name), card.text]);
+    const prompt = loreScenePrompt(sheet, card, tier, r.board ? boardPlace(r, r.board) : "the way", party, recent, names);
     const fallback = () => card.text.replace(/\s+/g, " ").slice(0, 600);
     const text = cards.compile ? (await cards.compile(userId, "board-scene", prompt, 700, parseLoreScene, fallback, { tries: 1 })).value : fallback();
     const effects: string[] = [];
@@ -1867,7 +1871,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         const known = Object.values(r.world.places).map((x) => x.name);
         const ask = async () =>
           cards.compile
-            ? (await cards.compile(userId, "place-from-chat", placeFromChatPrompt(sheet, here.name, known, lines), 400, (raw) => parsePlaceFromChat(raw, lines, known), () => fallbackPlaceFromChat(lines, known), { tries: 1 })).value
+            ? (await cards.compile(userId, "place-from-chat", placeFromChatPrompt(sheet, here.name, known, lines), 400, (raw) => parsePlaceFromChat(raw, lines, known, chatPlaceNames(sheet, known)), () => fallbackPlaceFromChat(lines, known), { tries: 1 })).value
             : fallbackPlaceFromChat(lines, known);
         const np = await (cards.jaot ? cards.jaot.run(`place:${chatId}:${lines.length ? lines[lines.length - 1]!.content.length : 0}`, 0, ask) : ask());
         if (!np) return log("where: the chat went somewhere new, but no place could be read from it");
