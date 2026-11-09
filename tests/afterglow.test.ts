@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { italicLines } from "../src/backend/play.js";
 import { withSuffix } from "../src/backend/suffix.js";
-import { pictureMoments, scenePages } from "../src/meaning/afterglow.js";
+import { pictureMoments, scenePages, withPictures } from "../src/meaning/afterglow.js";
 import { fillNote, noteText } from "../src/meaning/notes.js";
 
 const para = (i: number) => `Paragraph ${i} ${"word ".repeat(30).trim()}.`;
@@ -22,6 +22,13 @@ describe("the adult scene after a fight", () => {
     expect(pages).toHaveLength(1);
     expect(pages[0]!.text.startsWith("Paragraph 1")).toBe(true);
     expect(pages[0]!.text.endsWith('"Mine," she says.')).toBe(true);
+  });
+
+  test("pictures go into the reply after the paragraph their page ends with, and nothing else in it changes", () => {
+    const reply = `## Response\n\n${para(1)}\n\nShort.\n \n${para(2)}`;
+    const pages = scenePages(reply);
+    const out = withPictures(reply, pages, [{ page: 0, url: "/a.png", alt: "One [1/2]" }, { page: 1, url: "/b.png", alt: "Two" }]);
+    expect(out).toBe(`## Response\n\n${para(1)}\n\n![One  1/2 ](/a.png)\n\nShort.\n \n${para(2)}\n\n![Two](/b.png)`);
   });
 
   test("a short reply gets one picture, at its end", () => {

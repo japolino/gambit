@@ -28,7 +28,7 @@ import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
 import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
 import { cleanReply } from "../engine/parley/narrate.js";
-import { pictureMoments, scenePages } from "../meaning/afterglow.js";
+import { pictureMoments, scenePages, withPictures } from "../meaning/afterglow.js";
 import { fillNote, noteText } from "../meaning/notes.js";
 import { createNotes } from "./notes.js";
 import { withSuffix } from "./suffix.js";
@@ -1138,7 +1138,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
 
   /**
    * An adult scene's reply is in (or was stopped): read it page by page, remember it once, and have Inlay draw its
-   * moments. The pictures go into the chat after the reply, never into it: the reply stays as the model wrote it.
+   * moments into it.
    */
   async function sceneEnded(chatId: string, content: string, messageId: string | undefined): Promise<void> {
     const s = scenesWriting.get(chatId);
@@ -1165,17 +1165,37 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       await save(userId, chatId, r);
     }
     if (!pictures) return;
-    for (const [i, mo] of moments.entries()) {
-      void pictures
-        .request(userId, { id: mo.key, chatId, direction: "intimate", text: mo.text.slice(0, 1900) })
-        .then(async (pic) => {
-          if (!pic) return;
-          send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
-          await picture(chatId, pic.imageId, `${title} (${i + 1}/${moments.length})`);
-        })
-        .catch((err: unknown) => log(`scene picture: ${errText(err)}`));
-    }
+    // Mid-scene pages say "she" and "him": Inlay finds people by name, so each picture's text says who and where first.
+    const where = r ? r.world.places[r.scene.placeId]?.name : undefined;
+    const who = `${meta.partner} and ${sheet?.player.name || "the persona"}${where ? `, at ${where}` : ""}.`;
+    const drawn = await Promise.all(
+      moments.map(async (mo, i) => {
+        const pic = await pictures!.request(userId, { id: mo.key, chatId, direction: "intimate", text: `${who}\n\n${mo.text}`.slice(0, 1900) }).catch((err: unknown) => (log(`scene picture: ${errText(err)}`), null));
+        if (!pic) return null;
+        send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
+        return { page: mo.page, url: pic.url, alt: `${title} (${i + 1}/${moments.length})` };
+      }),
+    );
+    const pics = drawn.filter((p): p is NonNullable<typeof p> => !!p);
+    if (pics.length && messageId) await pictureReply(chatId, messageId, content, withPictures(content, pages, pics));
   }
+
+  /**
+   * The pictures go into the scene's own reply, the way Inlay places illustrations, so a swipe still swipes the scene.
+   * Into the swipe that wrote it, found by its words: the player may have swiped on while the pictures were drawn.
+   */
+  async function pictureReply(chatId: string, messageId: string, written: string, withPics: string): Promise<void> {
+    const all = await spindle.chat.getMessages(chatId, { tail: 6 }).catch(() => []);
+    const m = all.find((x) => x.id === messageId);
+    if (!m) return;
+    const swipes = Array.isArray(m.swipes) && m.swipes.length ? [...m.swipes] : [m.content];
+    const at = swipes.findIndex((s) => s === written);
+    if (at < 0) return;
+    const active = (m.swipe_id ?? 0) === at;
+    swipes[at] = withPics;
+    await spindle.chat.updateMessage(chatId, messageId, (active ? { content: withPics, skipChunkRebuild: true } : { swipes, skipChunkRebuild: true }) as never).catch((err: unknown) => log(`scene pictures: ${errText(err)}`));
+  }
+
 
   /** The page's account of how a fight went, written once it's over. Until then, and if nothing can write, the result line stands. */
   async function aftermath(userId: string, chatId: string, sheet: CardSheet, result: string, fact: string): Promise<void> {

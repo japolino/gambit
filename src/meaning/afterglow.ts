@@ -12,34 +12,48 @@ export interface ScenePage {
   text: string;
   /** This page closes a moment that gets its own picture. */
   picture: boolean;
+  /** The reply's paragraph (split on blank lines) this page ends with, for putting its picture after it. */
+  end: number;
 }
+
+/** A paragraph as the reader shows it: a preset's headings and markdown emphasis aren't the story's words. */
+const readable = (p: string): string =>
+  p
+    .split("\n")
+    .filter((l) => !/^\s*#{1,6}\s/.test(l))
+    .join(" ")
+    .replace(/(\*\*|\*|__)(?=\S)([^*_]+?)\1/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const paragraphs = (reply: string): string[] => reply.split(/\n\s*\n/);
 
 /**
  * A reply as pages: its paragraphs, a short one joined to the next. The pictures fall at the ends of its first,
  * second and last thirds (fewer for a short scene), so they follow the scene as it goes on.
  */
 export function scenePages(reply: string): ScenePage[] {
-  const paras = reply
-    .split(/\n\s*\n/)
-    // A preset's headings ("## Response", "### Chapter 1") and markdown emphasis aren't the story's words.
-    .map((p) => p.split("\n").filter((l) => !/^\s*#{1,6}\s/.test(l)).join(" "))
-    .map((p) => p.replace(/(\*\*|\*|__)(?=\S)([^*_]+?)\1/g, "$2").replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  const pages: string[] = [];
+  const pages: { text: string; end: number }[] = [];
   let held = "";
-  for (const p of paras) {
+  paragraphs(reply).forEach((raw, i) => {
+    const p = readable(raw);
+    if (!p) return;
     const text = held ? `${held} ${p}` : p;
     if (text.split(" ").length < SHORT_WORDS) held = text;
     else {
-      pages.push(text);
+      pages.push({ text, end: i });
       held = "";
     }
+  });
+  if (held) {
+    const last = paragraphs(reply).length - 1;
+    if (pages.length) pages[pages.length - 1] = { text: `${pages[pages.length - 1]!.text} ${held}`, end: last };
+    else pages.push({ text: held, end: last });
   }
-  if (held) pages.length ? (pages[pages.length - 1] += ` ${held}`) : pages.push(held);
   const n = pages.length;
   const k = Math.min(SCENE_PICTURES, n);
   const at = new Set(Array.from({ length: k }, (_, i) => Math.ceil((n * (i + 1)) / k) - 1));
-  return pages.map((text, i) => ({ text, picture: at.has(i) }));
+  return pages.map((p, i) => ({ ...p, picture: at.has(i) }));
 }
 
 /** What each picture is drawn from: the pages since the last picture, up to and including its own. */
@@ -52,4 +66,17 @@ export function pictureMoments(pages: readonly ScenePage[]): { page: number; tex
     from = i + 1;
   });
   return out;
+}
+
+/** The reply with its pictures in it, each after the paragraph its page ends with, the way Inlay places illustrations. */
+export function withPictures(reply: string, pages: readonly ScenePage[], pictures: readonly { page: number; url: string; alt: string }[]): string {
+  const after = new Map<number, string[]>();
+  for (const p of pictures) {
+    const end = pages[p.page]?.end;
+    if (end === undefined) continue;
+    after.set(end, [...(after.get(end) ?? []), `![${p.alt.replace(/[[\]\n]/g, " ")}](${p.url})`]);
+  }
+  // Split keeping the reply's own breaks, so nothing but the pictures changes in it.
+  const parts = reply.split(/(\n\s*\n)/);
+  return parts.map((part, j) => (j % 2 === 0 && after.has(j / 2) ? `${part}\n\n${after.get(j / 2)!.join("\n\n")}` : part)).join("");
 }
