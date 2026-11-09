@@ -188,7 +188,7 @@ Write this JSON:
 {
  "premise": "two sentences: the situation the card sets up",
  "tone": "a few words",
- "skin": {"genre": "", "currency": "what money is called, or empty", "stats": {"presence": "one word for charm/authority here", "menace": "one word for threat/force", "guile": "one word for cunning/deceit"}, "fight": "what a fight is here"},
+ "skin": {"genre": "", "currency": "what money is called, or empty", "stats": {"presence": "one word for charm/authority here", "menace": "one word for threat/force", "guile": "one word for cunning/deceit"}, "fight": "what a fight is here", "defeat": "rout" or "claimed"},
  "shape": one of ${SHAPES.map((x) => `"${x}"`).join(", ")},
  "modules": {${MODULES.map((m) => `"${m}": true|false`).join(", ")}},
  "places": [{"id": "short_id", "name": "", "description": "one line", "quote": ""}],
@@ -196,6 +196,7 @@ Write this JSON:
  "player": {"concept": "who the persona is, one line", "social": {"presence": 0-4, "menace": 0-4, "guile": 0-4}},
  "not_people": ["the name of any [CARD] above that is a game, narrator, setting or scenario rather than a person someone could meet"]
 }
+Defeat: "claimed" when the sources say whoever wins a fight takes the loser for their own (a prisoner, a pet, a spouse) instead of hurting, robbing or killing them; otherwise "rout".
 Modules: turn one on only if the card supports it. parley = anyone to talk to; encounters = conflict or danger; places = more than one location; delves = somewhere explored room by room; kits = powers, skills, classes, or gear that matters; economy = money, trade, or scarce goods.
 Cast: the card's character(s) first if they are people, then up to 11 people the sources name, the ones most likely to matter in play first. Only people someone could meet and talk to: not the game or its narrator, and not a god or force that never walks into a scene. Places: up to 6. Names listed under ALSO IN THE LOREBOOK are real people and places of this world and may be picked; quote the name. Do not include the player in the cast.`,
   };
@@ -521,6 +522,7 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
       currency: currencyName(str(skin.currency, 60)),
       stats: { presence: str(stats.presence, 24) || "Presence", menace: str(stats.menace, 24) || "Menace", guile: str(stats.guile, 24) || "Guile" },
       fight: str(skin.fight, 60) || "fight",
+      ...(skin.defeat === "claimed" ? { defeat: "claimed" as const } : {}),
     },
     cast,
     facts,

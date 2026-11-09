@@ -43,6 +43,7 @@ export interface CardActions {
   social(stat: SocialStat, value: Tier): void;
   module(id: ModuleId, on: boolean): void;
   chips(on: boolean): void;
+  adult(on: boolean): void;
   play(): void;
 }
 
@@ -103,6 +104,7 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
       `<details><summary>Options</summary><div class="row">
         <div class="mods">${MODULES.map((m) => `<button data-mod="${m}" class="${sheet.modules[m] ? "on" : ""}" ${m === "parley" ? "disabled" : ""}>${MODULE_LABEL[m]}</button>`).join("")}</div>
         <div class="switch"><span>Contests under replies</span><button class="tog${s.chips ? " on" : ""}" data-chips aria-label="Contests under replies"></button></div>
+        <div class="switch"><span>Adult scenes after fights (18+)</span><button class="tog${s.adult ? " on" : ""}" data-adult aria-label="Adult scenes after fights"></button></div>
         <button data-reread>Read the card again</button></div></details>`,
     );
   }
@@ -110,6 +112,7 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
   root.querySelector("[data-enable]")?.addEventListener("click", () => a.enable(!s.enabled));
   root.querySelector("[data-play]")?.addEventListener("click", () => a.play());
   root.querySelector("[data-chips]")?.addEventListener("click", () => a.chips(!s.chips));
+  root.querySelector("[data-adult]")?.addEventListener("click", () => a.adult(!s.adult));
   root.querySelectorAll("[data-reread]").forEach((b) =>
     b.addEventListener("click", (e) => {
       e.preventDefault();

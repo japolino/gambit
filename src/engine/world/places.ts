@@ -60,13 +60,27 @@ const hash = (s: string): number => {
 };
 const norm = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 
-/** Who is where: a person whose words name a place is there; the rest spread from the start, the main cast at the start. */
-function placePeople(sheet: Pick<CardSheet, "cast">, ids: string[], names: Record<string, string>, start: string, seed: number): Record<string, string[]> {
+const TITLES = new Set(["sir", "lady", "lord", "dame", "sister", "brother", "father", "mother", "captain", "master", "mistress", "doctor", "the", "old", "young"]);
+
+/** The words that name someone in a place's text: their full name, or a name word that isn't a title. */
+function nameWords(name: string): string[] {
+  const full = norm(name);
+  return [full, ...full.split(" ").filter((w) => w.length > 3 && !TITLES.has(w))];
+}
+
+/**
+ * Who is where: a person whose words name a place is there, then a person a place's own words name
+ * ("the inn (Ysolde, the back room)"); the rest spread from the start, the main cast at the start.
+ */
+function placePeople(sheet: Pick<CardSheet, "cast">, ids: string[], names: Record<string, string>, texts: Record<string, string>, start: string, seed: number): Record<string, string[]> {
   const out: Record<string, string[]> = Object.fromEntries(ids.map((id) => [id, [] as string[]]));
+  const says = (text: string, word: string) => ` ${text} `.includes(` ${word} `);
   sheet.cast.forEach((m, i) => {
     const text = norm(`${m.role} ${m.look} ${m.evidence.quote}`);
     const named = ids.find((id) => id !== start && names[id] && norm(names[id]!).length > 2 && text.includes(norm(names[id]!)));
-    const at = named ?? (m.main || ids.length === 1 ? start : ids[(seed + i * 7) % ids.length]!);
+    const words = nameWords(m.name);
+    const namedBy = ids.find((id) => words.some((w) => says(texts[id] ?? "", w)));
+    const at = named ?? namedBy ?? (m.main || ids.length === 1 ? start : ids[(seed + i * 7) % ids.length]!);
     out[at]!.push(m.id);
   });
   return out;
@@ -132,7 +146,8 @@ export function buildWorld(sheet: Pick<CardSheet, "shape" | "places" | "cast" | 
   places[start]!.rest = true;
   if (shape === "delve" && sheet.modules.delves && !ids.some((id) => places[id]!.delve)) places[ids[ids.length - 1]!]!.delve = true;
   const names = Object.fromEntries(ids.map((id) => [id, places[id]!.name]));
-  const who = placePeople(sheet, ids, names, start, s);
+  const texts = Object.fromEntries(raw.map((p) => [p.id, norm(`${p.description} ${p.evidence.quote}`)]));
+  const who = placePeople(sheet, ids, names, texts, start, s);
   for (const id of ids) places[id]!.people = who[id] ?? [];
   return { v: 1, shape, start, places, route };
 }

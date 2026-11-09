@@ -97,6 +97,34 @@ export interface PlayRecord {
   album?: { key: string; caption: string; day: number }[];
   /** Lore ids opened on boards so far, so new boards deal fresh ones. */
   loreSpent?: string[];
+  /** The adult scene a fight just offered (opt-in per chat): who with, and how the fight went. Gone once the scene moves on. */
+  afterglow?: Afterglow;
+}
+
+export interface Afterglow {
+  name: string;
+  /** The card person they are, when they are one. */
+  castId: string | null;
+  won: boolean;
+  /** How they look, for someone the card doesn't have. */
+  look: string;
+  day: number;
+  placeId: string;
+}
+
+/** Where you stand: a place id, or the overland cell when it is not a place. */
+export function spotOf(r: PlayRecord): string {
+  return wildCell(r) && r.hex ? `wild:${r.hex.state.q},${r.hex.state.r}` : r.scene.placeId;
+}
+
+/** The offered adult scene still stands: same day, same spot. */
+export function afterglowHere(r: PlayRecord): boolean {
+  return !!r.afterglow && r.afterglow.day === r.scene.day && r.afterglow.placeId === spotOf(r);
+}
+
+/** The menu item an offered adult scene adds: the fight's winner sets the tone. */
+export function afterglowLabel(a: Afterglow): string {
+  return a.won ? `Claim ${a.name}` : `Give in to ${a.name}`;
 }
 
 const INDOOR = /(inn|tavern|shop|store|room|rooms|bar|cafe|café|parlou?r|hall|kitchen|library|office|apartment|bedroom|chamber|study|salon|lounge|club|pub|smithy|forge|bakery|apothecary|mess|quarters|house|home|manor|mansion|palace|castle)/i;
@@ -121,6 +149,7 @@ export function menuFor(sheet: CardSheet, r: PlayRecord): Hotspot[] {
   const t = wildCell(r);
   if (!t) {
     const out = hotspotsOf(r.world, r.scene.placeId, sheet);
+    if (afterglowHere(r)) out.unshift({ id: "afterglow", kind: "talk", label: afterglowLabel(r.afterglow!) });
     const p = r.world.places[r.scene.placeId];
     // Out of doors, a place can be crossed on an expedition board; a delve has its own crawl.
     if (p && sheet.modules.places !== false && !p.delve && (p.danger || !(p.indoor ?? INDOOR.test(`${p.name} ${p.description}`)))) {
@@ -130,6 +159,7 @@ export function menuFor(sheet: CardSheet, r: PlayRecord): Hotspot[] {
     return out;
   }
   const out: Hotspot[] = [{ id: "forage", kind: "search", label: "Forage for supplies" }];
+  if (afterglowHere(r)) out.unshift({ id: "afterglow", kind: "talk", label: afterglowLabel(r.afterglow!) });
   if (t !== "water") out.push({ id: "explore", kind: "explore", label: `Explore the ${TERRAIN_NAME[t].toLowerCase()}` });
   if (sheet.modules.encounters && (t === "wood" || t === "ruin" || t === "hill")) out.push({ id: "fight", kind: "fight", label: fightLabel(sheet.skin.fight) });
   out.push({ id: "camp", kind: "rest", label: "Make camp" }, { id: "wait", kind: "wait", label: "Wait a while" });

@@ -90,6 +90,8 @@ export interface GenreSkin {
   stats: Record<SocialStat, string>;
   /** What a fight is called here: "duel", "firefight", "court case". */
   fight: string;
+  /** What losing a fight means here: beaten back and robbed (the default), or claimed by the winner, unharmed. */
+  defeat?: "rout" | "claimed";
 }
 
 export interface PlayerSheet {

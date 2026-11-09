@@ -29,6 +29,22 @@ describe("the card's places", () => {
     expect(w.places.crypt!.delve).toBe(true);
   });
 
+  test("someone a place's own words name stands there, by a name word that isn't a title", () => {
+    const people = [
+      { id: "ysolde", name: "Ysolde", role: "lamia innkeeper", look: "", main: false, evidence: ev("warm, teasing, maternal") },
+      { id: "maren", name: "Sister Maren Voss", role: "Order inquisitor", look: "", main: false, evidence: ev("tall, severe, grey-eyed") },
+    ] as never[];
+    const at = [
+      { id: "gate", name: "The River Gate", description: "the town gate", evidence: ev("the River Gate (Order guards, curfew at bells)") },
+      { id: "kettle", name: "The Coiled Kettle", description: "an inn run by a lamia", evidence: ev("the Coiled Kettle inn (Ysolde, the secret back room)") },
+      { id: "chapel", name: "Chapel of the Chief God", description: "the Order's chapel", evidence: ev("the Chapel of the Chief God (Sister Maren's seat, the pyre yard)") },
+      { id: "abbey", name: "The Sunken Abbey", description: "a flooded abbey", evidence: ev() },
+    ];
+    const w = buildWorld(sheet("frontier", { places: at, cast: people }), "s");
+    expect(w.places.kettle!.people).toEqual(["ysolde"]);
+    expect(w.places.chapel!.people).toEqual(["maren"]);
+  });
+
   test("a journey is a line with a next stop; one place is a single scene; no places still gives a scene", () => {
     const j = buildWorld(sheet("journey"), "s");
     expect(j.route).toEqual(["manor", "library", "ward", "crypt"]);

@@ -36,7 +36,7 @@ const battles = createBattles(
 const fxAssets = createFxAssets(spindle, (msg, userId) => send(msg, userId), (m) => spindle.log.warn(`gambit ${m}`));
 const parleys = createParleys(spindle, (msg, userId) => send(msg, userId), art);
 const cards = createCards(spindle, (msg, userId) => send(msg, userId), parleys);
-play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles);
+play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles, { pictures: cutinPictures.inlay });
 // New places come from play (4.5): the reply detector asks where the scene went.
 cards.setPlaceHook({
   where: (u, c) => play!.where(u, c),
@@ -131,6 +131,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         break;
       case "card.chips":
         await cards.setChips(userId, msg.chatId, msg.on);
+        break;
+      case "card.adult":
+        await cards.setAdult(userId, msg.chatId, msg.on);
         break;
       case "models.get":
         send({ type: "models.state", state: await modelsFor(spindle).state(userId) }, userId);

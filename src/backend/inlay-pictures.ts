@@ -29,7 +29,7 @@ export function inlayPictureId(key: string): string {
   return `${safe.slice(0, 86)}.${(h >>> 0).toString(36)}`;
 }
 
-export type InlayPictureDirection = "parley" | "cutin" | "figure" | "scene";
+export type InlayPictureDirection = "parley" | "cutin" | "figure" | "scene" | "intimate";
 
 /** What Inlay's analyzer reads for a figure: it finds the person by name, and their profile gives the rest. */
 export function figureRequestText(name: string, role: string): string {

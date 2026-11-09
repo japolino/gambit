@@ -74,6 +74,8 @@ interface ChatConf {
   enabled?: boolean;
   cardKey?: string;
   chips?: boolean;
+  /** Adult scenes after fights (opt-in). */
+  adult?: boolean;
 }
 
 const sheetPath = (key: string) => `cards/sheet/${encodeURIComponent(key)}.json`;
@@ -558,7 +560,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       error = permissionHint(errText(err));
     }
     const sheet = key ? await loadSheet(userId, key) : null;
-    send({ type: "card.status", status: { chatId, enabled: !!c.enabled, reading: !!(key && reading.has(`${userId}:${key}`)), sheet, stale, chips: c.chips !== false, ...(error ? { error } : {}), ...extra } }, userId);
+    send({ type: "card.status", status: { chatId, enabled: !!c.enabled, reading: !!(key && reading.has(`${userId}:${key}`)), sheet, stale, chips: c.chips !== false, adult: c.adult === true, ...(error ? { error } : {}), ...extra } }, userId);
   }
 
   /** Read the chat's card now (or reuse the stored sheet unless forced). */
@@ -850,6 +852,13 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       await setConf(userId, chatId, { chips: on });
       await status(userId, chatId);
     },
+
+    async setAdult(userId: string, chatId: string, on: boolean) {
+      await setConf(userId, chatId, { adult: on });
+      await status(userId, chatId);
+    },
+
+    adultOn: async (userId: string, chatId: string) => (await conf(userId, chatId)).adult === true,
 
     async edit(userId: string, chatId: string, social?: Partial<Record<SocialStat, number>>, modules?: Partial<Record<ModuleId, boolean>>) {
       const sheet = await sheetFor(userId, chatId);

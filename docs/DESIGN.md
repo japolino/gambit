@@ -261,6 +261,10 @@ Some enemies, like mindless beasts and the like, simply cannot be talked to. The
 
 The model never rescues anyone.
 
+**Some cards don't kill or rob the loser.** The reader says what losing means on the card (`skin.defeat`): beaten back (the default), or **claimed**, where the winner keeps the loser instead of hurting them, as monster girls do in Monster Girl Encyclopedia-style worlds. A claimed loss costs no coin: the party comes round unhurt where the winner lives, and the narrator shows what the winner wants with them.
+
+**Adult scenes after fights** are opt-in per chat (the drawer's Options, off by default). After a fight with someone who can be talked to, win or lose, the scene's menu offers one ("Claim Rook", "Give in to Rook") until the scene moves on. The narrator writes it as a visual-novel sequence of short pages the player steps through (forward, back, Escape to close), and marks at most three of them to be drawn. Inlay draws each from the pages since the last picture, with its "Gambit: Intimate" guideline over the chat's cast and the user's own preset; without Inlay the pages stay words. Both are adults and both want it by the time it happens. Once its pictures are in, the scene lands in the chat with them, the person remembers it, and the next narrator knows it happened.
+
 ### 4.3 The effect language (the heart of everything)
 
 Every skill, passive, item effect, status, and enemy ability is a composition of **atoms** from one library written in code. The library starts with about 70 atoms:

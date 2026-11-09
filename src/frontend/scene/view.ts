@@ -49,6 +49,7 @@ export interface SceneActions {
   board(op: BoardOp, cell?: string, tier?: number): void;
 }
 
+export type AfterglowPage = { text: string; /** Art key of the picture this page closes, once drawn. */ cg?: string };
 export type MeanwhileItem = { text: string; /** What the player did that led here. */ why?: string; /** What this scene just made true. */ change?: string; art?: string; imageId?: string | null; /** The vignette drawn as its own scene, once ready. */ cg?: string };
 
 export interface SceneHandle {
@@ -62,6 +63,8 @@ export interface SceneHandle {
   destroy(): void;
   /** "Meanwhile…": null opens the montage on the day behind you; the scenes then play in turn, and what changed closes it. */
   meanwhile(day: number, items: MeanwhileItem[] | null, words?: { today?: string[]; morning?: string[] }): void;
+  /** An adult scene read page by page: null opens it while it's written, empty closes it, pages show it. */
+  afterglow(title: string, pages: AfterglowPage[] | null): void;
   /** The class panel's state. */
   forge(v: ForgeView): void;
 }
@@ -652,6 +655,12 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       nextMeanwhile();
       return;
     }
+    if (vn && !el.classList.contains("gone") && [" ", "Enter", "ArrowRight", "ArrowLeft", "Escape"].includes(e.key)) {
+      e.preventDefault();
+      if (e.key === "Escape") closeScene();
+      else stepScene(e.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     if (el.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "/" && !journalOpen && !mw) {
@@ -851,8 +860,72 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     waitMeanwhile(m);
   }
 
+  /* ------------------------- A scene read page by page ------------------------- */
+  // The montage's card, read at your own pace: forward and back, every picture kept.
+  type SceneRead = { title: string; pages: AfterglowPage[] | null; i: number; box: HTMLDivElement };
+  let vn: SceneRead | null = null;
+  function closeScene(): void {
+    if (!vn) return;
+    vn.box.remove();
+    vn = null;
+    backToWriting();
+  }
+  function openScene(title: string): SceneRead {
+    closeScene();
+    const box = document.createElement("div");
+    box.className = "mw vn waiting";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", title || "Scene");
+    box.innerHTML = `<div class="mw-in"><div class="mw-title"></div><div class="mw-body"><div class="mw-card mw-day"><div class="mw-text"><p class="mw-quiet">Writing…</p></div></div></div><div class="mw-hint"></div></div>`;
+    box.addEventListener("click", () => stepScene(1));
+    noteWriting();
+    el.append(box);
+    vn = { title, pages: null, i: 0, box };
+    return vn;
+  }
+  /** The picture a page shows: its own, else the last one before it, so a picture stays up while its moment goes on. */
+  function sceneArt(s: SceneRead): string | null {
+    for (let i = s.i; i >= 0; i--) {
+      const key = s.pages![i]?.cg;
+      if (key) return urlOf(key) ?? null;
+    }
+    return null;
+  }
+  function paintScene(): void {
+    const s = vn;
+    if (!s?.pages) return;
+    const page = s.pages[s.i]!;
+    const url = sceneArt(s);
+    s.box.classList.remove("waiting");
+    s.box.querySelector(".mw-title")!.textContent = s.title;
+    const dots = s.pages.map((_, i) => `<i class="${i === s.i ? "on" : ""}"></i>`).join("");
+    s.box.querySelector(".mw-body")!.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><div class="mw-text">${esc(page.text)}</div></div><div class="mw-dots">${dots}</div>`;
+    s.box.querySelector(".mw-hint")!.textContent = s.i < s.pages.length - 1 ? "Tap to continue" : "Tap to close";
+  }
+  function stepScene(by: number): void {
+    const s = vn;
+    if (!s?.pages) return;
+    const next = s.i + by;
+    if (next >= s.pages.length) return closeScene();
+    s.i = Math.max(0, next);
+    paintScene();
+  }
+
   return {
     chatId: first.chatId,
+    afterglow(title, pages) {
+      if (destroyed) return;
+      if (!pages) {
+        openScene(title);
+        return;
+      }
+      if (!pages.length) return closeScene();
+      const s = vn ?? openScene(title);
+      s.title = title;
+      s.pages = pages;
+      s.i = 0;
+      paintScene();
+    },
     setView(v) {
       if (destroyed) return;
       view = v;
@@ -873,6 +946,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
         key === v.board?.story?.art;
       if (used && !destroyed) renderTheme();
       if (mw && (mw.items?.[mw.i]?.art === key || mw.items?.[mw.i]?.cg === key)) meanwhileArt();
+      if (vn?.pages?.some((p) => p.cg === key)) paintScene();
       classes.art(key);
     },
     forge(v) {
@@ -918,6 +992,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     destroy() {
       destroyed = true;
       closeMeanwhile();
+      closeScene();
       closeZoom();
       window.removeEventListener("keydown", onKey);
       el.removeEventListener("pointermove", onMove);

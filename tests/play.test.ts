@@ -29,7 +29,8 @@ const sheet = {
   kits: [],
 };
 
-function setup() {
+function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unknown> } = {}) {
+  const card = { ...sheet, ...o.sheet };
   const files = new Map<string, unknown>();
   const posted: string[] = [];
   const sent: ToFrontend[] = [];
@@ -43,13 +44,15 @@ function setup() {
       setJson: async (p: string, v: unknown) => void files.set(p, structuredClone(v)),
     },
     chat: { appendMessage: async (_chatId: string, m: { content: string }) => void posted.push(m.content) },
+    personas: { getActive: async () => ({ description: "A wiry courier." }) },
   };
   const art = { request: () => ({ key: "", state: "queued" }), status: () => null, expect: () => {}, adopt: () => {}, whenDone: () => new Promise(() => {}) };
   const cards = {
-    sheetFor: async () => sheet as never,
-    armory: async () => sheet as never,
+    sheetFor: async () => card as never,
+    armory: async () => card as never,
     talk: async (_u: string, _c: string, castId: string, kind?: string, _chip?: string, line?: string) => void talks.push({ castId, kind, line }),
     markKnown: async (_u: string, _c: string, id: string) => void known.push(id),
+    ...o.cards,
   };
   /** What the battles session has, by id: reshow answers from this, as it would from storage. */
   const fights = new Map<string, BattleState>();
@@ -332,6 +335,37 @@ describe("play on a card", () => {
     expect(beat.said).toBe("");
     expect(beat.roll).toContain("is lost");
     expect(last().place.id).toBe("docks");
+  });
+
+  test("where the winner keeps the loser, a lost fight claims you: no coin lost, no retreat to the start", async () => {
+    const { play, started, last } = setup({ sheet: { skin: { ...sheet.skin, defeat: "claimed" } } });
+    await play.open("u", "chat1");
+    await play.act("u", "chat1", "go:tavern");
+    await play.fight("u", "chat1");
+    const coin = last().coin;
+    await play.onBattleEnd(ended(started[0]!, "defeat"), "u");
+    expect(last().story.at(-1)!.roll).toContain("claims Wren");
+    expect(last().coin).toBe(coin);
+    expect(last().place.id).toBe("tavern");
+  });
+
+  test("with adult scenes on, a fight offers one; it reads page by page and lands in the chat", async () => {
+    const pages = Array.from({ length: 8 }, (_, i) => ({ text: `Page ${i + 1} of the scene.`, picture: i === 1 || i === 5 }));
+    const compile = async (_u: string, kind: string, _p: unknown, _m: number, parse: (raw: Record<string, unknown>) => unknown) => ({ value: kind === "afterglow" ? parse({ title: "After", pages }) : null });
+    const { play, started, last, sent, posted } = setup({ cards: { adultOn: async () => true, compile } });
+    await play.open("u", "chat1");
+    await play.fight("u", "chat1");
+    await play.onBattleEnd(ended(started[0]!, "victory"), "u");
+    const offer = last().menu.find((h) => h.id === "afterglow");
+    expect(offer?.label).toMatch(/^Claim /);
+    await play.act("u", "chat1", "afterglow");
+    const shown = sent.filter((m) => m.type === "scene.afterglow").at(-1) as Extract<ToFrontend, { type: "scene.afterglow" }>;
+    expect(shown.title).toBe("After");
+    expect(shown.pages).toHaveLength(8);
+    expect(shown.pages!.filter((p) => p.cg)).toHaveLength(2);
+    expect(posted.at(-1)).toContain("Page 8 of the scene.");
+    // Taken once.
+    expect(last().menu.some((h) => h.id === "afterglow")).toBe(false);
   });
 
   test("a Parley's end is on the page when you come back, and the scene is refreshed", async () => {

@@ -30,6 +30,8 @@ export interface CardStatus {
   stale: boolean;
   /** Contest chips under replies are on. */
   chips: boolean;
+  /** Adult scenes after fights are on (opt-in, off by default). */
+  adult: boolean;
   error?: string;
 }
 
@@ -174,6 +176,7 @@ export type ToBackend =
   | { type: "card.edit"; chatId: string; social?: Partial<Record<SocialStat, Tier>>; modules?: Partial<Record<ModuleId, boolean>> }
   | { type: "card.talk"; chatId: string; castId: string; kind?: ContestChip["kind"]; chipId?: string }
   | { type: "card.chips"; chatId: string; on: boolean }
+  | { type: "card.adult"; chatId: string; on: boolean }
   | { type: "card.demo" }
   // models: which connection each kind of call uses
   | { type: "models.get" }
@@ -264,6 +267,8 @@ export type ToFrontend =
   | { type: "scene.suggest"; chatId: string; text: string }
   /** "Meanwhile…" (4.5): sent with null vignettes and the day behind you when the night starts, then again with the scenes and what changed by morning. */
   | { type: "scene.meanwhile"; chatId: string; day: number; vignettes: { text: string; why?: string; change?: string; art?: string; imageId?: string | null; cg?: string }[] | null; today?: string[]; morning?: string[] }
+  /** An adult scene read page by page: null pages while it's written, empty when it could not be, then the pages (cg: an art key that arrives by art.update). */
+  | { type: "scene.afterglow"; chatId: string; title: string; pages: { text: string; cg?: string }[] | null }
   /** The track for a moment; null with the reason when there's no music to be had. */
   | { type: "music.track"; chatId: string; moment: MusicMoment; about?: string; track: Track | null; error?: string }
   | { type: "art.update"; items: ArtStatus[] }

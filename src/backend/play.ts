@@ -28,6 +28,8 @@ import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
 import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
 import { cleanReply } from "../engine/parley/narrate.js";
+import { afterglowPrompt, parseAfterglow, pictureMoments, type AfterglowBrief } from "../meaning/afterglow.js";
+import type { InlayPictures } from "./inlay-pictures.js";
 import { dayLines, effectStamp, fallbackNightScenes, meanwhilePrompt, meanwhileText, morningLines, parseNightScenes, type NightBrief, type NightNames, type NightScene, type NightThread } from "../meaning/meanwhile.js";
 import { slug } from "../meaning/card-reader.js";
 import { createMusicBox } from "./music.js";
@@ -69,7 +71,7 @@ import { createFigurePrints } from "./figure-prints.js";
 import { sharedInlayPictures } from "./inlay-pictures.js";
 import type { ToFrontend } from "../shared/protocol.js";
 import type { ThemeId } from "../shared/scene-view.js";
-import { boardMapKey, buildSceneView, cardTag, feel, menuFor, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
+import { afterglowHere, boardMapKey, buildSceneView, cardTag, feel, menuFor, spotOf, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
 
@@ -90,6 +92,8 @@ export interface CardsPort {
   bible?(userId: string, chatId: string, priority?: Priority): Promise<Bible | null>;
   storedBible?(userId: string, cardKey: string, sheet?: Pick<CardSheet, "readAt" | "shape">): Promise<Bible | null>;
   compile?: Ledger["compile"];
+  /** Adult scenes after fights are on for this chat (opt-in). */
+  adultOn?(userId: string, chatId: string): Promise<boolean>;
   jaot?: Jaot;
 }
 
@@ -119,7 +123,21 @@ const PARLEY_END_TAG: Record<"won" | "final_offer" | "deal" | "walked" | "refuse
 };
 const view = buildSceneView;
 
-export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: CardsPort, battles: BattlesPort, { retryMs = [1500, 4000], readMs = 12_000, montageMs = 90_000, hedgeMs = 30_000 }: { retryMs?: number[]; readMs?: number; montageMs?: number; hedgeMs?: number } = {}) {
+/** Italics line by line: one pair of asterisks can't span paragraphs or list items in markdown. */
+export function italicLines(text: string): string {
+  return text
+    .split("\n")
+    .map((l) => {
+      const t = l.trim();
+      if (!t) return l;
+      const bullet = /^([-*]|\d+\.)\s+/.exec(t)?.[0] ?? "";
+      const rest = t.slice(bullet.length);
+      return rest ? `${bullet}*${rest}*` : l;
+    })
+    .join("\n");
+}
+
+export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: CardsPort, battles: BattlesPort, { retryMs = [1500, 4000], readMs = 12_000, montageMs = 90_000, hedgeMs = 30_000, pictures }: { retryMs?: number[]; readMs?: number; montageMs?: number; hedgeMs?: number; pictures?: InlayPictures } = {}) {
   const log = (m: string) => {
     try {
       spindle.log.info(`gambit play: ${m}`);
@@ -143,10 +161,19 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return spindle.userStorage.setJson(path(chatId), r, { userId });
   };
 
+  /** A finished adult scene in the chat as it was read: plain prose and its pictures (an aside, no reply). */
+  async function postScene(chatId: string, content: string): Promise<void> {
+    try {
+      await spindle.chat.appendMessage(chatId, { role: "assistant", content, metadata: { gambit: { aside: true, scene: true } } } as never, { triggerGeneration: false });
+    } catch (err) {
+      log(`could not post to ${chatId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /** A short narrated line in the chat, without starting the character's reply. */
   async function aside(chatId: string, text: string): Promise<void> {
     try {
-      await spindle.chat.appendMessage(chatId, { role: "assistant", content: `*${text}*`, metadata: { gambit: { aside: true } } } as never, { triggerGeneration: false });
+      await spindle.chat.appendMessage(chatId, { role: "assistant", content: italicLines(text), metadata: { gambit: { aside: true } } } as never, { triggerGeneration: false });
     } catch (err) {
       log(`could not post to ${chatId}: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -302,6 +329,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const m = mem(r);
     m.interest[key] = Math.round(((m.interest[key] ?? 0) + n) * 10) / 10;
   }
+
+  /** The card person a fighter is (their def id ends in `cast_<id>`), if any. */
+  const castIdOf = (sheet: CardSheet, defId: string): string | null => {
+    const id = /cast_([a-z0-9_]+)$/i.exec(defId.replace(/~.*$/, "").replace(/_p2$/, ""))?.[1];
+    return id && sheet.cast.some((c) => c.id === id) ? id : null;
+  };
 
   const note = (r: PlayRecord, text: string) => {
     if (r.log[r.log.length - 1] === text) return;
@@ -969,6 +1002,28 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         line += ` The depths of ${r.world.places[r.delve.placeId]?.name ?? "the delve"} fall quiet, and a catalyst waits at the bottom.`;
         bookOf(r).catalysts++;
       }
+    } else if (sheet.skin.defeat === "claimed") {
+      // Where the winner keeps the loser instead of hurting them: taken to where they live, unharmed and unrobbed.
+      const winner = enemies.find((c) => c.alive && !c.left) ?? enemies[0];
+      const who = winner?.name ?? state.meta?.title ?? "the winner";
+      const castId = winner ? castIdOf(sheet, winner.defId) : null;
+      const pronoun = sheet.cast.find((c) => c.id === castId)?.pronoun;
+      const theirs = pronoun === "she" ? "hers" : pronoun === "he" ? "his" : "theirs";
+      const to = (castId ? Object.values(r.world.places).find((p) => p.people.includes(castId))?.id : undefined) ?? r.scene.placeId;
+      r.scene = { ...r.scene, vigor: 0.5, placeId: to };
+      if (r.delve) r.delve = undefined;
+      if (r.board) {
+        r.board = undefined;
+        r.boardFx = undefined;
+      }
+      if (r.hex) {
+        const cell = cellOf(r.hex.map, to);
+        if (cell) r.hex.state = reveal(r.hex.map, { ...r.hex.state, q: cell.q, r: cell.r });
+      }
+      const losers = party.map((c) => c.name).join(" and ");
+      const where = r.world.places[to]?.name ?? "somewhere of theirs";
+      line = `${state.meta?.title ? `The fight with ${state.meta.title}` : "The fight"} is lost. ${who} claims ${losers}, carried off to ${where}.`;
+      fact = `The fight is lost, and here the winner keeps the loser instead of hurting or robbing them: ${who} claims ${losers} as ${theirs} and carries them off to ${where}. Show them coming round there, unhurt, and what ${who} wants with them now. Nobody is wounded, robbed or killed.`;
     } else {
       // Story difficulty (4.2): lose, retreat, take a consequence. The model never rescues anyone.
       r.scene = { ...r.scene, vigor: 0.35, coin: Math.max(0, Math.round(r.scene.coin * 0.8)), placeId: r.world.start };
@@ -985,6 +1040,9 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       fact = `The fight is lost. They come round at ${r.world.places[r.world.start]?.name ?? "somewhere safe"}, bruised and with less ${cur}. Show them coming to, and what it cost.`;
     }
     r.battleId = undefined;
+    // An adult scene with someone you fought (opt-in per chat): offered in the scene's menu until the scene moves on.
+    const partner = enemies.find((c) => state.meta?.monsters?.[c.defId]?.talks) ?? null;
+    r.afterglow = partner && onPage && (await cards.adultOn?.(userId, chatId)) ? { name: partner.name, castId: castIdOf(sheet, partner.defId), won: state.outcome === "victory", look: state.meta?.monsters?.[partner.defId]?.visual.brief ?? "", day: r.scene.day, placeId: spotOf(r) } : undefined;
     // Classes (M7): ranks from wins, catalysts from bosses, skills ready to awaken.
     for (const l of forge.afterBattle(r, state, !!state.meta?.boss)) line += ` ${l}`;
     // The deed ledger (4.6): who fell, who was spared or recruited, and how you fought.
@@ -1020,6 +1078,73 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     await aside(chatId, line);
     await show(userId, chatId, sheet, r);
     if (onPage) void aftermath(userId, chatId, sheet, line, fact).catch((err: unknown) => log(`aftermath: ${String(err).slice(0, 160)}`));
+  }
+
+  /**
+   * The adult scene a fight offered (opt-in per chat), read like a visual novel: the narrator writes the pages, Inlay
+   * draws up to three of them from the chat's cast and the user's preset, and the whole scene lands in the chat once
+   * its pictures are in. Taken once: the offer is gone when it starts.
+   */
+  async function afterglow(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord): Promise<void> {
+    const a = r.afterglow;
+    if (!a || !afterglowHere(r) || !cards.compile) return;
+    r.afterglow = undefined;
+    await save(userId, chatId, r);
+    await show(userId, chatId, sheet, r);
+    const m = a.castId ? withPromoted(sheet, r).cast.find((c) => c.id === a.castId) : undefined;
+    const persona = await spindle.personas.getActive(userId).catch(() => null);
+    const p = r.world.places[r.scene.placeId];
+    const brief: AfterglowBrief = {
+      player: { name: sheet.player.name, persona: persona?.description ?? sheet.player.concept },
+      partner: { name: a.name, role: m?.role ?? "", look: m?.look || a.look, ...(m?.voice ? { voice: m.voice } : {}), ...(m?.wants?.length ? { wants: m.wants } : {}) },
+      won: a.won,
+      claimed: sheet.skin.defeat === "claimed",
+      place: { name: p?.name ?? "here", description: p?.description ?? "", time: TIMES[r.scene.time] ?? "" },
+      before: (r.story ?? []).slice(-3).flatMap((b) => [b.said, b.roll ?? "", b.reply].filter(Boolean)),
+    };
+    send({ type: "scene.afterglow", chatId, title: "", pages: null }, userId);
+    const res = await cards.compile(userId, "afterglow", afterglowPrompt(sheet, brief), 4000, parseAfterglow, () => null, { tries: 2 }).catch((err: unknown) => (log(`afterglow: ${String(err).slice(0, 160)}`), null));
+    const scene = res?.value ?? null;
+    if (!scene) {
+      send({ type: "scene.afterglow", chatId, title: "", pages: [] }, userId);
+      return send({ type: "notice", level: "warn", text: "The scene could not be written. Your narrator connection may have refused it." }, userId);
+    }
+    const title = scene.title || (a.won ? `${a.name}, claimed` : `Claimed by ${a.name}`);
+    const h = [...`${chatId}|${a.day}|${a.name}`].reduce((x, ch) => Math.imul(x ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
+    const moments = pictureMoments(scene).map((mo, i) => ({ ...mo, key: `afterglow:${tag(sheet.cardKey)}.${h.toString(36)}.${i}` }));
+    const keyAt = new Map(moments.map((mo) => [mo.page, mo.key]));
+    send({ type: "scene.afterglow", chatId, title, pages: scene.pages.map((pg, i) => ({ text: pg.text, ...(keyAt.has(i) ? { cg: keyAt.get(i)! } : {}) })) }, userId);
+
+    // Remembered, and part of the story the narrator holds to.
+    const fresh = (await load(userId, chatId)) ?? r;
+    if (a.castId) {
+      const n = (mem(fresh).npc[a.castId] ??= { notes: [], affinity: 0 });
+      n.notes = [...n.notes, { day: fresh.scene.day, text: a.won ? `Was claimed by you after a fight` : `Claimed you after a fight`, tone: 1 as const }].slice(-8);
+      n.affinity = Math.min(10, n.affinity + 1);
+    }
+    const last = scene.pages[scene.pages.length - 1]!.text;
+    fresh.story = [...(fresh.story ?? []), { said: "", roll: title, reply: last, day: fresh.scene.day, where: fresh.scene.placeId }].slice(-40);
+    await save(userId, chatId, fresh);
+
+    // Inlay draws each moment over the chat's cast (a moment it can't draw stays words only); the scene lands in the
+    // chat once they are in. In the background: the scene stays playable meanwhile.
+    void sceneToChat(userId, chatId, title, scene.pages, moments).catch((err: unknown) => log(`afterglow: ${String(err).slice(0, 160)}`));
+  }
+
+  async function sceneToChat(userId: string, chatId: string, title: string, pages: { text: string }[], moments: { page: number; text: string; key: string }[]): Promise<void> {
+    const drawn = await Promise.all(
+      moments.map(async (mo) => {
+        const pic = pictures ? await pictures.request(userId, { id: mo.key, chatId, direction: "intimate", text: mo.text.slice(0, 1900) }).catch(() => null) : null;
+        if (pic) send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
+        return pic;
+      }),
+    );
+    const at = new Map(moments.map((mo, i) => [mo.page, drawn[i]]));
+    const body = pages.map((pg, i) => {
+      const pic = at.get(i);
+      return pic ? `${pg.text}\n\n![${title.replace(/[[\]]/g, " ")}](${pic.url})` : pg.text;
+    });
+    await postScene(chatId, `**${title}**\n\n${body.join("\n\n")}`);
   }
 
   /** The page's account of how a fight went, written once it's over. Until then, and if nothing can write, the result line stands. */
@@ -1880,6 +2005,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const spot = menuFor(sheet, r).find((h) => h.id === hotspot);
       const wild = wildCell(r);
       if (!spot) return send({ type: "notice", level: "warn", text: "That is not something you can do here." }, userId);
+      if (spot.id === "afterglow") return afterglow(userId, chatId, sheet, r);
       switch (spot.kind) {
         case "talk":
           // Talking is writing to them, in the box the screen has just addressed. Only a line that presses them starts a contest.

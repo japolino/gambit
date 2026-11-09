@@ -197,6 +197,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       social: (stat, value) => withChat((chatId) => send({ type: "card.edit", chatId, social: { [stat]: value } })),
       module: (id, on) => withChat((chatId) => send({ type: "card.edit", chatId, modules: { [id]: on } })),
       chips: (on) => withChat((chatId) => send({ type: "card.chips", chatId, on })),
+      adult: (on) => withChat((chatId) => send({ type: "card.adult", chatId, on })),
       play: () => withChat((chatId) => openScene(chatId)),
     },
     demo: () => {
@@ -550,6 +551,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         if (msg.vignettes?.length && scene?.chatId === msg.chatId) voice.queue(msg.vignettes.map((x) => x.text));
         break;
       }
+      case "scene.afterglow":
+        if (scene && scene.chatId === msg.chatId) scene.afterglow(msg.title, msg.pages);
+        break;
       case "scene.suggest": {
         // A menu choice can become a line in the chat input instead (6.1).
         const composer = (ctx as unknown as { composer?: { setText(t: string): void; focus(): void } }).composer;
