@@ -154,6 +154,11 @@ if (CROWD > 3) {
   const names = ["Corvin", "Hesta", "Pell", "Dagny", "Orrin", "Sefa", "Bram", "Lisk", "Vey"];
   for (const name of names.slice(0, CROWD - 3)) (sheet.cast as { id: string }[]).push({ ...sheet.cast[1]!, id: name.toLowerCase(), name, role: "a regular here", main: false });
 }
+// ?long=1: long names, as real cards have them, to check that nameplates show them whole.
+if (new URLSearchParams(location.search).get("long") === "1") {
+  const long = ["Captain Hollis Ashworth", "River Gate Guards", "Sister Maren Voss"];
+  (sheet.cast as { name: string }[]).forEach((m, i) => (m.name = long[i % 3]!));
+}
 // ?story=N: a story long enough to test the reading room.
 const storyBeats = Number(new URLSearchParams(location.search).get("story") ?? 0);
 if (storyBeats) {

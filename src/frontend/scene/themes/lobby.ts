@@ -498,7 +498,7 @@ ${b.isNew ? `<div class="new">${A.seal()}<b>NEW</b></div>` : ""}
       .map((p) => {
         const art = ctx.personArt(v, p.id, "color");
         const on = p.id === lead?.id;
-        return `<button class="lb-lk${on ? " on" : ""}" data-a="lead:${esc(p.id)}" aria-pressed="${on}" aria-label="Bring ${esc(p.name)} forward" title="${esc(p.name)}, ${esc(p.role)}">${A.locket(art ? esc(art.url) : null, esc(p.name.slice(0, 1)), on)}<span class="nm">${esc(p.name)}</span></button>`;
+        return `<button class="lb-lk${on ? " on" : ""}" data-a="lead:${esc(p.id)}" aria-pressed="${on}" aria-label="Bring ${esc(p.name)} forward" title="${esc(p.name)}, ${esc(p.role)}">${A.locket(art ? esc(art.url) : null, esc(p.name.slice(0, 1)), on)}<span class="nm">${esc(phone ? p.name.split(/\s+/)[0]! : p.name)}</span></button>`;
       })
       .join("");
   }
@@ -506,7 +506,7 @@ ${b.isNew ? `<div class="new">${A.seal()}<b>NEW</b></div>` : ""}
   function talkPlaque(v: SceneView): string {
     if (v.delve) return "";
     if (!lead) return `<div class="lb-talk mute">${A.glassPlate()}<span class="nm">Nobody about</span><span class="rl">The hall is quiet</span></div>`;
-    const inner = `${A.glassPlate()}<span class="nm">${esc(lead.name)}</span><span class="rl">${esc(lead.role)}</span>${lead.talkable ? `<span class="q">${A.quill()}</span>` : ""}`;
+    const inner = `${A.glassPlate()}<span class="nm" style="--n:${[...lead.name].length}">${esc(lead.name)}</span><span class="rl">${esc(lead.role)}</span>${lead.talkable ? `<span class="q">${A.quill()}</span>` : ""}`;
     return lead.talkable ? `<button class="lb-talk" data-a="talk" aria-label="Talk to ${esc(lead.name)}" title="Talk to ${esc(lead.name)}">${inner}</button>` : `<div class="lb-talk mute">${inner}</div>`;
   }
 

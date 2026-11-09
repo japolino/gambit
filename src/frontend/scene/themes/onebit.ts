@@ -694,9 +694,11 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         const { p, bits, x, y } = f;
         const sel = p.id === chosen;
         const idx = menu.findIndex((m) => m.key === `talk:${p.id}`);
-        const label = `${idx >= 0 && idx < 10 ? `${(idx + 1) % 10} ` : ""}${p.name.toUpperCase()}`;
-        // A phone's small view draws small people: their names get their share of the width, not the figure's.
-        const t = clip(label, Math.max(3, Math.floor((L!.mode === "tall" ? cr.w / Math.max(1, placed.length) - 8 : bits.w + 16) / 8)));
+        const num = idx >= 0 && idx < 10 ? `${(idx + 1) % 10} ` : "";
+        // A name gets the room between its neighbours; one too long for it gives its first word.
+        const room = Math.max(3, Math.floor((cr.w * (n === 1 ? 1 : n === 2 ? 0.4 : 0.6 / (n - 1)) - 16) / 8));
+        const name = p.name.toUpperCase();
+        const t = clip(num + (num.length + name.length <= room ? name : name.split(/\s+/)[0]!), room);
         const tw = t.length * 8 + 6 + (sel ? 10 : 0);
         const tx = Math.max(cr.x + 2, Math.min(cr.x + cr.w - tw - 2, f.cx - (tw >> 1)));
         fb.fill({ x: tx - 2, y: ty - 2, w: tw + 4, h: 14 }, INK);

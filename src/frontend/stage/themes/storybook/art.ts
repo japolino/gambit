@@ -79,7 +79,7 @@ export function halo(): string {
 
 /** The crimson name scroll (200×72 viewBox, the name set over it by Pixi). */
 export function scroll(kind: "talk" | "fight" = "talk"): string {
-  let s = inner(nameScroll("", false, "x"));
+  let s = inner(nameScroll("", 15, false, "x"));
   if (kind === "fight") s = s.replace(/url\(#sb-pat-talk\)/g, "url(#sb-pat-fight)");
   return picture("0 -18 200 72", s);
 }

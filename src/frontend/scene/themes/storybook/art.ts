@@ -6,7 +6,6 @@
  * filters and leaf shapes live once in DEFS (one hidden <svg> in the theme
  * root); the pieces reference them by id (all ids start with "sb-").
  */
-import { scrollFontSize } from "./scroll-fit.js";
 import { brocade, leather, mahogany, parchment, silk } from "./textures.js";
 
 const f = (n: number) => +n.toFixed(1);
@@ -589,8 +588,7 @@ export function cameo(url: string, uid: string): string {
  * crimson-and-gold enamel ribbon with the name in tracked caps; `talk` adds
  * a gilt diamond "↑ Talk" badge perched on its top rim.
  */
-export function nameScroll(name: string, talk: boolean, uid: string): string {
-  const size = scrollFontSize(name.replace(/&[a-z#0-9]+;/gi, "x"));
+export function nameScroll(name: string, size: number, talk: boolean, uid: string): string {
   const rib = "M8,24 C60,14 140,14 192,24 L182,37 L192,50 C140,40 60,40 8,50 L18,37 Z";
   return `<svg class="ns-art" viewBox="0 -18 200 72" aria-hidden="true" focusable="false">
     <path d="${rib}" fill="#000" opacity=".55" transform="translate(0,4)" filter="url(#sb-soft)"/>

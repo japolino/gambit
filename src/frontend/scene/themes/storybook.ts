@@ -23,6 +23,7 @@ import {
 } from "./storybook/art.js";
 import { bustOf, godRays, warmGround } from "./storybook/textures.js";
 import { css } from "./storybook/style.js";
+import { fitScroll } from "./storybook/scroll-fit.js";
 
 const ROMAN: [number, string][] = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
 function roman(n: number): string {
@@ -518,9 +519,9 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     tags.innerHTML = shown
       .map((s) => {
         const at = place.get(s)!;
-        // The scroll shrinks a long name to fit; at a phone's size that gets too small to read, so there it gives its first word.
-        const label = phone && s.p.name.length > 11 ? s.p.name.split(/\s+/)[0]! : s.p.name;
-        const art = nameScroll(esc(label), s.p.talkable, `t${seedOf(s.p.id)}`);
+        // A phone sets its own size on the scroll, too large for a long name, so there it gives the first word.
+        const fit = phone && s.p.name.length > 11 ? { label: s.p.name.split(/\s+/)[0]!, size: 15 } : fitScroll(s.p.name);
+        const art = nameScroll(esc(fit.label), fit.size, s.p.talkable, `t${seedOf(s.p.id)}`);
         return s.p.talkable
           ? `<button class="tag" data-talk="${esc(s.p.id)}" style="--x:${at.x}" aria-label="Talk to ${esc(s.p.name)}" title="Talk to ${esc(s.p.name)}, ${esc(s.p.role)}">${art}</button>`
           : `<span class="tag mute" data-talk="${esc(s.p.id)}" style="--x:${at.x}" title="${esc(`${s.p.name}, ${s.p.role}`)}">${art}</span>`;

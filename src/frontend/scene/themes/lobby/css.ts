@@ -117,6 +117,8 @@ export function lobbyCss(tx: { leather: string; parchment: string; chart: string
 .lb-talk { position: absolute; left: calc(var(--hc) - ${U(250)}); bottom: ${U(400)}; width: ${U(500)}; height: ${U(80)}; z-index: 5; display: block; transition: transform .2s cubic-bezier(.22,1,.36,1); will-change: transform; }
 .lb-talk > .art { position: absolute; inset: 0; }
 .lb-talk .nm { position: absolute; left: ${U(50)}; right: ${U(50)}; top: ${U(12)}; text-align: center; font: 800 ${U(29)}/1 ${CAPS}; letter-spacing: .14em; color: #F5E8C7; text-shadow: 0 1px 3px #000, 0 0 14px rgba(223,193,131,.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A long name shrinks to fit the plaque (--n: its length). */
+.lb-talk .nm { font-size: min(${U(29)}, calc(${U(400)} / (var(--n, 1) * .85))); }
 .lb-talk .rl { position: absolute; left: ${U(52)}; right: ${U(52)}; top: ${U(47)}; text-align: center; font: 700 ${U(12)}/1 ${SERIF}; letter-spacing: .1em; text-transform: uppercase; color: #DFC183; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-talk .q { position: absolute; right: ${U(-8)}; top: ${U(-18)}; width: ${U(50)}; height: ${U(50)}; filter: drop-shadow(0 0 ${U(8)} rgba(255,214,140,.65)); animation: lbPulseO 2.6s ease-in-out infinite; }
 button.lb-talk:hover { transform: translateY(${U(-4)}) scale(1.02); }
@@ -430,7 +432,7 @@ button.lb-talk:hover > .art { filter: drop-shadow(0 0 ${U(16)} rgba(230,185,90,.
 .lb.phone .lb-themes button:hover { transform: none; }
 .lb.phone .lb-lockets { left: 4px; top: auto; bottom: 2px; max-height: calc(100% - 92px); gap: 4px; overflow-y: auto; overscroll-behavior: contain; justify-content: flex-start; flex-wrap: nowrap; }
 .lb.phone .lb-lk, .lb.phone .lb-lk.on { flex: none; width: 50px; height: 58px; margin: 0 0 14px; }
-.lb.phone .lb-lk .nm, .lb.phone .lb-lk.on .nm { max-width: 62px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.lb.phone .lb-lk .nm, .lb.phone .lb-lk.on .nm { max-width: 56px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 .lb.phone .lb-hero { left: 50%; top: 86px; bottom: auto; height: calc(100% - 86px); clip-path: inset(0 -100cqw 0 -100cqw); }
 .lb.phone .lb-hero .px::before, .lb.phone .lb-hero .px::after { display: none; }
 .lb.phone .lb-hero-in > img { top: 0; bottom: auto; height: 240%; }
@@ -440,7 +442,7 @@ button.lb-talk:hover > .art { filter: drop-shadow(0 0 ${U(16)} rgba(230,185,90,.
 .lb.phone .lb-glowback { left: -100px; width: 200px; }
 .lb.phone .lb-talk { left: 72px; right: 72px; width: auto; height: 50px; bottom: 2px; }
 button.lb-talk:hover { transform: none; }
-.lb.phone .lb-talk .nm { left: 26px; right: 26px; top: 8px; font-size: 16px; letter-spacing: .06em; }
+.lb.phone .lb-talk .nm { left: 26px; right: 26px; top: 8px; font-size: min(16px, max(11px, calc((100cqw - 196px) / (var(--n, 1) * .8)))); letter-spacing: .06em; }
 .lb.phone .lb-talk .rl { left: 26px; right: 26px; top: 28px; font-size: 12px; line-height: 1.1; letter-spacing: .02em; text-transform: none; }
 .lb.phone .lb-talk .q { right: -4px; top: -10px; width: 26px; height: 26px; }
 

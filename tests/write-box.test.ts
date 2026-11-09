@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { beatsHtml, canWrite, isWriting, writeFormHtml } from "../src/frontend/scene/themes/write.js";
 import { typewriterHtml } from "../src/frontend/scene/themes/typewriter.js";
-import { scrollFontSize } from "../src/frontend/scene/themes/storybook/scroll-fit.js";
+import { fitScroll } from "../src/frontend/scene/themes/storybook/scroll-fit.js";
 import type { SceneView } from "../src/frontend/scene/themes/contract.js";
 
 const view = (over: Partial<SceneView>) => ({ story: [], ...over }) as unknown as SceneView;
@@ -100,9 +100,16 @@ describe("the words on the page", () => {
 
 describe("the name scroll", () => {
   test("a short name keeps its size, a long one shrinks to fit the curve", () => {
-    expect(scrollFontSize("Mara")).toBe(15);
-    expect(scrollFontSize("Tessera Ashbourne")).toBeLessThan(10);
-    // Wide capitals with their spacing take about 0.9em each; the curve is about 146 units long.
-    for (const name of ["Orla Tamsin Wren", "Lord Dov of the Long Grey Tide"]) expect([...name].length * 0.9 * scrollFontSize(name)).toBeLessThanOrEqual(146);
+    expect(fitScroll("Mara")).toEqual({ label: "Mara", size: 15 });
+    expect(fitScroll("Sister Maren Voss").label).toBe("Sister Maren Voss");
+    expect(fitScroll("Sister Maren Voss").size).toBeLessThan(11);
+    // The widest capitals with their spacing take 1.14em; the curve is about 146 units long.
+    expect(fitScroll("WWWWWWWWWWWW").size * 12 * 1.14).toBeLessThanOrEqual(146);
+  });
+
+  test("a name too long to read whole loses words from its end, not mid-word", () => {
+    expect(fitScroll("Captain Hollis Ashworth").label).toBe("Captain Hollis");
+    expect(fitScroll("Lord Dov of the Long Grey Tide").label).toBe("Lord Dov");
+    expect(fitScroll("Bartholomewsworthingtonshire").label).toBe("Bartholomewsworthingtonshire");
   });
 });
