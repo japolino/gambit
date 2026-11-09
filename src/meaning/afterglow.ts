@@ -68,6 +68,18 @@ export function pictureMoments(pages: readonly ScenePage[]): { page: number; tex
   return out;
 }
 
+/** Inlay reads at most 2000 characters of a picture's text. */
+const PICTURE_TEXT = 1900;
+
+/**
+ * A picture's text: who and where first (mid-scene pages say "she" and "him", and Inlay finds people by name), then the
+ * moment. A long moment loses its start, not its end: the picture is of where the moment has got to.
+ */
+export function pictureText(who: string, moment: string): string {
+  const room = PICTURE_TEXT - who.length - 2;
+  return `${who}\n\n${moment.length > room ? moment.slice(-room).replace(/^\S*\s+/, "") : moment}`;
+}
+
 /** The reply with its pictures in it, each after the paragraph its page ends with, the way Inlay places illustrations. */
 export function withPictures(reply: string, pages: readonly ScenePage[], pictures: readonly { page: number; url: string; alt: string }[]): string {
   const after = new Map<number, string[]>();

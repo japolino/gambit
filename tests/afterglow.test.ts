@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { italicLines } from "../src/backend/play.js";
 import { withSuffix } from "../src/backend/suffix.js";
-import { pictureMoments, scenePages, withPictures } from "../src/meaning/afterglow.js";
+import { pictureMoments, pictureText, scenePages, withPictures } from "../src/meaning/afterglow.js";
 import { fillNote, noteText } from "../src/meaning/notes.js";
 
 const para = (i: number) => `Paragraph ${i} ${"word ".repeat(30).trim()}.`;
@@ -29,6 +29,17 @@ describe("the adult scene after a fight", () => {
     const pages = scenePages(reply);
     const out = withPictures(reply, pages, [{ page: 0, url: "/a.png", alt: "One [1/2]" }, { page: 1, url: "/b.png", alt: "Two" }]);
     expect(out).toBe(`## Response\n\n${para(1)}\n\n![One  1/2 ](/a.png)\n\nShort.\n \n${para(2)}\n\n![Two](/b.png)`);
+  });
+
+  test("a picture's text says who and where first, and a long moment loses its start, not its end", () => {
+    const who = "Rook and Tobin, at Hollowfang Wood.";
+    expect(pictureText(who, "She grins.")).toBe(`${who}\n\nShe grins.`);
+    const long = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(para).join("\n\n");
+    const text = pictureText(who, long);
+    expect(text.length).toBeLessThanOrEqual(1900);
+    expect(text.startsWith(`${who}\n\n`)).toBe(true);
+    expect(text.endsWith(para(12))).toBe(true);
+    expect(text).not.toContain(para(1));
   });
 
   test("a short reply gets one picture, at its end", () => {

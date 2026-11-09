@@ -28,7 +28,7 @@ import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
 import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
 import { cleanReply } from "../engine/parley/narrate.js";
-import { pictureMoments, scenePages, withPictures } from "../meaning/afterglow.js";
+import { pictureMoments, pictureText, scenePages, withPictures } from "../meaning/afterglow.js";
 import { fillNote, noteText } from "../meaning/notes.js";
 import { createNotes } from "./notes.js";
 import { withSuffix } from "./suffix.js";
@@ -1165,12 +1165,11 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       await save(userId, chatId, r);
     }
     if (!pictures) return;
-    // Mid-scene pages say "she" and "him": Inlay finds people by name, so each picture's text says who and where first.
     const where = r ? r.world.places[r.scene.placeId]?.name : undefined;
     const who = `${meta.partner} and ${sheet?.player.name || "the persona"}${where ? `, at ${where}` : ""}.`;
     const drawn = await Promise.all(
       moments.map(async (mo, i) => {
-        const pic = await pictures!.request(userId, { id: mo.key, chatId, direction: "intimate", text: `${who}\n\n${mo.text}`.slice(0, 1900) }).catch((err: unknown) => (log(`scene picture: ${errText(err)}`), null));
+        const pic = await pictures!.request(userId, { id: mo.key, chatId, direction: "intimate", text: pictureText(who, mo.text) }).catch((err: unknown) => (log(`scene picture: ${errText(err)}`), null));
         if (!pic) return null;
         send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
         return { page: mo.page, url: pic.url, alt: `${title} (${i + 1}/${moments.length})` };
