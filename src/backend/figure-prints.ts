@@ -60,8 +60,16 @@ export function createFigurePrints(spindle: Pick<SpindleAPI, "userStorage">, art
   async function viaInlay(userId: string, key: string, character: CharacterDNA, plain: string, via: FigureVia): Promise<boolean> {
     const pic = await pictures!.request(userId, { id: `${key}#${plain}`, chatId: via.chatId, direction: "figure", text: figureRequestText(character.name, via.role) }).catch(() => null);
     if (!pic) return false;
-    art.adopt!(key, { ...pic, via: "inlay" }, userId);
+    await art.adopt!(key, { ...pic, via: "inlay" }, userId, true);
     return true;
+  }
+
+  /** Inlay's figure as it came (adopted before figures were cut, or with no browser to cut it): cut it, once per run. */
+  async function cutIfDrawn(userId: string, key: string): Promise<void> {
+    const st = art.status(key, userId);
+    if (st?.via !== "inlay" || st.cutout || !st.imageId || !st.url || !art.adopt || asked.has(`cut:${userId}:${key}`)) return;
+    asked.add(`cut:${userId}:${key}`);
+    await art.adopt(key, { imageId: st.imageId, url: st.url, via: "inlay" }, userId, true);
   }
 
   /** What's drawn from this figure shows their old looks once it changes. */
@@ -86,9 +94,9 @@ export function createFigurePrints(spindle: Pick<SpindleAPI, "userStorage">, art
       return;
     }
     // No chat to ask Inlay in: what it drew from these same tags still stands.
-    if (!inlay && (stored === `inlay:${plain}` || stored === `gambit:${plain}`)) return;
+    if (!inlay && (stored === `inlay:${plain}` || stored === `gambit:${plain}`)) return cutIfDrawn(userId, key);
     const move = figureMove(ready, stored, now);
-    if (move === "keep") return;
+    if (move === "keep") return cutIfDrawn(userId, key);
     if (move === "adopt" && !inlay) return save(userId, key, now);
     const again = move !== "draw";
     if (again) log?.(`figure ${key}: ${stored?.endsWith(plain) ? "Inlay can draw it now" : "tags changed"}, drawing it again`);

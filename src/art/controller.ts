@@ -101,8 +101,13 @@ export interface ArtApi {
   forget(key: string, userId?: string): Promise<void>;
   /** This key is being drawn elsewhere (Inlay): it shows as queued, and whenDone waits for the job before answering. */
   expect(key: string, job: Promise<unknown>, userId?: string): void;
-  /** A finished picture from elsewhere (Inlay) is this key from now on. Not cut out: the frontend keys its flat ground. */
-  adopt(key: string, picture: { imageId: string; url: string; via: string }, userId?: string): void;
+  /**
+   * A finished picture from elsewhere (Inlay) is this key from now on. With
+   * `cut` (a figure on a white ground) it is cut out in the browser first, like
+   * Gambit's own figures, and resolves once the cut is in; without a browser
+   * to cut it, it stays as drawn.
+   */
+  adopt(key: string, picture: { imageId: string; url: string; via: string }, userId?: string, cut?: boolean): Promise<void>;
   /** Save a look file as one of the user's looks (import, "match the card"). */
   addLook(file: LookFile, source: "user" | "card", userId?: string): Promise<void>;
   /** The locked look's palette tokens for the code-drawn layer, or null (5.2a). */
@@ -366,11 +371,12 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
 
   /**
    * Cut a figure out of its plain background in the browser (Cue's cut-out
-   * model). The uncut render is deleted like a cropped canvas: a variant
-   * drawn from the cut composes it on white again (the inset canvas is
-   * white). Falls back to the render as it is when no browser could cut it.
+   * model). The uncut render is deleted like a cropped canvas, unless `keep`
+   * (a picture Inlay owns): a variant drawn from the cut composes it on white
+   * again (the inset canvas is white). Falls back to the render as it is
+   * when no browser could cut it.
    */
-  async function cutImage(s: UserState, source: GenOutput, crop?: PixelRect): Promise<GenOutput> {
+  async function cutImage(s: UserState, source: GenOutput, crop?: PixelRect, keep = false): Promise<GenOutput> {
     const outcome = await s.pixels.run({ kind: "cut", sourceUrl: source.url, ...(crop ? { crop } : {}), face: true });
     if (!outcome.ok) {
       log("warn", `cut-out failed (${outcome.error}); keeping the render as drawn`);
@@ -379,7 +385,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
     const item = outcome.items[0]!;
     if (item.cut?.twoFigures) log("info", `cut of ${source.imageId}: looks like two figures`);
     const stored = await upload(s, item, `cut-${source.imageId}`);
-    void Promise.resolve(spindle.images.delete(source.imageId, s.userId)).catch(() => undefined);
+    if (!keep) void Promise.resolve(spindle.images.delete(source.imageId, s.userId)).catch(() => undefined);
     return { ...stored, cutout: true, ...(item.cut?.face !== undefined ? { face: item.cut.face } : {}) };
   }
 
@@ -737,10 +743,12 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       };
       job.then(gone, gone);
     },
-    adopt: (bare, picture, userId) => {
+    adopt: async (bare, picture, userId, cut) => {
       const s = state(userId);
       const key = scopedKey(currentLook(s).id, bare);
-      const status: ArtStatus = { key, state: "ready", imageId: picture.imageId, url: picture.url, cutout: false, via: picture.via };
+      const drawn: GenOutput = { imageId: picture.imageId, url: picture.url, cutout: false };
+      const out = cut ? await cutImage(s, drawn, undefined, true) : drawn;
+      const status: ArtStatus = { key, state: "ready", imageId: out.imageId, url: out.url, cutout: out.cutout === true, via: picture.via, ...(out.face !== undefined ? { face: out.face } : {}) };
       s.queue.forget(key);
       s.queue.restore(status);
       onStatus(s, status);

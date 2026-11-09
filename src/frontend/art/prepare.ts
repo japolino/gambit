@@ -26,6 +26,8 @@ export interface PreparedArt {
   url: string;
   /** True when the art now has a see-through background. */
   cutout: boolean;
+  /** Cut by keying out its flat ground, not by the model: the edges may be rough. */
+  rough?: true;
   stats: FigureStats;
 }
 
@@ -76,5 +78,5 @@ export async function prepareArtFresh(url: string, key: boolean): Promise<Prepar
   const stats = figureStats(data.data);
   ctx.putImageData(data, 0, 0);
   const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/png"));
-  return blob ? { url: URL.createObjectURL(blob), cutout: true, stats } : { url, cutout: false, stats };
+  return blob ? { url: URL.createObjectURL(blob), cutout: true, rough: true, stats } : { url, cutout: false, stats };
 }

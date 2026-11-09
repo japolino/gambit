@@ -81,6 +81,15 @@ describe("registerArt", () => {
     expect(await api.whenDone("monster:wolf")).toMatchObject({ imageId: "rgb", cutout: false });
   });
 
+  test("Inlay's figure is cut out in the browser, and Inlay's picture is kept", async () => {
+    const fake = createFakeHost({ connections: CONNECTIONS });
+    const { api, sent } = setup(fake);
+    await api.adopt("figure:k", { imageId: "inlay-1", url: "/api/v1/images/inlay-1", via: "inlay" }, undefined, true);
+    expect(sent.some((m) => m.type === "art.pixels" && m.job.kind === "cut" && m.job.sourceUrl === "/api/v1/images/inlay-1")).toBe(true);
+    expect(api.status("figure:k")).toMatchObject({ state: "ready", imageId: fake.uploads[0]!.id, cutout: true, via: "inlay" });
+    expect(fake.deleted).toEqual([]);
+  });
+
   test("no image connection: failed status and one notice (placeholders)", async () => {
     const fake = createFakeHost({ connections: [] });
     const { api, sent } = setup(fake);

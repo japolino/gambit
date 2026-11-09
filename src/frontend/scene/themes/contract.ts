@@ -61,7 +61,7 @@ export interface PersonArt {
   url: string;
   /** True: transparent background, stand them on the ground. False: opaque rectangle, frame it. */
   cutout: boolean;
-  /** True when the host keyed opaque art into this cutout (the edges may be rough; a theme may prefer framing `source`). */
+  /** True when the host keyed the flat ground out of opaque art (the edges may be rough; a theme may prefer framing `source`). A cut by the model is not keyed. */
   keyed: boolean;
   /** The original art as it came (before keying or dithering). */
   source: string;

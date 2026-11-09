@@ -38,16 +38,16 @@ describe("figure prints", () => {
 
   describe("drawn by Inlay, in a chat", () => {
     const via = { chatId: "chat-1", role: "a clerk" };
-    const set = (stored: Record<string, string>, opts: { ready?: boolean; picture?: boolean } = {}) => {
+    const set = (stored: Record<string, string>, opts: { ready?: boolean; picture?: boolean; uncut?: boolean } = {}) => {
       const files: Record<string, unknown> = { "art/figure-prints.json": stored };
       const calls: string[] = [];
       let ready = opts.ready ?? false;
       const spindle = { userStorage: { getJson: async (p: string) => files[p] ?? {}, setJson: async (p: string, v: unknown) => void (files[p] = v) } } as never;
       const art = {
-        status: () => (ready ? { key: "k", state: "ready" as const } : null),
+        status: () => (ready ? { key: "k", state: "ready" as const, ...(opts.uncut ? { via: "inlay", cutout: false, imageId: "i", url: "/i" } : {}) } : null),
         request: (key: string) => (calls.push(`draw ${key}`), { key, state: "queued" as const }),
         forget: async (key: string) => void (calls.push(`forget ${key}`), key === "k" && (ready = false)),
-        adopt: (key: string) => void (calls.push(`adopt ${key}`), (ready = true)),
+        adopt: async (key: string, _p: unknown, _u: string, cut?: boolean) => void (calls.push(`adopt ${key}${cut ? " cut" : ""}`), (ready = true)),
       } as never;
       const pictures = {
         request: async (_u: string, r: { direction: string; text: string }) => (calls.push(`ask ${r.direction}: ${r.text}`), opts.picture === false ? null : { imageId: "i", url: "/i" }),
@@ -61,7 +61,7 @@ describe("figure prints", () => {
     test("Inlay draws it, in whatever body their profile gives them", async () => {
       const t = set({});
       await t.prints.request(user(), "k", dna("snake lower body"), 1, undefined, via);
-      expect(t.calls).toEqual(["ask figure: Wren, a clerk, alone, the whole of their body in view, facing the viewer.", "adopt k"]);
+      expect(t.calls).toEqual(["ask figure: Wren, a clerk, alone, the whole of their body in view, facing the viewer.", "adopt k cut"]);
       expect(t.calls.join()).not.toContain("stand");
     });
 
@@ -74,11 +74,19 @@ describe("figure prints", () => {
       }
     });
 
+    test("Inlay's figure still on its white ground is cut out, once a run", async () => {
+      const u = user();
+      const t = set({ k: `inlay:${figurePrint(dna("a"))}` }, { ready: true, uncut: true });
+      await t.prints.request(u, "k", dna("a"), 1, undefined, via);
+      await t.prints.request(u, "k", dna("a"), 1);
+      expect(t.calls).toEqual(["adopt k cut"]);
+    });
+
     test("a figure Gambit drew stays up until Inlay's picture is in", async () => {
       const t = set({ k: figurePrint(dna("a")) }, { ready: true });
       await t.prints.request(user(), "k", dna("a"), 1, undefined, via);
       expect(t.calls[0]).toStartWith("ask figure");
-      expect(t.calls[1]).toBe("adopt k");
+      expect(t.calls[1]).toBe("adopt k cut");
       expect(t.calls).not.toContain("draw k");
       expect(t.kept()).toBe(`inlay:${figurePrint(dna("a"))}`);
     });

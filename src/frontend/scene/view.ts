@@ -274,8 +274,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       pending.add(id);
       void (async () => {
         try {
-          const keyed = src.cutout ? { url: src.url, cutout: true } : await prepareArt(src.url, true);
-          const base = { cutout: keyed.cutout, keyed: !src.cutout && keyed.cutout, source: src.url };
+          const keyed: { url: string; cutout: boolean; rough?: true } = src.cutout ? { url: src.url, cutout: true } : await prepareArt(src.url, true);
+          const base = { cutout: keyed.cutout, keyed: keyed.rough === true, source: src.url };
           ready.set(id, { ...base, url: mode === "onebit" ? await ditherUrl(keyed.url, rows) : keyed.url });
         } catch {
           ready.set(id, { url: src.url, cutout: src.cutout, keyed: false, source: src.url });
