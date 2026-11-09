@@ -6,7 +6,12 @@
  * 560-unit-wide scrolling column. CSS here is structure and lighting only;
  * every visible object is an SVG drawing from ./art.ts.
  */
+import { speakerVars } from "../../../story-text.js";
+
 const U = (n: number) => `calc(var(--u) * ${n})`;
+
+/** Who speaks, as jewels in the hall's lamplight: champagne for anyone, verdigris for the player, then the cast. */
+export const VOICES = speakerVars("#f3d9a4", "#7fd6c4", ["#8cc8f0", "#f2a1a1", "#b6de8c", "#cfaaf2", "#f5b26b", "#f08ab8"]);
 
 const SERIF = `"Gambit Garamond", "Palatino Linotype", Georgia, serif`;
 const CAPS = `"Gambit Cinzel", "Gambit Garamond", Georgia, serif`;
@@ -387,6 +392,8 @@ button.lb-talk:hover > .art { filter: drop-shadow(0 0 ${U(16)} rgba(230,185,90,.
 .gs.lobby .mw-title { font: 800 46px/1 ${CAPS}; letter-spacing: .08em; color: #E6C687; text-shadow: 0 0 24px rgba(230,185,90,.4), 0 2px 4px #000; }
 .gs.lobby .mw-art { border: 0; box-shadow: 0 0 0 3px #1c1308, 0 0 0 9px #c59b4e, 0 0 0 11px #5c4012, 0 0 0 12px #f5e1a4, 0 24px 60px rgba(0,0,0,.8); }
 .gs.lobby .mw-text { font: 500 23px/1.5 ${SERIF}; color: #F3E8D2; }
+.gs.lobby { ${VOICES} }
+.lb-story .said em { font-style: normal; }
 .gs.lobby .mw-dots i { transform: none; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); width: 12px; height: 12px; background: rgba(230,198,135,.3); }
 .gs.lobby .mw-dots i.on { background: #e6c687; }
 .gs.lobby .mw-hint { font: 800 12px/1 ${CAPS}; color: #a69272; }

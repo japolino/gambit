@@ -16,6 +16,7 @@ import { brocade, leather, parchment, silk } from "../../scene/themes/storybook/
 import { capTile, medal, seal } from "../../stage/themes/storybook/art.js";
 import { cssUrl, picture } from "../../stage/themes/storybook/defs.js";
 import { decorate } from "./storybook/decor.js";
+import { VOICES } from "../../scene/themes/storybook/style.js";
 
 /** The gilt edges and fold shading of a ribbon (self-contained; the cloth is a separate layer). */
 const RIB_EDGE = cssUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 50" preserveAspectRatio="none">
@@ -148,6 +149,8 @@ ${P} .sbp-fw { font-variant: small-caps; letter-spacing: .04em; font-weight: 600
 ${P} .you { align-self: stretch; max-width: none; background: none; border: 0; border-left: 2px solid rgba(139,26,26,.45); border-radius: 0; padding: .1em 0 .1em .8em; box-shadow: none; }
 ${P} .you .speaker { text-align: left; color: #8b1a1a; }
 ${P} .you .prose { font: italic 500 .84em/1.4 ${GARA}; color: #4a2511; }
+${P} { ${VOICES} }
+${P} .you .prose em { font-style: normal; }
 ${P} .read { border-left: 2px dotted #a8742f; padding-left: .8em; gap: 4px; font-size: .8em; }
 /* On a desktop page the roll and its tell share one row, so a whole beat fits the page at once. */
 ${P}:not(.pl-phone) .read { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 4px; }

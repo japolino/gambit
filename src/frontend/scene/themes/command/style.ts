@@ -6,6 +6,7 @@
  * them, it does not draw them.
  */
 import { frameNine, glyph, grilleTile } from "./pixels.js";
+import { speakerVars } from "../../../story-text.js";
 
 const BLUE = "#0000AA";
 const CYAN = "#55FFFF";
@@ -13,6 +14,9 @@ const YEL = "#FFFF55";
 const GREY = "#AAAAAA";
 const DARK = "#555555";
 const RED = "#FF5555";
+
+/** Who speaks, in the EGA set: green for anyone, yellow for the player (their own lines are cyan, and green in a talk), then the cast. */
+export const VOICES = speakerVars("#55FF55", YEL, ["#FF55FF", RED, "#00AAAA", "#5555FF", "#AA5500", "#AA00AA"]);
 
 export function commandCss(): string {
   const chev = (ink: string) => `url("${glyph("chev", ink)}")`;
@@ -186,6 +190,7 @@ export function commandCss(): string {
 .cmd .tx .roll { color: ${YEL}; }
 .cmd .tx .found { color: #000; background: ${YEL}; }
 .cmd .tx .told { color: #fff; }
+.cmd .tx em, .gs.command > .mw .mw-text em { font-style: normal; color: ${GREY}; }
 .cmd .term .wr { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; align-items: flex-start; padding-left: var(--c); background: #000; }
 .cmd .term .wr[hidden] { display: none; }
 .cmd .term .wr::before { content: ""; position: absolute; left: 0; top: 0; width: var(--c); height: var(--c); background: ${chev("#fff")} 0 0 / 100% 100%; image-rendering: pixelated; }
@@ -308,6 +313,7 @@ export function commandCss(): string {
 .gs.command > .mw .mw-title { font: var(--cmd-c, 24px) / var(--cmd-c, 24px) "Gambit 8bit", monospace; color: ${YEL}; letter-spacing: 0; }
 .gs.command > .mw .mw-art { border: var(--cmd-v, 3px) solid #fff; box-shadow: none; image-rendering: pixelated; background-color: #000; }
 .gs.command > .mw .mw-text { font: var(--cmd-c, 24px) / var(--cmd-c, 24px) "Gambit 8bit", monospace; color: #fff; }
+.gs.command { ${VOICES} }
 .gs.command > .mw .mw-art::before, .gs.command > .mw .mw-art.arrived::before { animation: none; image-rendering: pixelated; }
 .gs.command > .mw .mw-why, .gs.command > .mw .mw-change, .gs.command > .mw .mw-kicker, .gs.command > .mw .mw-list { font-size: 1em; font-weight: 400; letter-spacing: 0; text-transform: none; opacity: 1; line-height: inherit; }
 .gs.command > .mw .mw-why, .gs.command > .mw .mw-kicker { color: ${CYAN}; }

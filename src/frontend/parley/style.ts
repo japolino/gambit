@@ -18,6 +18,8 @@
  * view.ts adds to the root; fonts are declared on the page by view.ts.
  */
 
+import { speakerVars, STORY_CSS } from "../story-text.js";
+
 export const svg = (s: string): string => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' ${s}</svg>`)}")`;
 
 export const FELL = `"Gambit Fell", "Gambit Garamond", Georgia, serif`;
@@ -130,6 +132,7 @@ canvas.face:not([hidden]) { display: block; }
 .speaker { font: 11px var(--p-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--p-dim); margin-bottom: 2px; }
 .prose p { margin: 0 0 .5em; } .prose p:last-child { margin-bottom: 0; }
 .prose em { color: var(--p-em); }
+.pl:not([class*="th-"]) { ${speakerVars("#ecd3a0", "#9fd8c8", ["#8cc8f0", "#f2a1a1", "#b6de8c", "#cfaaf2", "#f5b26b", "#f08ab8"])} }
 .npc .prose { font-size: 16px; font-family: var(--p-prose); }
 .npc .prose.waiting .dots { display: inline-block; animation: dots 1.2s steps(4) infinite; color: var(--p-dim); }
 @keyframes dots { 0% { opacity: .2; } 50% { opacity: 1; } 100% { opacity: .2; } }
@@ -257,4 +260,4 @@ const LOG_EDGE = `
 `;
 
 /** The sheet for a talk: the shared base, the theme's own (themes/<id>.ts), then the shared tail (log edge, reduced motion). */
-export const parleyCss = (themeCss: string): string => BASE + THEMED + themeCss + LOG_EDGE + CALM;
+export const parleyCss = (themeCss: string): string => BASE + STORY_CSS + THEMED + themeCss + LOG_EDGE + CALM;

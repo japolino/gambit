@@ -10,7 +10,7 @@
  */
 import { FACTS } from "../../engine/content/parleys.js";
 import { canPay } from "../../engine/parley/exchange.js";
-import { formatValue, effectLine, immersiveRead, rollLine, smartQuotes, stakeLine, whyText } from "../../engine/parley/narrate.js";
+import { formatValue, effectLine, immersiveRead, rollLine, stakeLine, whyText } from "../../engine/parley/narrate.js";
 import type { Exchange, Mood, ParleyScenario, ParleyState } from "../../engine/parley/types.js";
 import { TIER_NAMES } from "../../engine/parley/types.js";
 import { expressionArtKey, isExpressionArtKey, momentIndexOf, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
@@ -28,6 +28,7 @@ import { PUPPET_ACT } from "./acting.js";
 import type { ThemeId } from "../../shared/scene-view.js";
 import { THEME_FONTS_CSS } from "../scene/fonts.js";
 import { PIXEL_FONT_CSS } from "../scene/pixel-font.js";
+import { storyHtml, type StoryOpts, type Voices } from "../story-text.js";
 
 export interface ParleyCallbacks {
   say(text: string): void;
@@ -60,25 +61,17 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-/** Narration can carry light markdown; show *actions* in italics and keep paragraphs. */
-
-function renderProse(target: HTMLElement, text: string, curly: boolean): void {
-  target.textContent = "";
+/** Narration as the chat shows it (story-text.ts), a paragraph per line. */
+function renderProse(target: HTMLElement, text: string, o: StoryOpts): void {
   // Presets sometimes add markdown headings ("## Response", "### Chapter 1"); they are not the NPC talking.
   const clean = text
     .split("\n")
     .filter((l) => !/^\s{0,3}#{1,6}\s/.test(l) && !/^\s*([-*_]\s*){3,}$/.test(l))
     .join("\n")
     .trim();
-  for (const para of clean.split(/\n{2,}/)) {
-    const p = el("p");
-    const parts = (curly ? smartQuotes(para) : para).split(/(\*[^*\n]+\*)/g);
-    for (const part of parts) {
-      if (/^\*[^*]+\*$/.test(part)) p.append(el("em", undefined, part.slice(1, -1)));
-      else if (part) p.append(document.createTextNode(part.replace(/\n/g, " ")));
-    }
-    target.append(p);
-  }
+  target.innerHTML = storyHtml(clean, o)
+    .map((p) => `<p>${p}</p>`)
+    .join("");
 }
 
 type FigureStats = ReturnType<typeof figureStats>;
@@ -140,6 +133,8 @@ export function mountParley(
     table?: boolean;
     /** The scene staged this talk in its 3D room (the scene stays visible under the view). */
     inRoom?: boolean;
+    /** The scene's cast, so a person's lines wear the same colour here as in the scene. */
+    voices?: Voices;
   },
   cb: ParleyCallbacks,
 ): ParleyView {
@@ -160,6 +155,9 @@ export function mountParley(
   const theme: ThemeId | undefined = where.theme ?? (where.table ? "table" : undefined);
   /** The pixel themes' bitmap faces only have straight quotes. */
   const curlyQuotes = theme !== "onebit" && theme !== "command";
+  const given = where.voices ?? { cast: [], player: scenario.speaker.name === "you" ? "" : scenario.speaker.name };
+  const voices: Voices = given.cast.some((p) => p.name === npc.name) ? given : { ...given, cast: [...given.cast, { name: npc.name, pronoun: npc.pronoun, here: true }] };
+  const prose = (target: HTMLElement, text: string, o: StoryOpts = {}) => renderProse(target, text, { voices, curly: curlyQuotes, speaker: npc.name, ...o });
   const look = theme ? PARLEY_THEMES[theme] : undefined;
   const style = el("style");
   style.textContent = parleyCss(look?.css ?? "");
@@ -278,7 +276,7 @@ export function mountParley(
   const opening = el("div", "npc opening");
   opening.append(el("div", "speaker", npc.name));
   const openingText = el("div", "prose");
-  renderProse(openingText, scenario.opening, curlyQuotes);
+  prose(openingText, scenario.opening);
   opening.append(openingText);
   log.append(el("div", "setting", scenario.setting), opening);
 
@@ -448,7 +446,9 @@ export function mountParley(
   let pendingYou: HTMLElement | null = null;
   function addYou(text: string): HTMLElement {
     const you = el("div", "you");
-    you.append(el("div", "speaker", "You"), el("div", "prose", curlyQuotes ? smartQuotes(text) : text));
+    const said = el("div", "prose");
+    prose(said, text, { speaker: "you" });
+    you.append(el("div", "speaker", "You"), said);
     log.append(you);
     turnStart = you;
     scrollDown();
@@ -528,9 +528,9 @@ export function mountParley(
     const b = blocks.get(index);
     const r = replies.get(index);
     if (!b || !r || !b.ready) return;
-    const prose = b.npc.querySelector<HTMLElement>(".prose")!;
-    prose.classList.remove("waiting");
-    renderProse(prose, r.text, curlyQuotes);
+    const box = b.npc.querySelector<HTMLElement>(".prose")!;
+    box.classList.remove("waiting");
+    prose(box, r.text, { streaming: !r.final });
     // The head moves with the line while it streams in, and settles a beat after.
     if (index === state.exchanges.length - 1) {
       clearTimeout(hush);

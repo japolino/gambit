@@ -28,6 +28,7 @@ import { ditherUrl } from "../art/dither.js";
 import type { ForgeOp, ForgeView } from "../../shared/forge-view.js";
 import { esc, type AutomapStyle, type BackdropOpts, type MenuItem, type PersonArt, type ThemeCtx, type ThemeRenderer } from "./themes/contract.js";
 import { THEME_FACTORIES } from "./themes/index.js";
+import { STORY_CSS, storyHtml } from "../story-text.js";
 
 export interface SceneActions {
   act(hotspot: string): void;
@@ -167,7 +168,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   el.className = "gs";
   el.setAttribute("data-gambit-stage", "scene");
   const style = document.createElement("style");
-  style.textContent = CSS + FORGE_CSS + BOARD_CSS;
+  style.textContent = CSS + STORY_CSS + FORGE_CSS + BOARD_CSS;
   const th = document.createElement("div");
   th.className = "th";
   el.append(th);
@@ -781,6 +782,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   const MW_DRAWING_MS = 20_000;
   type Montage = { day: number; items: MeanwhileItem[] | null; morning: string[]; i: number; box: HTMLDivElement; timer: number; openedAt: number; since: number };
   let mw: Montage | null = null;
+  /** What a model wrote for the montage or the reader, as the chat shows it. */
+  const written = (text: string) => storyHtml(text, { voices: view.voices, curly: view.theme !== "onebit" && view.theme !== "command" }).join("<br>");
   const readingMs = (text: string) => Math.max(6500, 1800 + text.length * 50);
   function closeMeanwhile(over = true): void {
     if (!mw) return;
@@ -855,7 +858,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     }
     m.since = Date.now();
     const url = meanwhileUrl(item);
-    body.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><div class="mw-text">${item.why ? `<span class="mw-why">${esc(item.why)}</span>` : ""}${esc(item.text)}${item.change ? `<span class="mw-change">${esc(item.change)}</span>` : ""}</div></div><div class="mw-dots">${dots}</div>`;
+    body.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><div class="mw-text">${item.why ? `<span class="mw-why">${esc(item.why)}</span>` : ""}${written(item.text)}${item.change ? `<span class="mw-change">${esc(item.change)}</span>` : ""}</div></div><div class="mw-dots">${dots}</div>`;
     m.box.querySelector(".mw-hint")!.textContent = "Tap to continue";
     // The next picture is ready before the cut.
     const next = meanwhileUrl(m.items![m.i + 1]);
@@ -912,7 +915,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     s.box.classList.remove("waiting");
     s.box.querySelector(".mw-title")!.textContent = s.title;
     const dots = s.pages.map((_, i) => `<i class="${i === s.i ? "on" : ""}"></i>`).join("");
-    s.box.querySelector(".mw-body")!.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><div class="mw-text">${esc(page.text)}</div></div><div class="mw-dots">${dots}</div>`;
+    s.box.querySelector(".mw-body")!.innerHTML = `<div class="mw-card"><div class="mw-art ${url ? "" : "none"}" ${url ? `style="background-image:url('${esc(url)}')"` : ""}></div><div class="mw-text">${written(page.text)}</div></div><div class="mw-dots">${dots}</div>`;
     s.box.querySelector(".mw-hint")!.textContent = s.i < s.pages.length - 1 ? "Tap to continue" : "Tap to close";
   }
   function stepScene(by: number): void {

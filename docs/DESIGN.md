@@ -625,6 +625,8 @@ Each theme is its own interface in code, not a reskin: `src/frontend/scene/theme
 | **1-bit** | one low-res 1-bit frame buffer: dithered scene and people, bitmap type, "WHAT NOW?" prompt | delves, horror, retro cards |
 | **Command** | a character-grid EGA screen inside a CRT on a desk, a command terminal, floppy disks as the theme switcher | classic dungeon crawls |
 
+**Story text reads like the chat.** Every box Gambit writes the story into (the scene's story, a Parley's replies and your lines, the "Meanwhile…" cards, the adult-scene reader) goes through one renderer, `src/frontend/story-text.ts`. It shows `*italic*`, `**bold**` and `***both***` (or underscores) from text escaped first, so a model can't write markup; while a reply streams, a marker not closed yet runs to the end instead of flashing as a star. Words in quotes, straight or curly, are dialogue, coloured per speaker. Who speaks a quote: a tag after it when the quote doesn't end its sentence (`"Fine," she says`); else the subject of the nearest sentence before it in the paragraph, carried on to the next quote when no one new is named (a paragraph that opens on speech looks at the narration ending the one before); else the box's own speaker (the NPC in a Parley, the player in their own line). A pronoun means the nearest person named before it with that pronoun (the card's cast pronouns), else the box's speaker if it fits, else the only one in the scene it fits; "I" and "you" are the player. Anything else is plain dialogue. Each theme sets a small palette (`speakerVars`: anyone's dialogue, the player's, six for the cast in card order). 1-bit has two colours, so speech stays plain there; italic is underlined and bold set in reverse.
+
 ---
 
 ### 6.4 Voice

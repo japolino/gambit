@@ -22,7 +22,8 @@
  */
 import { BOARD_SKINS } from "../board-skins.js";
 import { esc, type MenuItem, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
-import { loadFont, plain, wrap, type BitFont } from "./onebit/font.js";
+import { loadFont, plain, wrap, wrapStyled, type BitFont } from "./onebit/font.js";
+import { storyRuns } from "../../story-text.js";
 import { beatsHtml, canWrite, isWriting, wireWrite, writeFormHtml } from "./write.js";
 import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "./onebit/fb.js";
 import { bustBits, personBits, placeField, textureField } from "./onebit/art.js";
@@ -96,6 +97,9 @@ const CSS = `
 .gs.onebit .mw.waiting .mw-title { animation: obBlink 1s steps(1, end) infinite; }
 .gs.onebit .mw-art { border: var(--ob-u) solid ${CSS_PAPER}; box-shadow: none; background-color: ${CSS_INK}; image-rendering: pixelated; }
 .gs.onebit .mw-text { font: var(--ob-f)/1.7 "Gambit 8bit", monospace; color: ${CSS_PAPER}; max-height: 62cqh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: ${CSS_PAPER} ${CSS_INK}; }
+/* Two colours tell no speakers apart: speech stays plain. Italic is underlined and bold set in reverse, as in the chronicle. */
+.gs.onebit .mw-text em { font-style: normal; text-decoration: underline; text-decoration-thickness: var(--ob-u); text-underline-offset: var(--ob-u); }
+.gs.onebit .mw-text strong { font-weight: 400; color: ${CSS_INK}; background: ${CSS_PAPER}; }
 .gs.onebit .mw-card, .gs.onebit .mw-list li, .gs.onebit .mw-art::before, .gs.onebit .mw-art.arrived::before { animation: none; }
 .gs.onebit .mw-why, .gs.onebit .mw-change, .gs.onebit .mw-kicker, .gs.onebit .mw-list { font-size: 1em; font-weight: 400; letter-spacing: 0; text-transform: none; opacity: 1; line-height: inherit; }
 .gs.onebit .mw-change::before { font-size: 1em; }
@@ -832,29 +836,47 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     }
   }
 
-  /** The story as lines of type. The one thing a line needs to be told apart: what kind of line it is. */
-  function storyLines(v: SceneView, chars: number): { t: string; k: "said" | "roll" | "found" | "told" | "gap"; first?: boolean }[] {
+  /**
+   * The story as lines of type. The one thing a line needs to be told apart: what kind of line it is. Italic (`st` bit 1)
+   * is underlined and bold (bit 2) set in reverse; speech stays plain, as two colours can't tell whose it is.
+   */
+  function storyLines(v: SceneView, chars: number): { t: string; k: "said" | "roll" | "found" | "told" | "gap"; st?: number[]; first?: boolean }[] {
     const out: ReturnType<typeof storyLines> = [];
-    const add = (text: string, k: "said" | "roll" | "found" | "told", cols: number) => {
+    const add = (text: string, k: "roll", cols: number) => {
       for (const t of wrap(plain(text), cols)) out.push({ t, k });
+    };
+    const tell = (text: string, k: "said" | "found" | "told", cols: number, streaming = false) => {
+      for (const runs of storyRuns(text, { streaming })) for (const l of wrapStyled(runs, cols)) out.push({ ...l, k });
     };
     for (const x of v.story) {
       out.push({ t: "", k: "gap", first: true });
       if (x.said) {
-        add(x.said, "said", chars - 1);
+        tell(x.said, "said", chars - 1);
         if (x.roll) add(x.roll, "roll", chars - 1);
       }
-      if (x.found) add(x.found, "found", chars - 2);
-      for (const p of x.reply.split(/\n+/).filter(Boolean)) add(p, "told", chars);
+      if (x.found) tell(x.found, "found", chars - 2);
+      tell(x.reply, "told", chars, x.live);
       if (!x.said && x.roll) add(x.roll, "roll", chars - 1);
     }
     return out;
   }
 
+  function storyType(f: BitFont, x: number, y: number, l: { t: string; st?: number[] }, c: number): void {
+    const back = c === PAPER ? INK : PAPER;
+    l.st?.forEach((s, i) => {
+      if (s & 2) fb.fill({ x: x + i * 8 - 1, y: y - 1, w: 9, h: 10 }, c);
+    });
+    [...l.t].forEach((ch, i) => {
+      const s = l.st?.[i] ?? 0;
+      fb.text(f, x + i * 8, y, ch, s & 2 ? back : c);
+      if (s & 1) fb.fill({ x: x + i * 8, y: y + 8, w: 8, h: 1 }, s & 2 ? back : c);
+    });
+  }
+
   function paintStory(v: SceneView, cr: Rect, chars: number): void {
     const f = font!;
     const b = ctx.box(v);
-    const lines: { t: string; k: string; first?: boolean }[] = wrap(plain(b.desc), chars).map((t) => ({ t, k: "told" }));
+    const lines: { t: string; k: string; st?: number[]; first?: boolean }[] = wrap(plain(b.desc), chars).map((t) => ({ t, k: "told" }));
     const newest = b.log[b.log.length - 1];
     if (newest) for (const [i, t] of wrap(plain(newest), chars - 2).entries()) lines.push({ t, k: i ? "log" : "log0" });
     lines.push(...storyLines(v, chars));
@@ -870,13 +892,13 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const y = cr.y + i * 10;
       if (l.k === "said") {
         fb.fill({ x: cr.x, y: y - 1, w: 2, h: 10 }, PAPER);
-        fb.text(f, cr.x + 6, y, l.t, PAPER);
+        storyType(f, cr.x + 6, y, l, PAPER);
       } else if (l.k === "roll") {
         fb.fill({ x: cr.x - 1, y: y - 1, w: l.t.length * 8 + 3, h: 10 }, PAPER);
         fb.text(f, cr.x, y, l.t, INK);
       } else if (l.k === "found") {
         fb.text(f, cr.x, y, "*", PAPER);
-        fb.text(f, cr.x + 12, y, l.t, PAPER);
+        storyType(f, cr.x + 12, y, l, PAPER);
       } else if (l.k === "log0" || l.k === "log") {
         if (l.k === "log0") fb.text(f, cr.x, y, ">", PAPER);
         fb.text(f, cr.x + 16, y, l.t, PAPER);
@@ -884,7 +906,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         fb.fill({ x: cr.x - 1, y: y - 1, w: l.t.length * 8 + 26, h: 10 }, PAPER);
         fb.text(f, cr.x, y, SPIN[Math.floor(time * 8) % 4]!, INK);
         fb.text(f, cr.x + 16, y, l.t, INK);
-      } else if (l.t) fb.text(f, cr.x, y, l.t, PAPER);
+      } else if (l.t) storyType(f, cr.x, y, l, PAPER);
     }
     if (chronMax) {
       // There's more than the window holds: a thumb in the margin, and the wheel (or Page Up / Down) to move it.
@@ -1665,7 +1687,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function updateReader(v: SceneView): void {
     const b = ctx.box(v);
     const st = ctx.status(v);
-    sr.innerHTML = `<p>${esc(st.where)}. Day ${st.day}, ${esc(st.time)}. ${st.coin} ${esc(st.currency)}. Vigor ${Math.round(st.vigor * 100)}%.${st.thread ? ` Thread ${st.thread.found.length} of ${st.thread.total}: ${esc(st.thread.goal)}.` : ""}${st.supplies ? ` Supplies ${st.supplies.now} of ${st.supplies.max}.` : ""}</p><p>${esc(b.desc)}</p><p aria-live="polite">${esc(b.log[b.log.length - 1] ?? "")}${b.busy ? ` ${esc(b.busy)}` : ""}</p>${isWriting(v) ? `<div aria-live="polite">${beatsHtml(v.story)}</div>` : ""}${ctx.journal.open ? `<div role="dialog" aria-label="Journal">${ctx.journal.html(v)}</div>` : ""}`;
+    sr.innerHTML = `<p>${esc(st.where)}. Day ${st.day}, ${esc(st.time)}. ${st.coin} ${esc(st.currency)}. Vigor ${Math.round(st.vigor * 100)}%.${st.thread ? ` Thread ${st.thread.found.length} of ${st.thread.total}: ${esc(st.thread.goal)}.` : ""}${st.supplies ? ` Supplies ${st.supplies.now} of ${st.supplies.max}.` : ""}</p><p>${esc(b.desc)}</p><p aria-live="polite">${esc(b.log[b.log.length - 1] ?? "")}${b.busy ? ` ${esc(b.busy)}` : ""}</p>${isWriting(v) ? `<div aria-live="polite">${beatsHtml(v.story, v.voices)}</div>` : ""}${ctx.journal.open ? `<div role="dialog" aria-label="Journal">${ctx.journal.html(v)}</div>` : ""}`;
   }
 
   return {

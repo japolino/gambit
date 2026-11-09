@@ -162,13 +162,13 @@ if (new URLSearchParams(location.search).get("long") === "1") {
 // ?story=N: a story long enough to test the reading room.
 const storyBeats = Number(new URLSearchParams(location.search).get("story") ?? 0);
 if (storyBeats) {
-  const told = "The harbourmaster looks up from the ledger and does not smile. Rain ticks against the shutters behind them, and somewhere below a rope groans against its post.\n\n\"You came a long way to ask me that,\" they say at last, and turn the book so the column of names faces you. \"Read it, then. Tell me which one you think is lying.\"";
+  const told = "Mara looks up from the ledger and does not smile. Rain ticks against the shutters behind her, and *somewhere below* a rope groans against its post.\n\n\"You came a long way to ask me that,\" she says at last, and turns the book so the column of names faces you. \"Read it, then. Tell me which one you think is **lying**.\"\n\nIlse snorts from the doorway. \"She means *me*.\"";
   r = {
     ...r,
     story: Array.from({ length: storyBeats }, (_, i) =>
       i === storyBeats - 1 && i > 1
         ? { said: "", roll: "You won the argument", reply: "They close the ledger with one finger, and push it across the desk toward you." }
-        : { said: i % 2 ? "I lean over the book and run a finger down the names, slowly, as if I already know which one I want." : "\"Where does the night boat go?\"", roll: i % 2 ? "Reading a face: 14 vs 11, worked" : null, reply: told, ...(i === 1 ? { found: "A name that shouldn't be there." } : {}) },
+        : { said: i % 2 ? "I lean over the book and run a finger down the names. \"Which one is yours, Mara?\"" : "\"Where does the night boat go?\"", roll: i % 2 ? "Reading a face: 14 vs 11, worked" : null, reply: told, ...(i === 1 ? { found: "A name that shouldn't be there." } : {}) },
     ),
   };
 }

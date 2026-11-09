@@ -14,6 +14,7 @@
  */
 import type { ParleyTheme } from "./types.js";
 import { GARA, CINZ } from "../style.js";
+import { VOICES } from "../../scene/themes/lobby/css.js";
 import { defs as lobbyDefs, halo, rays } from "../../scene/themes/lobby/art.js";
 import { moteSprite, parchment } from "../../scene/themes/lobby/tex.js";
 import { balanceRig, chainBg, choiceBg, crest, dialogFrame, dieBg, jewelBg, loupeIcon, maskIcon, pedestal, printBg, quillBg, sealBg } from "./lobby/art.js";
@@ -85,6 +86,8 @@ const css = (paper: string) => `
 .th-lobby .you::before { content: ""; position: absolute; left: 6px; top: 2px; width: 28px; height: 28px; background: ${quillBg()} center / contain no-repeat; }
 .th-lobby .you .speaker { text-align: left; color: #FFE2A8; }
 .th-lobby .you .prose { font: italic 500 19px/1.4 ${GARA}; color: #d8c9a8; }
+.pl.th-lobby { ${VOICES} }
+.th-lobby .you .prose em { font-style: normal; }
 .th-lobby .read { border-left: 0; padding: 2px 0 2px 44px; position: relative; }
 .th-lobby .die { width: 46px; height: 46px; clip-path: none; background: ${dieBg(false)} center / contain no-repeat; font: 800 16px/1 ${CINZ}; color: #e8dcc0; text-shadow: 0 1px 2px #000; padding-top: 3px; }
 .th-lobby .die.kept { background-image: ${dieBg(true)}; color: #1E160B; text-shadow: 0 1px 0 rgba(255,246,214,.6); transform: scale(1.12); box-shadow: none; filter: drop-shadow(0 0 8px rgba(255,210,122,.55)); }

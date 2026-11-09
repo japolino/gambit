@@ -5,6 +5,12 @@
  * restyles the two host overlays (.gs > .fg class panel, .gs > .mw montage).
  */
 import { BONE, INK, RED } from "./art.js";
+import { speakerVars } from "../../../story-text.js";
+
+/** Who speaks, in chalk on the stone and the baize: cream for anyone, mint for the player, then the cast. */
+export const VOICES = speakerVars("#f7e7bf", "#9fe3cf", ["#8fcff2", "#f5a3b5", "#bfe596", "#d3b4f5", "#f8c27a", "#f3ee8a"]);
+/** The same in ink, on the player's white cards: sepia for anyone, dark mint for the player, then the cast. */
+export const CARD_VOICES = speakerVars("#5a3416", "#1d6b5a", ["#1f5f8a", "#9a2a4a", "#3f6b25", "#6a3fa0", "#a0600a", "#7a6a0a"]);
 
 /** A brass frame with filigree corners, used as border-image for the overlays. */
 function brassFrame(): string {
@@ -261,6 +267,8 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 .gs > .mw .mw-title { font: 800 54px/1 "Gambit Cinzel", serif; letter-spacing: .14em; text-transform: uppercase; color: #f2cf7a; text-shadow: 0 0 24px rgba(255,138,36,.6), 0 3px 0 #000; }
 .gs > .mw .mw-art { border: 18px solid transparent; border-image: ${frame} 30 stretch; box-shadow: 0 24px 50px #000; filter: sepia(.25) contrast(1.1); }
 .gs > .mw .mw-text { font: italic 24px/1.45 "Gambit Fell", serif; color: #efe6d2; }
+.gs.table { ${VOICES} }
+.gs > .mw .mw-text em, .tb .plaque .said em { font-style: normal; }
 .gs > .mw .mw-dots i { background: rgba(242,207,122,.25); } .gs > .mw .mw-dots i.on { background: #f2cf7a; box-shadow: 0 0 8px #ff8a24; }
 .gs > .mw .mw-hint { font: 800 12px/1 "Gambit Cinzel", serif; letter-spacing: .3em; color: #b8a47c; }
 

@@ -714,7 +714,7 @@ ${fight ? `<span class="gauge">VIGOR</span><span class="gauge2">${vig}%</span>` 
     const writing = isWriting(v);
     el.feed.classList.toggle("writing", writing);
     lb.classList.toggle("writing", writing);
-    if (put(el.story, writing ? beatsHtml(v.story) : "") && writing) {
+    if (put(el.story, writing ? beatsHtml(v.story, v.voices) : "") && writing) {
       el.story.scrollTop = el.story.scrollHeight;
       // On a phone the page is what scrolls: bring the newest beat up to read.
       if (phone)

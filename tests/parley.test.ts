@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { PARLEYS } from "../src/engine/content/parleys.js";
 import { applyExchange, closeParley, createParley, exchangeFaces, parseOffer, replayParley, tierFromQuality } from "../src/engine/parley/exchange.js";
-import { fallbackReply, immersiveRead, narratorPrompt, outcomeBlock, rollLine, smartQuotes, tellFor, whyText } from "../src/engine/parley/narrate.js";
+import { fallbackReply, immersiveRead, narratorPrompt, outcomeBlock, rollLine, tellFor, whyText } from "../src/engine/parley/narrate.js";
 import { echoesFact, similarity } from "../src/engine/parley/similarity.js";
 import { detectorState } from "../src/meaning/card-reader.js";
 import type { ParleyState, RefereeRead } from "../src/engine/parley/types.js";
@@ -350,11 +350,6 @@ describe("what a playthrough turned up", () => {
   test("the stand-in reply never reads out the game's numbers", () => {
     const r = applyExchange(vey, createParley(vey, "fixed"), "Plain words here for the gate.", read());
     expect(fallbackReply(vey, r.state, r.exchange)).not.toMatch(/\d|resistance/i);
-  });
-
-  test("quotes open and close where the speech does", () => {
-    expect(smartQuotes('"Do not," he said. *He sighed.* "Go."')).toBe("\u201cDo not,\u201d he said. *He sighed.* \u201cGo.\u201d");
-    expect(smartQuotes('*"Go,"* he said.')).toBe("*\u201cGo,\u201d* he said.");
   });
 
   test("the detector sees how a long reply ends", () => {

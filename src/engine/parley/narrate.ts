@@ -225,11 +225,6 @@ export function narratorPrompt(scenario: ParleyScenario, state: ParleyState, ex:
   return { system, messages };
 }
 
-/** Curly quotes for a paragraph: some book faces draw a straight quote as a closing one, even where the speech opens. */
-export function smartQuotes(text: string): string {
-  return text.replace(/(^|[\s([\u2014\u2013-]|(?:^|\s)\*)"/g, "$1\u201c").replace(/"/g, "\u201d");
-}
-
 /** Tidy a narrator reply: drop headings and scene breaks, cap the length. */
 /** A status line a card's rules asked a model to add: "[HP: 100/100 | Mana: 50/50 | Gold: 0]". The game keeps those numbers itself, and these are invented. */
 function isStatusLine(l: string): boolean {

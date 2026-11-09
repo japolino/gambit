@@ -37,9 +37,10 @@ export function followStory(say: HTMLElement, v: SceneView, changed: boolean): v
 }
 
 /** The narration under its pitched awning: description, then the log (newest last); the busy quill. */
-export function narrationHtml(box: ReturnType<ThemeCtx["box"]>, logOpen: boolean, story: SceneView["story"] = []): string {
+export function narrationHtml(box: ReturnType<ThemeCtx["box"]>, logOpen: boolean, v: SceneView): string {
+  const story = isWriting(v) ? v.story : [];
   return `${AWNING}
-<div class="txt"><p class="desc">${esc(box.desc)}</p>${box.log.length ? `<ol class="log">${box.log.map((l) => `<li>${esc(l)}</li>`).join("")}</ol>` : ""}${beatsHtml(story)}${box.busy ? `<div class="busyl">${QUILL}<span>${esc(box.busy)}</span><i>.</i><i>.</i><i>.</i></div>` : ""}</div>
+<div class="txt"><p class="desc">${esc(box.desc)}</p>${box.log.length ? `<ol class="log">${box.log.map((l) => `<li>${esc(l)}</li>`).join("")}</ol>` : ""}${beatsHtml(story, v.voices)}${box.busy ? `<div class="busyl">${QUILL}<span>${esc(box.busy)}</span><i>.</i><i>.</i><i>.</i></div>` : ""}</div>
 ${box.log.length > 2 ? `<button class="more" data-act="log" aria-expanded="${logOpen}" aria-label="${logOpen ? "Fold the log away" : "Read the whole log"}">${TRIANGLE}</button>` : ""}`;
 }
 

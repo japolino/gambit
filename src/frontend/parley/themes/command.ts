@@ -22,6 +22,7 @@ import type { ParleyTheme, ParleyThemeCtx, ParleyDecor } from "./types.js";
 import { BIT } from "../style.js";
 import { mountShell, type Geo, type Rect } from "../../stage/themes/command/shell.js";
 import { canvas, coverDraw, ditherToPalette, frameSvg, glyph, grilleTile, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "../../scene/themes/command/pixels.js";
+import { VOICES } from "../../scene/themes/command/style.js";
 
 const BLUE = "#0000AA";
 const CYAN = "#55FFFF";
@@ -137,6 +138,7 @@ const COMMAND = `
 .th-command .prose, .th-command .npc .prose { font: ${F}; color: #fff; }
 .th-command .prose p { margin: 0; }
 .th-command .prose em { font-style: normal; color: ${GREY}; }
+.pl.th-command { ${VOICES} }
 .th-command .npc .prose.waiting .dots { color: ${DARK}; }
 .th-command .you { align-self: stretch; max-width: none; border: 0; border-radius: 0; padding: 0; background: none; }
 .th-command .you .speaker { display: none; }

@@ -4,6 +4,7 @@
  */
 import type { ParleyTheme } from "./types.js";
 import { FELL, GARA } from "../style.js";
+import { PAPER_VOICES } from "../../scene/themes/diorama/style.js";
 import { ROOM_CSS, decorateRoom } from "./diorama/room.js";
 import { PHONE_CSS, decoratePhone } from "./diorama/phone.js";
 
@@ -77,6 +78,7 @@ const DIORAMA = `
 .th-diorama .setting { font: italic 400 15px ${FELL}; color: #6b4a2a; }
 .th-diorama .npc .prose { font-size: 17.5px; line-height: 1.42; color: #261409; }
 .th-diorama .npc .prose em { color: #7a3b16; }
+.pl.th-diorama { ${PAPER_VOICES} }
 .th-diorama .you { position: relative; padding: 10px 14px 9px; border: 0; rotate: .6deg; box-shadow: 0 2px 5px rgba(60,30,10,.28); }
 .th-diorama .you::before { content: ""; position: absolute; left: 50%; top: -7px; width: 54px; height: 14px; translate: -50% 0; rotate: -3deg; background: rgba(230,210,160,.75); box-shadow: 0 1px 1px rgba(60,30,10,.15); }
 .th-diorama .you .speaker { color: #8a4b1a; }

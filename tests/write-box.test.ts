@@ -6,6 +6,7 @@ import { fitScroll } from "../src/frontend/scene/themes/storybook/scroll-fit.js"
 import type { SceneView } from "../src/frontend/scene/themes/contract.js";
 
 const view = (over: Partial<SceneView>) => ({ story: [], ...over }) as unknown as SceneView;
+const NO_ONE = { cast: [], player: "" };
 const beat = (over: Partial<SceneView["story"][number]>) => ({ said: "", roll: null, reply: "", ...over });
 
 describe("where you can write", () => {
@@ -24,25 +25,25 @@ describe("where you can write", () => {
 
 describe("the beats", () => {
   test("a line you wrote rolls first", () => {
-    const html = beatsHtml([beat({ said: "I sneak past", roll: "Going unseen: failed", reply: "He turns." })]);
+    const html = beatsHtml([beat({ said: "I sneak past", roll: "Going unseen: failed", reply: "He turns." })], NO_ONE);
     expect(html.indexOf("said")).toBeLessThan(html.indexOf("roll"));
     expect(html.indexOf("roll")).toBeLessThan(html.indexOf("told"));
   });
 
   test("a talk or a fight that's over ends on how it came out", () => {
-    const html = beatsHtml([beat({ roll: "You won the argument", reply: "They give way." })]);
+    const html = beatsHtml([beat({ roll: "You won the argument", reply: "They give way." })], NO_ONE);
     expect(html).not.toContain('class="said"');
     expect(html.indexOf("told")).toBeLessThan(html.indexOf("roll"));
   });
 
   test("each paragraph of a reply is its own, and what was typed stays text", () => {
-    const html = beatsHtml([beat({ said: "<img src=x onerror=boom>", reply: "One.\n\nTwo." })]);
+    const html = beatsHtml([beat({ said: "<img src=x onerror=boom>", reply: "One.\n\nTwo." })], NO_ONE);
     expect(html).not.toContain("<img");
     expect(html.match(/class="told"/g)).toHaveLength(2);
   });
 
   test("what a line turned up comes before what's told", () => {
-    const html = beatsHtml([beat({ said: "I look", found: "A key", reply: "It's cold." })]);
+    const html = beatsHtml([beat({ said: "I look", found: "A key", reply: "It's cold." })], NO_ONE);
     expect(html.indexOf("found")).toBeLessThan(html.indexOf("told"));
   });
 });
@@ -88,13 +89,13 @@ describe("every theme offers it", () => {
 describe("the words on the page", () => {
   test("a book's quotes open and close, a terminal's stay as typed", () => {
     const b = [beat({ said: '"I am awake," I say', reply: "" })];
-    expect(beatsHtml(b)).toContain("\u201cI am awake,\u201d");
-    expect(beatsHtml(b, false)).toContain("&quot;I am awake,&quot;");
+    expect(beatsHtml(b, NO_ONE)).toContain("\u201cI am awake,\u201d");
+    expect(beatsHtml(b, NO_ONE, false)).toContain("&quot;I am awake,&quot;");
   });
 
   test("a find the narrator already showed isn't printed twice", () => {
-    expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "There: a hidden door, behind the shelf." })])).not.toContain('class="found"');
-    expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "Dust everywhere." })])).toContain('class="found"');
+    expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "There: a hidden door, behind the shelf." })], NO_ONE)).not.toContain('class="found"');
+    expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "Dust everywhere." })], NO_ONE)).toContain('class="found"');
   });
 });
 

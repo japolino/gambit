@@ -409,7 +409,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     const talkTheme = sceneView && sceneView.chatId === state.chatId ? sceneView.theme : undefined;
     staged = !!talkTheme && !!scene && scene.chatId === state.chatId && scene.encounter({ kind: "parley", personId: scenario.npc.id, name: scenario.npc.name });
     if (!staged) scene?.hide();
-    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, theme: talkTheme, inRoom: staged }, {
+    parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, theme: talkTheme, inRoom: staged, voices: talkTheme ? sceneView?.voices : undefined }, {
       say: (text) => send({ type: "parley.say", parleyId: state.id, text }),
       close: (how) => send({ type: "parley.close", parleyId: state.id, how }),
       setMode: (mode) => send({ type: "parley.view", mode }),
@@ -528,7 +528,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       case "scene.story": {
         // The reply as it is written: shown as the newest beat until the saved one replaces it.
         if (sceneView && scene && scene.chatId === msg.chatId) {
-          const beat = { said: msg.said, roll: msg.roll, reply: msg.text };
+          const beat = { said: msg.said, roll: msg.roll, reply: msg.text, live: true };
           scene.setView({ ...sceneView, story: [...sceneView.story, beat] });
         }
         break;

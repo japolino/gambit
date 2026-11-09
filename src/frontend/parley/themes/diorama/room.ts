@@ -13,6 +13,7 @@
 import type { ParleyDecor, ParleyThemeCtx } from "../types.js";
 import { FELL, GARA, CINZ } from "../../style.js";
 import { board } from "../../../scene/themes/diorama/bridge.js";
+import { VOICES } from "../../../scene/themes/diorama/style.js";
 
 const svgUrl = (s: string) => `url("data:image/svg+xml,${encodeURIComponent(s)}")`;
 
@@ -68,6 +69,8 @@ export const ROOM_CSS = `
 .pl.th-diorama.in-room .speaker { font: 800 11px ${CINZ}; letter-spacing: .14em; color: #c9a04e; }
 .pl.th-diorama.in-room .npc .prose { font: 400 clamp(18px, 2.1vh, 21px)/1.42 ${GARA}; color: #f5ebd6; }
 .pl.th-diorama.in-room .npc .prose em { color: #c8b08a; }
+.pl.th-diorama.in-room { ${VOICES} }
+.pl.th-diorama.in-room .you .prose em { font-style: normal; }
 .pl.th-diorama.in-room .you { rotate: 0deg; max-width: 82%; padding: 2px 0 2px 14px; background: none; box-shadow: none; border-left: 2px solid rgba(226,183,99,.6); }
 .pl.th-diorama.in-room .you::before { display: none; }
 .pl.th-diorama.in-room .you .prose { font: italic 400 17px/1.4 ${FELL}; color: #e8d8b0; }

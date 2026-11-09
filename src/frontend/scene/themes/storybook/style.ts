@@ -7,6 +7,10 @@
  * It also restyles the host's class panel and "Meanwhile…" overlays.
  */
 import { brushwork, leather, parchment } from "./textures.js";
+import { speakerVars } from "../../../story-text.js";
+
+/** Who speaks, in inks that read on the page: sepia for anyone, the player's crimson rule, then the cast. */
+export const VOICES = speakerVars("#5e3415", "#8a1f1a", ["#1d5a6e", "#46651d", "#7d2f78", "#9a5c0c", "#3b3c9a", "#a8471a"]);
 
 /** A gilt frame as an SVG data URI, for border-image on the host overlays. */
 function giltBorder(): string {
@@ -350,6 +354,8 @@ export function css(): string {
 .gs.storybook .mw-card { background: url(${page}) center / cover; border: 16px solid transparent; border-image: ${giltBorder()} 22 stretch; padding: 16px 26px 12px; box-shadow: 0 24px 50px rgba(0,0,0,.8), inset 0 0 40px rgba(92,48,18,.4); }
 .gs.storybook .mw-card .mw-art { border: 0; border-image: none; box-shadow: 0 0 0 2px #a8742f, 0 0 0 4px #3a1a08, 0 8px 18px rgba(0,0,0,.5); }
 .gs.storybook .mw-text { font: italic 500 clamp(18px, calc(1.2cqw + 1.3cqh), 28px)/1.4 "Gambit Garamond", serif; color: #2b170a; }
+.gs.storybook { ${VOICES} }
+.gs.storybook .mw-text em, .sb-dlg .beat .said em { font-style: normal; }
 .gs.storybook .mw-dots i { background: rgba(243,215,145,.3); transform: none; border-radius: 50%; } .gs.storybook .mw-dots i.on { background: #f3d791; box-shadow: 0 0 8px #f3d791; }
 .gs.storybook .mw-hint { font: 600 12px/1 "Gambit Cinzel", serif; color: #d9ad62; letter-spacing: .24em; }
 

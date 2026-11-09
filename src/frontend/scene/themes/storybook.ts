@@ -395,7 +395,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const now = last >= 0 ? `<p class="now${last >= firstNew ? " fresh" : ""}">${esc(b.log[last]!)}</p>` : "";
     const earlier = b.log.slice(0, Math.max(0, last)).map((l, i) => `<li class="${i >= firstNew ? "fresh" : ""}">${esc(l)}</li>`).join("");
     const busy = b.busy ? `<div class="busy" role="status">${QUILL}<span>${esc(b.busy)}</span><span class="dots"><i></i><i></i><i></i></span></div>` : "";
-    const beats = beatsHtml(v.story);
+    const beats = beatsHtml(v.story, v.voices);
     txt.classList.toggle("two", !!earlier);
     txt.innerHTML = `<div class="main">${descHtml}${now}${beats}${busy}</div>${earlier ? `<aside class="margin" aria-label="Earlier">${DIVIDER}${DIVIDER_KNOT}<div class="mh">Earlier</div><ol class="log">${earlier}</ol></aside>` : ""}`;
     requestAnimationFrame(() => {

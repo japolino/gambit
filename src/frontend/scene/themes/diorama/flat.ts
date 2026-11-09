@@ -23,7 +23,6 @@ import * as P from "./props3d.js";
 import { cleanCutout, drawChart } from "./chart.js";
 import { paintCounter } from "./counter.js";
 import { followStory, journalHtml, narrationHtml, pickerHtml, sayHtml, tex } from "./shared.js";
-import { isWriting } from "../write.js";
 import { wireTypewriter } from "../typewriter.js";
 import { phoneActsHtml } from "./phone.js";
 import { bookcase, paper, stallStack, texUrl, walnut } from "./textures.js";
@@ -371,7 +370,7 @@ ${th ? `<button class="spools" data-act="journal" style="--sw:${(3 + Math.min(9,
 
     /* ---------------- Narration and overlays ---------------- */
     write.sync(v, ctx.journal.open);
-    followStory(say, v, put(sayIn, narrationHtml(box, logOpen, isWriting(v) ? v.story : [])));
+    followStory(say, v, put(sayIn, narrationHtml(box, logOpen, v)));
     say.classList.toggle("open", logOpen);
     put(phacts, phoneActsHtml(ctx, v, acts, null));
     const ov: string[] = [];

@@ -103,6 +103,16 @@ export interface StoryBeat {
   reply: string;
   /** What this line turned up, if anything. */
   found?: string | null;
+  /** The reply is still being written. */
+  live?: boolean;
+}
+
+/** Who the story can name, to tell whose a quote is (frontend/story-text.ts). */
+export interface Voices {
+  /** The card's cast in its own order (a person's colour is their place here); `here`: in the scene now. */
+  cast: { name: string; pronoun: "she" | "he" | "they"; here?: boolean }[];
+  /** The player's name, or "" when the story calls them "you". */
+  player: string;
 }
 
 export interface SceneView {
@@ -153,6 +163,7 @@ export interface SceneView {
   log: string[];
   /** The story so far in this scene: what the player wrote, any roll, and what happened. Newest last. */
   story: StoryBeat[];
+  voices: Voices;
   delve?: DelveView;
   board?: BoardView;
   /** Something is being prepared (a read, an encounter). */

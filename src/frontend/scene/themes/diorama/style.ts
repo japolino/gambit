@@ -7,6 +7,12 @@
  * the counter, fraction of the height) and --w (width in units); the phone
  * layout only re-assigns those three per prop.
  */
+import { speakerVars } from "../../../story-text.js";
+
+/** Who speaks, under the shop's lamp: warm cream for anyone, amber for the player, then the cast. */
+export const VOICES = speakerVars("#f6d9a6", "#ffc24a", ["#93d3e6", "#f3a493", "#bfe39a", "#d8b2ee", "#f08fb0", "#a9c0fa"]);
+/** The same on paper (a talk's page and price tags): sepia for anyone, tag red for the player, then the cast. */
+export const PAPER_VOICES = speakerVars("#4f2c12", "#b0301c", ["#1f5f8a", "#3f6b25", "#8a3a7a", "#a0600a", "#2f7a6e", "#6a3fa0"]);
 export const CSS = `
 .dr { position: absolute; inset: 0; overflow: hidden; background: #0b0806; color: #f4efe6;
   --S: min(100cqw, 190cqh); --L: calc((100cqw - var(--S)) / 2); --u: min(calc(var(--S) / 100), calc(100cqh / 52));
@@ -297,6 +303,8 @@ export const CSS = `
 .gs.diorama .mw-title { font: italic 46px/1 "Gambit Fell", serif; color: #f5d36c; text-shadow: 0 2px 10px rgba(255,180,80,.35); }
 .gs.diorama .mw-art { border: 18px solid transparent; border-image: var(--dr-frame) 40 stretch; box-shadow: 0 20px 50px rgba(0,0,0,.8), inset 0 0 30px rgba(20,8,0,.8); filter: sepia(.15); }
 .gs.diorama .mw-text { font: 500 23px/1.5 "Gambit Garamond", serif; color: #f4efe6; }
+.gs.diorama { ${VOICES} }
+.dr .say .said em { font-style: normal; }
 .gs.diorama .mw-dots i { transform: none; width: 12px; height: 12px; border-radius: 50%; background: rgba(142,28,20,.4); } .gs.diorama .mw-dots i.on { background: #b02e22; box-shadow: 0 0 0 2px #f5d36c; }
 .gs.diorama .mw-hint { font: 600 14px "Gambit Cinzel", serif; color: #d4a24a; }
 

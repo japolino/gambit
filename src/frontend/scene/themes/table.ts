@@ -730,7 +730,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     sig.plaque = key;
     const n = b.log.length;
     // Newest last; folded, only the latest two show under the description.
-    ptx.innerHTML = `${b.desc ? `<p class="desc">${esc(b.desc)}</p>` : ""}<ol class="log">${b.log.map((l, i) => `<li class="${i === n - 1 ? "now" : i < n - 2 ? "old" : ""}">${esc(l)}</li>`).join("")}</ol>${beatsHtml(story)}${b.busy ? `<p class="busy">${esc(b.busy)}</p>` : ""}`;
+    ptx.innerHTML = `${b.desc ? `<p class="desc">${esc(b.desc)}</p>` : ""}<ol class="log">${b.log.map((l, i) => `<li class="${i === n - 1 ? "now" : i < n - 2 ? "old" : ""}">${esc(l)}</li>`).join("")}</ol>${beatsHtml(story, v.voices)}${b.busy ? `<p class="busy">${esc(b.busy)}</p>` : ""}`;
     plq.classList.toggle("open", logOpen);
     plq.classList.toggle("story", story.length > 0);
     logTab.setAttribute("aria-expanded", String(logOpen));

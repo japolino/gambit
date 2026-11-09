@@ -142,7 +142,7 @@ const PLAYED: { text: string; read: RefereeRead; reply: string }[] = [
     reply: "*A dry wheeze of a laugh.* \"Sharp eyes. She leaks a cup an hour, no more.\" *He taps the hull with his boot.* \"Forty-eight, and you hold the bucket.\"",
   },
   {
-    text: "Forty, and I'll carry a letter to your daughter at the Weir House. I'm going that way anyway.",
+    text: "*I set my pack down.* \"Forty, and I'll carry a letter to your daughter at the Weir House. I'm going that way anyway.\"",
     read: read("empathy", { fit: 3, credibility: 2.6, temperament: 3.8, asserts: { weir_daughter: 0.9 } }),
     reply:
       "*He looks upriver for a long moment, toward a lamp you can barely see.*\n\n\"...She'd want it in her hand, not left on the step. Swear it, and we'll talk about forty.\"",

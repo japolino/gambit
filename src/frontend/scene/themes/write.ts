@@ -2,7 +2,7 @@
  * Writing into the story, the same in every theme: what the box does and the beats it leads to. How they look is the
  * theme's own (a form to style, or, in 1-bit, an invisible field over what it paints).
  */
-import { smartQuotes } from "../../../engine/parley/narrate.js";
+import { storyHtml, type StoryOpts, type Voices } from "../../story-text.js";
 import { esc, type SceneView, type ThemeCtx } from "./contract.js";
 
 export const WRITE_PROMPT = "What do you do?";
@@ -19,23 +19,22 @@ export const writeFormHtml = (cls: string, send = "Write"): string =>
 
 /**
  * The story so far. A line you wrote rolls first; a talk or a fight that's over has no line, and ends on how it came out.
- * Classes to style: .beat, .said, .roll, .found, .told. `curly`: a book face draws a straight quote as a closing one, even
- * where the speech opens; a terminal's type has no curly ones.
+ * Classes to style: .beat, .said, .roll, .found, .told, and the dialogue in them (story-text.ts). `curly`: a book face
+ * draws a straight quote as a closing one, even where the speech opens; a terminal's type has no curly ones.
  */
-export function beatsHtml(story: SceneView["story"], curly = true): string {
-  const words = (t: string) => esc(curly ? smartQuotes(t) : t);
+export function beatsHtml(story: SceneView["story"], voices: Voices, curly = true): string {
+  const paras = (cls: string, t: string, o: StoryOpts = {}) =>
+    storyHtml(t, { voices, curly, ...o })
+      .map((p) => `<p class="${cls}">${p}</p>`)
+      .join("");
   const flat = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   return story
     .map((x) => {
       const roll = x.roll ? `<p class="roll">${esc(x.roll)}</p>` : "";
-      const told = x.reply
-        .split(/\n+/)
-        .filter(Boolean)
-        .map((p) => `<p class="told">${words(p)}</p>`)
-        .join("");
+      const told = paras("told", x.reply, { streaming: x.live });
       // The narrator was told to show what's found: when it has, word for word, once is enough.
-      const found = x.found && !flat(x.reply).includes(flat(x.found)) ? `<p class="found">${words(x.found)}</p>` : "";
-      return `<div class="beat">${x.said ? `<p class="said">${words(x.said)}</p>${roll}` : ""}${found}${told}${x.said ? "" : roll}</div>`;
+      const found = x.found && !flat(x.reply).includes(flat(x.found)) ? paras("found", x.found) : "";
+      return `<div class="beat">${x.said ? `${paras("said", x.said, { speaker: "you" })}${roll}` : ""}${found}${told}${x.said ? "" : roll}</div>`;
     })
     .join("");
 }

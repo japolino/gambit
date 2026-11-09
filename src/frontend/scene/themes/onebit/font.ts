@@ -116,6 +116,43 @@ export function wrap(text: string, cols: number): string[] {
   return out;
 }
 
+/** wrap() for story text, keeping each character's emphasis (bit 1: italic, bit 2: bold) to draw it with. */
+export function wrapStyled(runs: readonly { text: string; em: boolean; strong: boolean }[], cols: number): { t: string; st: number[] }[] {
+  let s = "";
+  const st: number[] = [];
+  for (const r of runs) {
+    const t = plain(r.text);
+    s += t;
+    for (let i = 0; i < t.length; i++) st.push((r.em ? 1 : 0) | (r.strong ? 2 : 0));
+  }
+  const n = Math.max(1, cols);
+  const out: { t: string; st: number[] }[] = [];
+  let line = "";
+  let ls: number[] = [];
+  for (const m of s.matchAll(/\S+/g)) {
+    let w = m[0];
+    let ws = st.slice(m.index, m.index + w.length);
+    while (w.length > n) {
+      if (line) out.push({ t: line, st: ls });
+      line = "";
+      out.push({ t: w.slice(0, n), st: ws.slice(0, n) });
+      w = w.slice(n);
+      ws = ws.slice(n);
+    }
+    if (!line) [line, ls] = [w, ws];
+    else if (line.length + 1 + w.length <= n) {
+      // The space between two italic words is underlined with them.
+      line += " " + w;
+      ls = [...ls, ls.at(-1)! & ws[0]!, ...ws];
+    } else {
+      out.push({ t: line, st: ls });
+      [line, ls] = [w, ws];
+    }
+  }
+  out.push({ t: line, st: ls });
+  return out;
+}
+
 /** 3x5 digits for numbers stamped onto bars (rows of 3 bits). */
 export const TINY: Record<string, number[]> = {
   "0": [7, 5, 5, 5, 7], "1": [2, 6, 2, 2, 7], "2": [7, 1, 7, 4, 7], "3": [7, 1, 7, 1, 7], "4": [5, 5, 7, 1, 1],

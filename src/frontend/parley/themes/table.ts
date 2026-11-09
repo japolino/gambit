@@ -7,6 +7,7 @@
  */
 import type { ParleyTheme } from "./types.js";
 import { FELL, GARA } from "../style.js";
+import { CARD_VOICES, VOICES } from "../../scene/themes/table/css.js";
 import { ROOM_CSS } from "./table/room.js";
 import { decorateFlat, decorateRoom } from "./table/stakes.js";
 
@@ -71,6 +72,8 @@ const TABLE = `
 .th-table .you { color: #2a1804; border: 0; padding: 9px 14px; box-shadow: inset 0 0 0 3px #fbf3e2, inset 0 0 0 4px #2a1804, 0 4px 10px rgba(0,0,0,.5); }
 .th-table .you .speaker { color: #9c1419; }
 .th-table .you .prose em { color: #7a3b16; }
+.pl.th-table { ${VOICES} }
+.th-table .you { ${CARD_VOICES} }
 .th-table .read { border-left: 2px solid rgba(242,207,122,.3); }
 .th-table .die { font: 400 15px ${FELL}; filter: drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
 .th-table .die.kept { box-shadow: none; filter: drop-shadow(0 0 8px rgba(255,207,106,.7)); }

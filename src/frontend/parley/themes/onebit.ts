@@ -102,8 +102,9 @@ const ONEBIT = `
 .th-onebit .npc .speaker::before { content: "1 "; }
 .th-onebit .prose, .th-onebit .npc .prose { font: ${px(8)}/${px(10)} ${BIT}; color: ${PAPER}; }
 .th-onebit .prose p { margin: 0 0 ${px(3)}; }
-.th-onebit .prose em { font-style: normal; text-decoration: none; }
-.th-onebit .prose em::before, .th-onebit .prose em::after { content: "*"; }
+/* Two colours tell no speakers apart: speech stays plain. Italic is underlined and bold set in reverse, as in the scene. */
+.th-onebit .prose em { font-style: normal; text-decoration: underline; text-decoration-thickness: ${px(1)}; text-underline-offset: ${px(1)}; }
+.th-onebit .prose strong { font-weight: 400; color: ${INK}; background: ${PAPER}; }
 .th-onebit .you { border: 0; background: none; padding: 0; margin: 0; }
 .th-onebit .you .speaker { display: none; }
 .th-onebit .you .prose::before { content: "> "; }

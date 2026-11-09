@@ -43,7 +43,6 @@ import type { Stage3D } from "../../layer3d.js";
 import * as M from "./models.js";
 import { cleanCutout } from "./chart.js";
 import { followStory, journalHtml, narrationHtml, pickerHtml, sayHtml } from "./shared.js";
-import { isWriting } from "../write.js";
 import { wireTypewriter } from "../typewriter.js";
 import { WEDGE } from "./props3d.js";
 import { phoneActsHtml } from "./phone.js";
@@ -1313,7 +1312,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     // Status the shop's walls carry, as small plaques tied to them.
     statusLabels(s.day, s.time, th ? { found, total, goal: th.goal } : null);
 
-    const sh = narrationHtml(box, logOpen, isWriting(v) ? v.story : []);
+    const sh = narrationHtml(box, logOpen, v);
     const saidMore = sayIn.dataset.h !== sh;
     if (saidMore) {
       sayIn.dataset.h = sh;
