@@ -147,6 +147,10 @@ describe("Notice", () => {
     expect(m.sort()).toEqual(["cast:mara", "name:Old Brannoc", "place:tavern"]);
   });
 
+  test("known names in Hangul are found too", () => {
+    expect(mentions("I ask 한소연 about the 레퍼리드 사단 lines.", [{ key: "cast:han", name: "한소연" }, { key: "place:hq", name: "레퍼리드 사단" }]).sort()).toEqual(["cast:han", "place:hq"]);
+  });
+
   test("promotions wait for the threshold and stop at three active", () => {
     expect(readyToPromote({ "name:A": 7, "name:B": 2 }, [])).toEqual(["name:A"]);
     const active = [1, 2, 3].map((i) => ({ key: `name:${i}`, done: false }) as never);

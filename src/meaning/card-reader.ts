@@ -33,7 +33,7 @@ import {
   type Tier,
 } from "../engine/card/types.js";
 import type { Questions } from "./referee.js";
-import { sameName } from "../engine/card/names.js";
+import { fold, sameName } from "../engine/card/names.js";
 import { inferTradition, TRADITION_IDS, type NamingId } from "../engine/card/naming.js";
 import { loreText } from "./lore-pick.js";
 
@@ -72,12 +72,10 @@ export function resolveMacros(text: string, charName: string, userName: string):
 }
 
 const norm = (s: string): string =>
-  s
-    .toLowerCase()
-    .normalize("NFKD")
+  fold(s)
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
-    .replace(/[^a-z0-9' ]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}' ]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 

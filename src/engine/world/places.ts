@@ -5,6 +5,7 @@
  * Pure and seeded: the same sheet and seed always build the same world.
  */
 import type { CardSheet, Evidence, ShapeId } from "../card/types.js";
+import { fold } from "../card/names.js";
 
 export type HotspotKind = "talk" | "search" | "exit" | "rest" | "shop" | "fight" | "delve" | "wait" | "explore";
 
@@ -58,7 +59,7 @@ const hash = (s: string): number => {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return h >>> 0;
 };
-const norm = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+const norm = (s: string): string => fold(s).replace(/[^\p{L}\p{M}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
 
 const TITLES = new Set(["sir", "lady", "lord", "dame", "sister", "brother", "father", "mother", "captain", "master", "mistress", "doctor", "the", "old", "young"]);
 

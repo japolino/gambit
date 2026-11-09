@@ -15,6 +15,7 @@ import type { CardSheet } from "../card/types.js";
 import type { SheetFoe } from "../card/foes.js";
 import { ELEMENTS, STATUS_IDS, type BattleEvent, type BattleState, type Element, type MonsterDef, type StatusId } from "../types.js";
 import { solveSkill } from "../budget.js";
+import { normName } from "../card/names.js";
 
 /* ------------------------------ the ledger ----------------------------- */
 
@@ -318,10 +319,10 @@ const STOP = new Set(
  */
 export function mentions(text: string, known: { key: string; name: string }[], skip: readonly string[] = []): string[] {
   const out = new Set<string>();
-  const low = ` ${text.toLowerCase().replace(/[^a-z0-9' ]+/g, " ")} `;
+  const low = ` ${normName(text)} `;
   for (const k of known) {
-    const first = k.name.toLowerCase().replace(/^the\s+/, "").split(/\s+/)[0] ?? "";
-    const full = k.name.toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9' ]+/g, " ").trim();
+    const full = normName(k.name.replace(/^the\s+/i, ""));
+    const first = full.split(" ")[0] ?? "";
     if ((full.length > 2 && low.includes(` ${full} `)) || (first.length > 3 && k.key.startsWith("cast:") && low.includes(` ${first} `))) out.add(k.key);
   }
   const skipLow = new Set([...skip, ...known.map((k) => k.name)].flatMap((s) => s.toLowerCase().split(/\s+/)));

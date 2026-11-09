@@ -10,6 +10,14 @@ describe("names", () => {
     expect(sameName("Corvin Ashmere", "Stella Ashmere")).toBe(false);
   });
 
+  test("names in any script match, and Latin accents don't matter", () => {
+    expect(sameName("레퍼리드 사단", "레퍼리드 사단")).toBe(true);
+    expect(sameName("레퍼리드", "레퍼리드 사단")).toBe(true);
+    expect(sameName("레퍼리드 사단", "김철수")).toBe(false);
+    expect(sameName("Élodie", "elodie")).toBe(true);
+    expect(bestNameMatch("リリム", ["ベスパー", "リリム"], (p) => p)).toBe("リリム");
+  });
+
   test("an ambiguous loose match is no match; an exact one wins", () => {
     const people = ["Ryuzu_Shima", "Ryuzu_Delma", "Ryuzu", "Rem", "Ram"];
     expect(bestNameMatch("Ryuzu", people, (p) => p)).toBe("Ryuzu");

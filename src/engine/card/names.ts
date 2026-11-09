@@ -3,13 +3,13 @@
  * and the user's library ("Corvin" / "Prince Corvin" / "Tomas_Reyne").
  */
 
+/** Lowercase, Latin accents dropped, every other script kept whole: "Café" -> "cafe", "레퍼리드" stays. */
+export const fold = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").normalize("NFC");
+
 export const normName = (s: string): string =>
-  s
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+  fold(s)
     .replace(/[_.]+/g, " ")
-    .replace(/[^a-z0-9' ]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}' ]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 

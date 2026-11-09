@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { encounterFrom, parseFoe, partyFromSheet, type SheetFoe } from "../src/engine/card/foes.js";
 import { cleanReply } from "../src/engine/parley/narrate.js";
-import { cardSaysWorld, fallbackSheet, mergeEdits, mergeReads, parseSheet, repairSheet, resolveMacros } from "../src/meaning/card-reader.js";
+import { cardSaysWorld, fallbackSheet, mergeEdits, mergeReads, parseSheet, quoteFound, repairSheet, resolveMacros } from "../src/meaning/card-reader.js";
 import { salvageJson } from "../src/meaning/referee.js";
 import { narratorPrompt, readFromAnswers, routeQuestions, type StoryContext } from "../src/meaning/story.js";
 import type { CardSheet, CardSources } from "../src/engine/card/types.js";
@@ -72,6 +72,21 @@ describe("a card that isn't a person", () => {
 
   test("<char> reads as the card's name, like {{char}}", () => {
     expect(resolveMacros("<char> greets {{user}}", "Mara", "Orla")).toBe("Mara greets Orla");
+  });
+});
+
+describe("a card in Korean", () => {
+  const src = sources("레퍼리드 사단", "Name: Leporid Division. Overview: a terrifying military force of rabbit-eared soldiers. 레퍼리드 사단은 토끼 귀를 가진 병사들의 부대다.");
+
+  test("a faction the reader names as not a person stays out of the cast", () => {
+    const sheet = parseSheet(mergeReads({ cast: [person("한소연", "a shock trooper")], not_people: ["레퍼리드 사단", "Leporid Division"] }, null), src, 1);
+    expect(sheet.cast.map((c) => c.name)).toEqual(["한소연"]);
+    expect(sheet.notes.join(" ")).not.toContain("was missing from the read");
+  });
+
+  test("a quote in Hangul is found in the card", () => {
+    expect(quoteFound("토끼 귀를 가진 병사들의 부대다", src.cards[0]!.description)).toBe(true);
+    expect(quoteFound("토끼 귀를 가진 마법사들의 왕국이다", src.cards[0]!.description)).toBe(false);
   });
 });
 

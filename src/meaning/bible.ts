@@ -54,7 +54,7 @@ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}
 const str = (v: unknown, max = 300): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
-const nameKey = (s: string) => s.toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]+/g, " ").trim();
+const nameKey = (s: string) => normName(s).replace(/^the /, "");
 const DELVE_WORDS = /\b(ruin|ruins|dungeon|cave|caves|crypt|wreck|derelict|tunnel|tunnels|catacombs?|mine|labyrinth|maze|tomb|vault|basement|sewers?|undercroft|haunted|cellar|hull)\b/i;
 
 /** What the Bible must add for this sheet: places to reach the shape's count, a delve when the shape needs one. */
