@@ -256,7 +256,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     let changed = false;
     if (!r || r.cardKey !== sheet.cardKey || r.v !== 1) {
       const world = buildWorld(sheet, `${sheet.cardKey}:${chatId}`);
-      r = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: [] };
+      r = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world, sheet.player.coin), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: [] };
       changed = true;
     }
     const b = (await cards.storedBible?.(userId, sheet.cardKey, sheet).catch(() => null)) ?? null;
@@ -615,7 +615,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return {
       premise: sheet.premise,
       tone: sheet.tone,
-      player: { name: sheet.player.name, concept: sheet.player.concept },
+      player: { name: sheet.player.name, concept: sheet.player.concept, ...(sheet.player.person ? { person: sheet.player.person } : {}) },
       place: { name: place?.name ?? "Here", description: place?.description ?? "" },
       time: TIMES[r.scene.time] ?? "",
       people: withPromoted(sheet, r).cast.filter((c) => place?.people.includes(c.id)).map((c) => ({ id: c.id, name: c.name, role: c.role, voice: c.voice })),

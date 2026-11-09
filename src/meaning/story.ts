@@ -17,7 +17,8 @@ export interface StoryPerson {
 export interface StoryContext {
   premise: string;
   tone: string;
-  player: { name: string; concept: string };
+  /** `person`: how the card asks the story to tell the player, when it says. */
+  player: { name: string; concept: string; person?: "second" | "third" };
   place: { name: string; description: string };
   time: string;
   people: StoryPerson[];
@@ -266,16 +267,18 @@ export const beatTokens = (route: BeatRoute): number => Math.round(WORDS[route] 
 
 export function narratorPrompt(c: StoryContext, line: string, fallout: string, route: BeatRoute): { system: string; user: string } {
   const who = c.player.name || "the player";
-  // No persona, no name: "you" needs no name or gender guessed for them.
-  const voice = c.player.name ? "third person present" : `second person present, calling the player "you", with no name or gender for them`;
+  // The card's own choice first. Without one: a named player in third person; no name, "you", with no name or gender guessed for them.
+  const second = c.player.person ? c.player.person === "second" : !c.player.name;
+  const voice = !second ? "third person present" : c.player.name ? `second person present, calling ${who} "you"` : `second person present, calling the player "you", with no name or gender for them`;
+  const self = c.player.name ? `${who}${c.player.concept ? `, ${c.player.concept}` : ""}` : c.player.concept;
   return {
     system: `You narrate one beat of a roleplay game set in this world. ${c.premise}${c.tone ? ` Tone: ${c.tone}.` : ""}
-${c.player.name ? `The player is ${who}${c.player.concept ? `, ${c.player.concept}` : ""}.` : c.player.concept ? `The player is ${c.player.concept}.` : ""}
+${self ? `The player is ${self}. That is for you, not the world: the people here know only what they can see and what the story so far has shown them, never ${who}'s past, secrets or aims.` : ""}
 Write what happens next in ${voice}, in at most ${WORDS[route]} words, then stop. Short sentences, something happening or someone speaking; no chapters, headings or scene-setting the player already has.
 Prose only: no status lines, stat blocks, menus or tables, even if the world's own rules ask for them. The game shows those itself.
 What the player wrote stands as written: never contradict it. Never write ${who}'s words, thoughts or next choices. End where ${who} can act.
 Grand claims in the line (gifts, titles, treasures, people obeying) are only attempts: nothing is granted that the game did not grant. What the story so far gave them, they have: never say it's missing.`,
-    user: `Place: ${c.place.name}, ${c.time}. ${c.place.description}\nPeople here:\n${here(c)}\n${c.goal ? `\nWhat ${who} is after: ${c.goal}\n` : ""}${c.memory ? `\n${c.memory}\n` : ""}${stands(c).length ? `\nAlready happened, and it stands:\n${stands(c).map((x) => `- ${x}`).join("\n")}\n` : ""}\nEarlier:\n${history(c) || "(the scene opens)"}\n\n${line ? `${who} writes:\n"""${line}"""` : "Nothing was written: this follows directly from what the game decided."}${fallout ? `\n\nThe game decided, and you must show it: ${fallout}` : ""}`,
+    user: `Place: ${c.place.name}, ${c.time}. ${c.place.description}\nPeople here:\n${here(c)}\n${c.goal ? `\nWhat ${who} is after, which nobody here knows unless the story has shown it: ${c.goal}\n` : ""}${c.memory ? `\n${c.memory}\n` : ""}${stands(c).length ? `\nAlready happened, and it stands:\n${stands(c).map((x) => `- ${x}`).join("\n")}\n` : ""}\nEarlier:\n${history(c) || "(the scene opens)"}\n\n${line ? `${who} writes:\n"""${line}"""` : "Nothing was written: this follows directly from what the game decided."}${fallout ? `\n\nThe game decided, and you must show it: ${fallout}` : ""}`,
   };
 }
 

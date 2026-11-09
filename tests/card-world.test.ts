@@ -138,6 +138,31 @@ describe("a player with no persona", () => {
   });
 });
 
+describe("what the playtest turned up in the reading", () => {
+  const ctx: StoryContext = { premise: "A frontier town.", tone: "", player: { name: "Tobin", concept: "an Order deserter with a forged writ" }, place: { name: "Gate", description: "" }, time: "night", people: [], places: [], goal: "Reach the inn unseen", recent: [], memory: null };
+  const harrowmere = (description: string) => ({ ...sources("Harrowmere", description), persona: { id: "p", name: "Tobin", title: "", description: "Tobin, a deserter. Has 12 silver." } });
+
+  test("the card's person is the narrator's, and a named player is still called by name", () => {
+    const { system } = narratorPrompt({ ...ctx, player: { ...ctx.player, person: "second" } }, "I wait.", "", "flavor");
+    expect(system).toContain(`second person present, calling Tobin "you"`);
+    expect(narratorPrompt({ ...ctx, player: { name: "", concept: "", person: "third" } }, "I wait.", "", "flavor").system).toContain("third person");
+  });
+
+  test("the player's past and aims are the narrator's to know, not the world's", () => {
+    const { system, user } = narratorPrompt(ctx, "I wait.", "", "flavor");
+    expect(system).toContain("never Tobin's past, secrets or aims");
+    expect(user).toContain("nobody here knows unless the story has shown it");
+  });
+
+  test("the reader records the card's person and the starting purse, and leaves them out when unsaid", () => {
+    const read = parseSheet({ player: { concept: "a deserter", person: "second", coin: 12 } }, harrowmere("Second person present tense for {{user}}."), 1);
+    expect(read.player).toMatchObject({ person: "second", coin: 12 });
+    const unsaid = parseSheet({ player: { concept: "a deserter", person: null, coin: null } }, harrowmere("A town."), 1).player;
+    expect(unsaid.person).toBeUndefined();
+    expect(unsaid.coin).toBeUndefined();
+  });
+});
+
 describe("a scene with nobody in it", () => {
   const ctx: StoryContext = { premise: "", tone: "", player: { name: "", concept: "" }, place: { name: "Gate", description: "" }, time: "day", people: [], places: [], goal: null, recent: [], memory: null };
 

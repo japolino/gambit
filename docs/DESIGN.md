@@ -75,6 +75,8 @@ Gambit does not ship a world. It reads one from the card the player selected.
 
 **A player with no persona has no name.** Gambit never makes one up or guesses a gender. The narrator writes them as "you", a fight calls them "Hero" because a log can't read "You takes 17", and prompts say "the player". Someone fighting alone, with no companions or recruits, faces fewer foes than a party would.
 
+**The card says how the player is written.** When the card asks for second or third person, the reader records it on the sheet (`player.person`) and the story narrator follows it; otherwise a named player is written in third person and an unnamed one as "you". The narrator is told who the player is and what they are after, and that the people in the scene know only what they can see and what the story has shown them, never the player's past, secrets or aims. The purse starts with what the persona or card says the player has (`player.coin`), else 50.
+
 **The story and the game stay together.** A line can do more than one thing: a risky escape moves the scene as well as rolling, and a fail still gets them out, noticed, while only a disaster stops them. A fight the line takes somewhere happens there, against the foe it names and that foe's own kind. Someone from the card fights as their own figure. After a line, the scene also follows the narration to a place the world already has. Parleys and fights leave their result on the page, with a narrated aftermath for a fight, so coming back never drops to the old text.
 
 **Re-reads keep ids.** A fresh read can name people differently, so `mergeEdits` keeps each person's old id, matched by name, and chats in progress still know them. Sheets read before these rules are repaired as they load (`repairSheet`).

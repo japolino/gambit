@@ -193,7 +193,7 @@ Write this JSON:
  "modules": {${MODULES.map((m) => `"${m}": true|false`).join(", ")}},
  "places": [{"id": "short_id", "name": "", "description": "one line", "quote": ""}],
  "cast": [{"id": "short_id", "name": "", "role": "who they are, a few words", "pronoun": "she|he|they", "at": "the id of the place above where they're usually found, or empty"}],
- "player": {"concept": "who the persona is, one line", "social": {"presence": 0-4, "menace": 0-4, "guile": 0-4}},
+ "player": {"concept": "who the persona is, one line", "social": {"presence": 0-4, "menace": 0-4, "guile": 0-4}, "person": "second" or "third" if the sources say how to write the player (as "you", or by name), else null, "coin": how much money the persona or card says the player has at the start, as a number in the currency above, else null},
  "not_people": ["the name of any [CARD] above that is a game, narrator, setting or scenario rather than a person someone could meet"]
 }
 Defeat: "claimed" when the sources say whoever wins a fight takes the loser for their own (a prisoner, a pet, a spouse) instead of hurting, robbing or killing them; otherwise "rout".
@@ -516,6 +516,7 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
   const stats = obj(skin.stats);
   const p = obj(raw.player);
   const social = obj(p.social);
+  const coin = Math.round(Number(p.coin));
   return {
     ...base,
     by: "architect",
@@ -533,7 +534,13 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
     places: places.length ? places : base.places,
     modules,
     shape: (SHAPES as readonly string[]).includes(shapeIn) ? shapeIn : places.length > 1 ? "town" : "scene",
-    player: { ...base.player, concept: str(p.concept, 160) || base.player.concept, social: { presence: tier(social.presence, 2), menace: tier(social.menace, 1), guile: tier(social.guile, 2) } },
+    player: {
+      ...base.player,
+      concept: str(p.concept, 160) || base.player.concept,
+      social: { presence: tier(social.presence, 2), menace: tier(social.menace, 1), guile: tier(social.guile, 2) },
+      ...(p.person === "second" || p.person === "third" ? { person: p.person } : {}),
+      ...(p.coin !== null && p.coin !== "" && Number.isFinite(coin) && coin >= 0 ? { coin } : {}),
+    },
     notes,
   };
 }
@@ -555,7 +562,7 @@ export function mergeEdits(fresh: CardSheet, old: CardSheet | null): CardSheet {
     facts: fresh.facts.map((f) => ({ ...f, about: f.about.map((a) => kept.get(a) ?? a) })),
     modules: old.modulesEdited ? old.modules : fresh.modules,
     modulesEdited: old.modulesEdited,
-    player: old.player.edited && old.player.personaId === fresh.player.personaId ? old.player : fresh.player,
+    player: old.player.edited && old.player.personaId === fresh.player.personaId ? { ...old.player, person: fresh.player.person, coin: fresh.player.coin } : fresh.player,
   };
 }
 

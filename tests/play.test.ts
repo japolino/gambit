@@ -296,6 +296,12 @@ describe("play on a card", () => {
     expect([record().scene.time, record().spent]).toEqual([1, 0]);
   });
 
+  test("the purse starts with what the persona says the player has", async () => {
+    const { play, last } = setup({ sheet: { player: { ...sheet.player, coin: 12 } } });
+    await play.open("u", "chat1");
+    expect(last().coin).toBe(12);
+  });
+
   test("a thread runs against a deadline, and running out of days ends it", async () => {
     const { play, last, files } = setup();
     await play.open("u", "chat1");

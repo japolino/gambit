@@ -104,6 +104,10 @@ export interface PlayerSheet {
   social: Record<SocialStat, Tier>;
   /** The player changed it in the review: a re-read keeps their numbers. */
   edited: boolean;
+  /** How the card asks the story to tell the player, when it says. */
+  person?: "second" | "third";
+  /** The money the persona or card says the player starts with, in the sheet's currency. */
+  coin?: number;
 }
 
 export interface CardSheet {
