@@ -268,6 +268,16 @@ describe("play on a card", () => {
     expect([at().scene.placeId, at().scene.time, at().spent, at().hex.state.supplies]).toEqual(["docks", 1, 1, 7]);
   });
 
+  test("a walk by the menu that runs past midnight brings the night", async () => {
+    const { play, files, sent } = setup({ sheet: { shape: "frontier" } });
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const r = files.get(key) as { scene: object };
+    files.set(key, { ...r, scene: { ...r.scene, time: 3 }, spent: 2 });
+    await play.act("u", "chat1", "go:tavern");
+    expect(sent.some((m) => m.type === "scene.meanwhile")).toBe(true);
+  });
+
   test("writing runs the clock, and enough of it moves the day on", async () => {
     const { play, files } = setup();
     await play.open("u", "chat1");

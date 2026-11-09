@@ -1897,6 +1897,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (ctx?.r.battleId) return rejoinFight(userId, chatId, ctx.r);
       if (!ctx?.r.hex || ctx.r.delve) return;
       const { sheet, r } = ctx;
+      const day = r.scene.day;
       try {
         const arrived = hexMove(r, { q, r: rr });
         if (arrived) {
@@ -1912,6 +1913,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       } catch (err) {
         note(r, err instanceof Error ? err.message : String(err));
       }
+      if (r.scene.day > day) return nightfall(userId, chatId, sheet, r);
       await show(userId, chatId, sheet, r);
     },
 
@@ -2083,7 +2085,9 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
           return;
         case "exit": {
           if (r.hex) {
+            const day = r.scene.day;
             await travel(userId, chatId, sheet, r, spot.target!);
+            if (r.scene.day > day) return nightfall(userId, chatId, sheet, r);
             break;
           }
           r.scene = moveScene(r.world, r.scene, { kind: "go", to: spot.target! });
