@@ -1121,12 +1121,16 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
    * The adult scene a generation is writing: the chat's latest line is one when it carries the scene in its metadata.
    * Read from the chat, not the prompt: a preset may lift the latest line out of the history into a block of its own.
    */
-  async function latestScene(chatId: string): Promise<SceneMeta | null> {
+  async function latestScene(userId: string, chatId: string): Promise<SceneMeta | null> {
     const all = await spindle.chat
       .getMessages(chatId, { tail: 4 })
       .catch(() => spindle.chat.getMessages(chatId))
       .catch(() => []);
-    return sceneOf(all.filter((m) => m.role === "user" && !m.hidden).at(-1)?.metadata);
+    const line = all.filter((m) => m.role === "user" && !m.hidden).at(-1);
+    const scene = sceneOf(line?.metadata);
+    // What the last check saw, for diagnosing a scene that never opens.
+    void spindle.userStorage.setJson("cards/debug/scene.json", { at: Date.now(), chatId, read: all.length, line: line ? { id: line.id, content: line.content.slice(0, 80), metadata: line.metadata ?? null } : null, scene }, { userId }).catch(() => {});
+    return scene;
   }
 
   /** Chats whose running generation is an adult scene, and the scene it is. */
@@ -1774,7 +1778,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (ctx.generationType === "quiet" || ctx.generationType === "impersonate" || ctx.isDryRun || !ctx.chatId) return given;
       let messages = given;
       // An adult scene's line (its first reply or a swipe): its note goes at the prompt's very end.
-      const scene = (await cards.adultOn?.(ctx.userId, ctx.chatId).catch(() => false)) ? await latestScene(ctx.chatId) : null;
+      const scene = (await cards.adultOn?.(ctx.userId, ctx.chatId).catch(() => false)) ? await latestScene(ctx.userId, ctx.chatId) : null;
       if (scene) {
         const sheet = await cards.sheetFor(ctx.userId, ctx.chatId).catch(() => null);
         const kind = scene.won ? "scene.win.note" : "scene.loss.note";

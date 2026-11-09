@@ -50,13 +50,19 @@ cards.setPlaceHook({
 });
 // Memory (4.6): Parley outcomes become deeds; the narrator hears what people here remember.
 parleys.setEndHook((u, scenario, state) => void play!.onParleyEnd(u, scenario, state).catch((e) => spindle.log.error(`gambit deeds: ${String(e)}`)));
-spindle.registerInterceptor((messages, ctx) => play!.intercept(messages, ctx), 60);
 /** World-changing actions run one at a time per chat. */
 const acting = createGate();
 const CAMPAIGN = "default"; // one campaign until the World Bible exists (M4)
 
 // Prompt pipeline: Parley outcomes are decided before the narrator writes (docs/DESIGN.md 8.3).
-spindle.registerInterceptor((messages, ctx) => parleys.intercept(messages, ctx), 50);
+// One interceptor per extension: a second registration replaces the first, so the Parley's and play's run as one.
+spindle.registerInterceptor(async (messages, ctx) => {
+  const parley = await parleys.intercept(messages, ctx);
+  const after = Array.isArray(parley) ? parley : parley.messages;
+  // Play's notes go after the Parley's (both before a preset's prefill), so the Parley's breakdown index still holds.
+  const all = await play!.intercept(after, ctx);
+  return Array.isArray(parley) ? all : { ...parley, messages: all };
+}, 50);
 
 spindle.on("GENERATION_STARTED", (p) => parleys.onGenerationStarted(p.chatId));
 spindle.on("STREAM_TOKEN_RECEIVED", (p, userId) => parleys.onStreamToken(p.chatId, p.token, p.type === "reasoning", userId));

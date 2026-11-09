@@ -655,12 +655,6 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       nextMeanwhile();
       return;
     }
-    if (vn && !el.classList.contains("gone") && [" ", "Enter", "ArrowRight", "ArrowLeft", "Escape"].includes(e.key)) {
-      e.preventDefault();
-      if (e.key === "Escape") closeScene();
-      else stepScene(e.key === "ArrowLeft" ? -1 : 1);
-      return;
-    }
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     if (el.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "/" && !journalOpen && !mw) {
@@ -868,7 +862,16 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     if (!vn) return;
     vn.box.remove();
     vn = null;
+    window.removeEventListener("keydown", onSceneKey, true);
     backToWriting();
+  }
+  /** The reader's keys, caught before the host's: its arrows would otherwise swipe the chat's last reply. */
+  function onSceneKey(e: KeyboardEvent): void {
+    if (!vn || el.classList.contains("gone") || ![" ", "Enter", "ArrowRight", "ArrowLeft", "Escape"].includes(e.key)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.key === "Escape") closeScene();
+    else stepScene(e.key === "ArrowLeft" ? -1 : 1);
   }
   function openScene(title: string): SceneRead {
     closeScene();
@@ -881,6 +884,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     noteWriting();
     el.append(box);
     vn = { title, pages: null, i: 0, box };
+    window.addEventListener("keydown", onSceneKey, true);
     return vn;
   }
   /** The picture a page shows: its own, else the last one before it, so a picture stays up while its moment goes on. */
