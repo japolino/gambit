@@ -211,6 +211,8 @@ describe("Tracks and endings", () => {
     expect(system).toContain("in the third person");
     expect(system).toContain('Call the player "you"');
     expect(system).not.toContain("past tense");
+    // A card that writes its player as "you" gets that, name or not.
+    expect(narratorPrompt({ ...told, speaker: { ...told.speaker, name: "Tobin", person: "second" } }, r.state, r.exchange).system).toContain('The player is Tobin: write them as "you"');
     expect(outcomeBlock(told, r.state, r.exchange)).toContain("has NOT given in");
     // The verdict is also the last thing the narrator reads, and a refusal says no plainly.
     const last = narratorPrompt(told, r.state, r.exchange).messages.at(-1)!.content;

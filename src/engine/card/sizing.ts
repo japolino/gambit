@@ -76,7 +76,7 @@ export function factFrom(f: SheetFact, targetId: string): Fact {
 
 export function speakerFrom(sheet: CardSheet): Speaker {
   const p = sheet.player;
-  return { name: p.name || "you", ...(p.concept ? { who: p.concept } : {}), stats: { presence: socialOf(p.social.presence), menace: socialOf(p.social.menace), guile: socialOf(p.social.guile) } };
+  return { name: p.name || "you", ...(p.concept ? { who: p.concept } : {}), ...(p.person ? { person: p.person } : {}), stats: { presence: socialOf(p.social.presence), menace: socialOf(p.social.menace), guile: socialOf(p.social.guile) } };
 }
 
 export function npcFrom(sheet: CardSheet, c: CastMember): NpcDef {

@@ -96,6 +96,8 @@ export interface Speaker {
   name: string;
   /** Who they are, from the player's persona: what they say about their own past is judged against it. */
   who?: string;
+  /** How the card writes the player, when it says (CardSheet player.person). */
+  person?: "second" | "third";
   stats: Record<SocialStat, number>;
 }
 

@@ -209,7 +209,13 @@ export function sceneBlock(scenario: ParleyScenario, state: ParleyState): string
  */
 export function narratorPrompt(scenario: ParleyScenario, state: ParleyState, ex: Exchange): { system: string; messages: { role: "user" | "assistant"; content: string }[] } {
   const npc = scenario.npc;
-  const player = scenario.speaker.name === "you" ? `Call the player "you", with no name or gender for them` : `The player is ${scenario.speaker.name}, in the third person`;
+  const s = scenario.speaker;
+  const player =
+    s.name === "you"
+      ? `Call the player "you", with no name or gender for them`
+      : s.person === "second"
+        ? `The player is ${s.name}: write them as "you"`
+        : `The player is ${s.name}, in the third person`;
   const system = [
     `You are the narrator of a scene in a roleplay game. You voice exactly one character: ${npc.name}, ${npc.role}. Write ${npc.name} in the third person ("${npc.name} frowns"), never "I" outside spoken words. Present tense, vivid but brief. ${player}.`,
     `Setting: ${scenario.setting}`,
