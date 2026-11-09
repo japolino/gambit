@@ -14,8 +14,7 @@
  *   table      candle-lit walnut, green baize, chalk slate and woodcut cards
  *   command    EGA screen: blue chassis, black windows, double rules, scanlines
  *
- * The pixel themes' dither filters (#pl-mono, #pl-ega) are inline SVG that
- * view.ts adds to the root; fonts are declared on the page by view.ts.
+ * Fonts are declared on the page by view.ts.
  */
 
 import { speakerVars, STORY_CSS } from "../story-text.js";

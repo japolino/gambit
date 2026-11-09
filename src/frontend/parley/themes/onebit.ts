@@ -43,7 +43,7 @@ const ONEBIT = `
 .th-onebit .moments button:not(:last-child) { display: none; }
 .th-onebit .moments button { position: relative; width: ${px(72)}; height: ${px(48)}; border: ${px(1)} solid ${PAPER}; outline: ${px(1)} solid ${INK}; box-shadow: 0 0 0 ${px(2)} ${PAPER} !important; background: ${INK}; }
 .th-onebit .moments button::after { content: "MOMENT ►"; position: absolute; left: 0; right: 0; bottom: 0; padding: ${px(1)} ${px(2)} 0; background: ${INK}; color: ${PAPER}; font: ${px(8)}/${px(9)} ${BIT}; text-align: left; white-space: nowrap; overflow: hidden; }
-.th-onebit .moments img, .th-onebit .moment img { filter: url(#pl-mono); image-rendering: pixelated; }
+.th-onebit .moments img, .th-onebit .moment img { image-rendering: pixelated; }
 .th-onebit .moment { background: ${INK}; transition: opacity .3s steps(3); }
 .th-onebit .moment.show img { animation: none; }
 .th-onebit .moment::before { background: linear-gradient(transparent 0 76%, ${INK} 76%); }

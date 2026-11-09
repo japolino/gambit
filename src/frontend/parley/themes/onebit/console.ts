@@ -21,6 +21,8 @@ import type { ParleyDecor, ParleyThemeCtx } from "../types.js";
 import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "../../../scene/themes/onebit/fb.js";
 import { loadFont, wrap, type BitFont } from "../../../scene/themes/onebit/font.js";
 import { bustBits, personBits, placeField } from "../../../scene/themes/onebit/art.js";
+import { screen } from "../../../art/manga.js";
+import { ditherUrl } from "../../../art/dither.js";
 
 const C_INK = 0xff070708;
 const C_PAPER = 0xffe6eef0;
@@ -421,7 +423,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     const cr = inner(r);
     lightFor(cr.w, cr.h);
     const breathe = reduced ? 0 : Math.floor(time / 2.6) % 2;
-    if (field) fb.dither(cr, field.f, field.w, field.h, 10, 5, light);
+    if (field) fb.dither(cr, field.f, field.w, field.h, 10, 5, light, undefined, 0, screen);
     else fb.tone(cr, 0);
     pillars(cr);
     if (person) {
@@ -706,7 +708,22 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   /* ---------------------------------- Life ---------------------------------- */
   const ro = new ResizeObserver(() => size());
   ro.observe(root);
+  // The moments' pictures in 1-bit like the view's, at about the size they are shown on the grid.
+  function screenMoments(): void {
+    for (const img of root.querySelectorAll<HTMLImageElement>(".moments img, .moment img")) {
+      const src = img.getAttribute("src");
+      if (!src || img.dataset.obSrc === src || img.dataset.obDone === src) continue;
+      img.dataset.obSrc = src;
+      const rows = img.closest(".moments") ? 48 : Math.round(img.clientHeight / u) || 200;
+      void ditherUrl(src, rows).then((d) => {
+        if (img.getAttribute("src") !== src) return;
+        img.dataset.obDone = d;
+        img.src = d;
+      });
+    }
+  }
   const mo = new MutationObserver(() => {
+    screenMoments();
     // On a phone the sheet and a playing moment change what's on screen, not only what's painted.
     if (P && (P.sheet !== sheetOpen() || P.playing !== moving())) size();
     else paint();
@@ -757,6 +774,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   window.addEventListener("keydown", onKey);
   void loadFont().then((f) => { font = f; size(); });
   size();
+  screenMoments();
 
   return {
     update() {

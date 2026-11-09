@@ -149,9 +149,10 @@ export class Frame {
   /**
    * Dither a luminance field (0..1, `lw` wide) into a rect, offset by (ox, oy)
    * into the field. `light` (r.w x r.h) multiplies it: the vignette and the
-   * directional light; `ring` scales the torch flicker per pixel.
+   * directional light; `ring` scales the torch flicker per pixel. `at` is the
+   * threshold at a screen pixel (art fields use the manga screens).
    */
-  dither(r: Rect, lum: Float32Array, lw: number, lh: number, ox: number, oy: number, light?: Float32Array, ring?: Float32Array, flick = 0): void {
+  dither(r: Rect, lum: Float32Array, lw: number, lh: number, ox: number, oy: number, light?: Float32Array, ring?: Float32Array, flick = 0, at: (x: number, y: number) => number = bayer): void {
     for (let y = 0; y < r.h; y++) {
       const py = r.y + y;
       if (py < 0 || py >= this.h) continue;
@@ -164,7 +165,7 @@ export class Frame {
         const k = y * r.w + x;
         if (light) l *= light[k]!;
         if (ring) l *= 1 + flick * ring[k]!;
-        this.pix[py * this.w + px] = l > bayer(px, py) ? PAPER : INK;
+        this.pix[py * this.w + px] = l > at(px, py) ? PAPER : INK;
       }
     }
   }

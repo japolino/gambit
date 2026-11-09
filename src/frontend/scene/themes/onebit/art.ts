@@ -1,14 +1,12 @@
 /**
  * Turning painted art into 1-bit pictures on the theme's pixel grid.
  *
- * Places become a luminance field (levels stretched and an S-curve so the
- * shadows reach pure black) that the viewport dithers every frame with its
- * own light, vignette and torch flicker. People become portraits the way a
- * 1-bit artist would draw them: local contrast boosted so a low-contrast
- * painting still separates, Sobel edges inked in as outlines, then Atkinson
- * error diffusion (which keeps highlights clean) instead of a flat threshold
- * that turns faces into static.
+ * Both go through the manga conversion (../../../art/manga.ts): ink lines,
+ * local contrast, three screentones. Places become a tone field (lines as
+ * -1, so no light lifts them) that the viewport screens every frame with its
+ * own light, vignette and torch flicker; people become 1-bit pictures.
  */
+import { mangaOf, mangaPixels } from "../../../art/manga.js";
 import type { Bits } from "./fb.js";
 
 const images = new Map<string, Promise<HTMLImageElement>>();
@@ -46,95 +44,15 @@ function percentile(vals: Float32Array, n: number, q: number): number {
   return s[Math.min(n - 1, Math.max(0, Math.floor(q * (n - 1))))] ?? 0;
 }
 
-/** A place painting cover-fitted to w x h, levels stretched and contrast curved (0..1). */
+/** A place painting cover-fitted to w x h as a manga tone field: 0..1, ink lines -1 (screen it with art/manga.ts `screen`). */
 export async function placeField(url: string, w: number, h: number): Promise<Float32Array> {
   const img = await loadImage(url);
   const iw = img.naturalWidth, ih = img.naturalHeight;
   const k = Math.max(w / iw, h / ih);
   const sw = w / k, sh = h / k;
-  const d = pixels(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, w, h);
-  const out = new Float32Array(w * h);
-  for (let i = 0; i < out.length; i++) out[i] = lumOf(d, i * 4);
-  const lo = percentile(out, out.length, 0.02), hi = percentile(out, out.length, 0.985);
-  const span = Math.max(0.05, hi - lo);
-  for (let i = 0; i < out.length; i++) {
-    const l = Math.min(1, Math.max(0, (out[i]! - lo) / span));
-    // An S-curve: midtones open up into dither texture, shadows fall to black.
-    const s = l * l * (3 - 2 * l);
-    out[i] = Math.max(0, s * 0.75 + l * 0.25 - 0.04);
-  }
-  return out;
-}
-
-function boxBlur(src: Float32Array, w: number, h: number, r: number): Float32Array {
-  const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
-  for (let y = 0; y < h; y++) {
-    let acc = 0;
-    for (let x = -r; x <= r; x++) acc += src[y * w + Math.min(w - 1, Math.max(0, x))]!;
-    for (let x = 0; x < w; x++) {
-      tmp[y * w + x] = acc / (2 * r + 1);
-      acc += src[y * w + Math.min(w - 1, x + r + 1)]! - src[y * w + Math.max(0, x - r)]!;
-    }
-  }
-  for (let x = 0; x < w; x++) {
-    let acc = 0;
-    for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x]!;
-    for (let y = 0; y < h; y++) {
-      out[y * w + x] = acc / (2 * r + 1);
-      acc += tmp[Math.min(h - 1, y + r + 1) * w + x]! - tmp[Math.max(0, y - r) * w + x]!;
-    }
-  }
-  return out;
-}
-
-/** Contrast, ink lines and Atkinson dither: a 1-bit drawing of a figure. */
-function draw1bit(l: Float32Array, a: Uint8Array, w: number, h: number, edge = 1): Bits {
-  const n = w * h;
-  // Levels over the figure only, so a dark coat on a white ground still spans the range.
-  const inside = new Float32Array(n);
-  let m = 0;
-  for (let i = 0; i < n; i++) if (a[i]) inside[m++] = l[i]!;
-  const lo = m ? percentile(inside, m, 0.03) : 0, hi = m ? percentile(inside, m, 0.97) : 1;
-  const span = Math.max(0.08, hi - lo);
-  const L = new Float32Array(n);
-  for (let i = 0; i < n; i++) L[i] = Math.min(1, Math.max(0, (l[i]! - lo) / span));
-  // Local contrast: detail around a blurred mean, so faces separate from hair and cloth.
-  const mean = boxBlur(L, w, h, Math.max(1, Math.round(Math.min(w, h) / 14)));
-  const v = new Float32Array(n);
-  for (let i = 0; i < n; i++) v[i] = Math.min(1, Math.max(0, 0.5 + (L[i]! - mean[i]!) * 2.1 + (mean[i]! - 0.5) * 0.95));
-  // Sobel: the strongest edges are inked as outlines.
-  const mag = new Float32Array(n);
-  let k = 0;
-  const sm = boxBlur(L, w, h, 1);
-  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
-    const p = (dx: number, dy: number) => sm[(y + dy) * w + x + dx]!;
-    const gx = p(1, -1) + 2 * p(1, 0) + p(1, 1) - p(-1, -1) - 2 * p(-1, 0) - p(-1, 1);
-    const gy = p(-1, 1) + 2 * p(0, 1) + p(1, 1) - p(-1, -1) - 2 * p(0, -1) - p(1, -1);
-    const g = Math.hypot(gx, gy);
-    mag[y * w + x] = g;
-    if (a[y * w + x]) inside[k++] = g;
-  }
-  const T = Math.max(0.35, k ? percentile(inside, k, 0.86) : 1) / edge;
-  for (let i = 0; i < n; i++) {
-    if (mag[i]! > T) v[i] = v[i]! * 0.12;
-    v[i] = Math.pow(v[i]!, 0.82);
-  }
-  // Atkinson: 6/8 of the error carried, so highlights stay clean white.
-  const pix = new Uint8Array(n);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = y * w + x;
-    if (!a[i]) continue;
-    const old = v[i]!;
-    const nw = old > 0.5 ? 1 : 0;
-    pix[i] = nw;
-    const err = (old - nw) / 8;
-    const add = (dx: number, dy: number) => {
-      const nx = x + dx, ny = y + dy;
-      if (nx >= 0 && nx < w && ny < h && a[ny * w + nx]) v[ny * w + nx] += err;
-    };
-    add(1, 0); add(2, 0); add(-1, 1); add(0, 1); add(1, 1); add(0, 2);
-  }
-  return { w, h, pix, mask: a };
+  const m = await mangaOf(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, w, h);
+  for (let i = 0; i < m.tone.length; i++) if (m.line[i]) m.tone[i] = -1;
+  return m.tone;
 }
 
 const people = new Map<string, Promise<Bits>>();
@@ -239,15 +157,11 @@ async function buildPerson(url: string, cutout: boolean, kind: "body" | "bust", 
     sy = Math.max(0, (cutout ? by0 : ih * 0.02) - side * 0.05);
     tw = th = size;
   }
-  const d = pixels(img, sx, sy, sw, sh, tw, th);
-  const n = tw * th;
-  const l = new Float32Array(n), a = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    l[i] = lumOf(d, i * 4);
-    a[i] = !cutout || d[i * 4 + 3]! >= (clean ? 48 : 128) ? 1 : 0;
-  }
+  const m = await mangaOf(img, sx, sy, sw, sh, tw, th);
+  const a = new Uint8Array(tw * th);
+  for (let i = 0; i < a.length; i++) a[i] = !cutout || m.rgba[i * 4 + 3]! >= (clean ? 48 : 128) ? 1 : 0;
   if (cutout && clean) cleanMask(a, tw, th);
-  return draw1bit(l, a, tw, th, kind === "bust" ? 1.1 : 1);
+  return { w: tw, h: th, pix: mangaPixels(m), mask: a };
 }
 
 const busts = new Map<string, Promise<Bits>>();
@@ -256,7 +170,7 @@ const busts = new Map<string, Promise<Bits>>();
  * Opaque art (a painting with its own ground) as a figure that can stand
  * among cutouts: the whole picture `size` rows tall, cut to a tombstone
  * (round-topped) silhouette round the head and shoulders, its light falling
- * away to black toward the edge before it is dithered, so the painted ground
+ * away to black toward the edge before it is screened, so the painted ground
  * dissolves into the dark instead of ending in a frame.
  */
 export function bustBits(url: string, size: number): Promise<Bits> {
@@ -269,9 +183,8 @@ export function bustBits(url: string, size: number): Promise<Bits> {
       // Head and shoulders: the top of the picture, a little narrower than it.
       const sw = Math.min(iw, ih * 0.82), sh = Math.min(ih, sw * 1.25);
       const th = size, tw = Math.max(8, Math.round((sw / sh) * size));
-      const d = pixels(img, (iw - sw) / 2, 0, sw, sh, tw, th);
-      const n = tw * th;
-      const l = new Float32Array(n), a = new Uint8Array(n);
+      const m = await mangaOf(img, (iw - sw) / 2, 0, sw, sh, tw, th);
+      const a = new Uint8Array(tw * th);
       const r = tw / 2 - 1, cx = (tw - 1) / 2;
       for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
         const i = y * tw + x;
@@ -281,9 +194,9 @@ export function bustBits(url: string, size: number): Promise<Bits> {
         if (e <= 0) continue;
         a[i] = 1;
         const fall = Math.min(1, e / 0.28);
-        l[i] = lumOf(d, i * 4) * fall * fall * (3 - 2 * fall);
+        m.tone[i] = m.tone[i]! * fall * fall * (3 - 2 * fall);
       }
-      return draw1bit(l, a, tw, th, 1.1);
+      return { w: tw, h: th, pix: mangaPixels(m), mask: a };
     })();
     busts.set(key, p);
     p.catch(() => busts.delete(key));

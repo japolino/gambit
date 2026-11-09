@@ -27,6 +27,7 @@ import { storyRuns } from "../../story-text.js";
 import { beatsHtml, canWrite, isWriting, wireWrite, writeFormHtml } from "./write.js";
 import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "./onebit/fb.js";
 import { bustBits, personBits, placeField, textureField } from "./onebit/art.js";
+import { screen } from "../../art/manga.js";
 import { Corridor } from "./onebit/corridor.js";
 import { drawAutomap, drawHexMap, type HexHit } from "./onebit/maps.js";
 
@@ -609,7 +610,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const fw = cr.w + PX * 2, fh = cr.h + PY * 2;
       const field = url ? want(`place|${url}|${fw}x${fh}`, () => placeField(url, fw, fh)) : null;
       const ox = PX + Math.round(-par.x * PX * 0.7), oy = PY + Math.round(-par.y * PY * 0.7);
-      if (field) fb.dither(cr, field, fw, fh, ox, oy, light, ring, flick);
+      if (field) fb.dither(cr, field, fw, fh, ox, oy, light, ring, flick, screen);
       else {
         const flatF = new Float32Array(cr.w * cr.h).fill(0.42);
         fb.dither(cr, flatF, cr.w, cr.h, 0, 0, light);

@@ -85,37 +85,6 @@ function ensureFonts(): void {
   document.head.append(st);
 }
 
-/**
- * SVG filters for the pixel themes, referenced from style.ts: 1-bit art is
- * thresholded through an ordered (Bayer) dither to ink and paper; Command
- * art is posterised to the EGA's four levels per channel, dithered the same way.
- */
-const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-/** One 4x4 Bayer tile, each threshold a grey square `cell` CSS pixels wide (drawn at size, so it is never resampled). */
-const bayerTile = (cell: number): string => {
-  const cells = BAYER4.map((v, i) => {
-    const g = Math.round(((v + 0.5) / 16) * 255);
-    return `<rect x='${(i % 4) * cell}' y='${Math.floor(i / 4) * cell}' width='${cell}' height='${cell}' fill='rgb(${g},${g},${g})'/>`;
-  }).join("");
-  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${cell * 4}' height='${cell * 4}' shape-rendering='crispEdges'>${cells}</svg>`)}`;
-};
-/** source (+ grey) + spread * (bayer - 1/2), quantised per channel by `tables`, cut back to the source's own alpha. */
-const ditherFilter = (id: string, cell: number, spread: number, tables: [string, string, string], grey: boolean): string =>
-  `<filter id="${id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB" primitiveUnits="userSpaceOnUse">` +
-  `<feImage href="${bayerTile(cell)}" x="0" y="0" width="${cell * 4}" height="${cell * 4}" result="b"/>` +
-  `<feTile in="b" result="bt"/>` +
-  (grey ? `<feColorMatrix in="SourceGraphic" type="matrix" values="0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0 0 0 1 0" result="g"/>` : "") +
-  `<feComposite in="${grey ? "g" : "SourceGraphic"}" in2="bt" operator="arithmetic" k2="1" k3="${spread}" k4="${-spread / 2}" result="sum"/>` +
-  `<feColorMatrix in="sum" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0 1" result="op"/>` +
-  `<feComponentTransfer in="op" result="q"><feFuncR type="discrete" tableValues="${tables[0]}"/><feFuncG type="discrete" tableValues="${tables[1]}"/><feFuncB type="discrete" tableValues="${tables[2]}"/></feComponentTransfer>` +
-  `<feComposite in="q" in2="SourceGraphic" operator="in"/>` +
-  `</filter>`;
-const PIXEL_FILTERS =
-  `<svg class="pl-defs" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">` +
-  ditherFilter("pl-mono", 2, 0.9, ["0.031 0.941", "0.027 0.933", "0.027 0.902"], true) +
-  ditherFilter("pl-ega", 2, 0.3, ["0 0.333 0.667 1", "0 0.333 0.667 1", "0 0.333 0.667 1"], false) +
-  `</svg>`;
-
 const colorsOf = (palette: string): number[] => palette.split(",").map((h) => parseInt(h.trim().replace("#", ""), 16)).filter((n) => Number.isFinite(n));
 
 export function mountParley(
@@ -168,7 +137,6 @@ export function mountParley(
   if (theme) wrap.classList.add(`th-${theme}`);
   // The Table theme (6.1): a game across a table, with what you know as a hand of cards.
   if (where.table || theme === "table") wrap.classList.add("table");
-  if (theme === "onebit" || theme === "command") wrap.insertAdjacentHTML("afterbegin", PIXEL_FILTERS);
 
   /* ---------------- scene ---------------- */
   const scene = el("div", "scene");
