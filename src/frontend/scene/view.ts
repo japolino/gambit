@@ -266,7 +266,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   /* ------------------------------ Art prep ----------------------------- */
   const ready = new Map<string, PersonArt>();
   const pending = new Set<string>();
-  function preparedArt(src: { url: string; cutout: boolean }, mode: "color" | "onebit", rows: number): PersonArt | null {
+  function preparedArt(src: { url: string; cutout: boolean; face?: PersonArt["face"] }, mode: "color" | "onebit", rows: number): PersonArt | null {
     const id = `${mode}|${rows}|${src.url}`;
     const got = ready.get(id);
     if (got) return got;
@@ -274,8 +274,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       pending.add(id);
       void (async () => {
         try {
-          const keyed: { url: string; cutout: boolean; rough?: true } = src.cutout ? { url: src.url, cutout: true } : await prepareArt(src.url, true);
-          const base = { cutout: keyed.cutout, keyed: keyed.rough === true, source: src.url };
+          const keyed: { url: string; cutout: boolean; rough?: true; face?: PersonArt["face"] } = src.cutout ? { url: src.url, cutout: true, face: src.face } : await prepareArt(src.url, true);
+          const base = { cutout: keyed.cutout, keyed: keyed.rough === true, source: src.url, face: keyed.face };
           ready.set(id, { ...base, url: mode === "onebit" ? await ditherUrl(keyed.url, rows) : keyed.url });
         } catch {
           ready.set(id, { url: src.url, cutout: src.cutout, keyed: false, source: src.url });

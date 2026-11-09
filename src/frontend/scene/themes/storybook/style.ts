@@ -89,7 +89,8 @@ export function css(): string {
   background: linear-gradient(240deg, rgba(255,214,150,.55), rgba(255,190,120,.12) 38%, rgba(30,14,6,.35) 78%); mix-blend-mode: soft-light; }
 .sb-cast .fig.back img { filter: sepia(.24) saturate(.85) brightness(.74) contrast(1.02) drop-shadow(0 -2px 3px rgba(255,214,140,.35)) drop-shadow(-12px 18px 22px rgba(12,5,2,.8)); }
 .sb-cast .fig:hover img, .sb-cast .fig.hot img { filter: sepia(.1) saturate(1) brightness(1.06) contrast(1.05) drop-shadow(0 0 3px rgba(255,220,150,.95)) drop-shadow(0 0 22px rgba(255,190,90,.55)) drop-shadow(-14px 22px 26px rgba(12,5,2,.85)); }
-.sb-cast .fig.cameo { bottom: calc(var(--db) + var(--dh) - 4cqh); height: calc(var(--s) * 76cqh); aspect-ratio: 260 / 400; }
+/* A frame is never taller than the room above the box (a tall writing box too): its top, and the face in it, stay on screen. */
+.sb-cast .fig.cameo { bottom: calc(var(--db) + var(--dh) - 4cqh); height: calc(var(--s) * min(76cqh, 102cqh - var(--db) - var(--dh))); aspect-ratio: 260 / 400; }
 .sb-cast .fig.cameo > svg { width: 100%; height: 100%; display: block; }
 .sb-cast .fig.cameo:hover > svg, .sb-cast .fig.cameo.hot > svg { filter: drop-shadow(0 0 16px rgba(255,200,110,.6)); }
 /* ---------- Chapter header ---------- */

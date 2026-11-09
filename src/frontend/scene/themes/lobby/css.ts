@@ -100,9 +100,10 @@ export function lobbyCss(tx: { leather: string; parchment: string; chart: string
 .lb-hero-in > img.bust { height: 98%; bottom: -8%; filter: drop-shadow(${U(-3)} ${U(-2)} ${U(5)} rgba(255,214,150,.45)) saturate(.95) sepia(.06);
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 16%, #000 84%, transparent 100%), linear-gradient(180deg, #000 64%, transparent 98%);
   -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent 0, #000 16%, #000 84%, transparent 100%), linear-gradient(180deg, #000 64%, transparent 98%); mask-composite: intersect; }
-.lb-hero-in > img.bust.opaque {
-  -webkit-mask-image: radial-gradient(ellipse 50% 58% at 50% 44%, #000 56%, transparent 100%), linear-gradient(180deg, transparent 0, #000 18%, #000 56%, transparent 96%);
-  mask-image: radial-gradient(ellipse 50% 58% at 50% 44%, #000 56%, transparent 100%), linear-gradient(180deg, transparent 0, #000 18%, #000 56%, transparent 96%); }
+/* Feathered round the face when it is known (--fx, --fc: the oval's centre; --ft, --fk: the top fade), and moved down so a full figure's high head sits where a bust's would, below the nameplate (--fdy). */
+.lb-hero-in > img.bust.opaque { transform: translate(-50%, var(--fdy, 0));
+  -webkit-mask-image: radial-gradient(ellipse 50% 58% at var(--fx, 50%) var(--fc, 44%), #000 56%, transparent 100%), linear-gradient(180deg, transparent var(--ft, 0%), #000 var(--fk, 18%), #000 56%, transparent 96%);
+  mask-image: radial-gradient(ellipse 50% 58% at var(--fx, 50%) var(--fc, 44%), #000 56%, transparent 100%), linear-gradient(180deg, transparent var(--ft, 0%), #000 var(--fk, 18%), #000 56%, transparent 96%); }
 .lb-hero-in > .halo { position: absolute; left: ${U(-280)}; top: ${U(-90)}; width: ${U(560)}; height: ${U(560)}; pointer-events: none; opacity: .9; }
 .lb-hero-in > .halo.bust { top: ${U(80)}; }
 .lb-hero-in > .ped { position: absolute; left: ${U(-420)}; width: ${U(840)}; bottom: ${U(-14)}; height: ${U(420)}; pointer-events: none; background: radial-gradient(ellipse 50% 62% at 50% 100%, rgba(8,6,4,.95), rgba(8,6,4,.72) 52%, rgba(8,6,4,0) 100%); }

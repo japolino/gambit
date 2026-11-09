@@ -65,6 +65,8 @@ export interface PersonArt {
   keyed: boolean;
   /** The original art as it came (before keying or dithering). */
   source: string;
+  /** Where the face is in `source` (normalized x, y, w, h), when found: a frame crops round it. */
+  face?: [number, number, number, number] | null;
 }
 
 export interface StatusView {

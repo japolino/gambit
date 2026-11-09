@@ -83,7 +83,7 @@ export interface Person3D {
   id: string;
   name: string;
   /** Prepared art: a cut-out, an opaque picture, or null while it is being prepared. */
-  art: { url: string; cutout: boolean } | null;
+  art: { url: string; cutout: boolean; face?: [number, number, number, number] | null } | null;
   talkable: boolean;
 }
 
@@ -1252,7 +1252,7 @@ export class Table3D {
       const sil = this.silhouette();
       this.applyFigure(plane, sil, 0.55);
       if (p.art) {
-        void this.figureTexture(p.art.url, p.art.cutout).then((t) => {
+        void this.figureTexture(p.art.url, p.art.cutout, p.art.face).then((t) => {
           if (!t || this.disposed || plane.parent !== g) return;
           const img = t.image as HTMLCanvasElement;
           this.applyFigure(plane, t, img.width / img.height);
@@ -1318,7 +1318,7 @@ export class Table3D {
   }
 
   /** Load a person's art and ink it: a dark contour around the cut-out, or an iron arch around opaque art. */
-  private figureTexture(url: string, cutout: boolean): Promise<CanvasTexture | null> {
+  private figureTexture(url: string, cutout: boolean, face?: [number, number, number, number] | null): Promise<CanvasTexture | null> {
     const key = `${cutout}|${url}`;
     let p = this.personTex.get(key);
     if (!p) {
@@ -1355,7 +1355,9 @@ export class Table3D {
           g.save();
           g.clip(arch);
           const sc = Math.max(AW / img.width, H / img.height);
-          g.drawImage(img, (AW - img.width * sc) / 2, 0, img.width * sc, img.height * sc);
+          // From the top, so a head stays in; a wide picture is cut round its face when known.
+          const w = img.width * sc, x = face ? Math.max(AW - w, Math.min(0, AW / 2 - (face[0] + face[2] / 2) * w)) : (AW - w) / 2;
+          g.drawImage(img, x, 0, w, img.height * sc);
           const v = g.createRadialGradient(AW / 2, H * 0.45, H * 0.2, AW / 2, H * 0.5, H * 0.62);
           v.addColorStop(0, "rgba(7,5,8,0)");
           v.addColorStop(1, "rgba(7,5,8,.9)");

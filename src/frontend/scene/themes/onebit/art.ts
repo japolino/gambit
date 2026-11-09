@@ -7,6 +7,7 @@
  * own light, vignette and torch flicker; people become 1-bit pictures.
  */
 import { mangaOf, mangaPixels } from "../../../art/manga.js";
+import { faceOf } from "../../../art/prepare.js";
 import type { Bits } from "./fb.js";
 
 const images = new Map<string, Promise<HTMLImageElement>>();
@@ -178,12 +179,18 @@ export function bustBits(url: string, size: number): Promise<Bits> {
   let p = busts.get(key);
   if (!p) {
     p = (async () => {
-      const img = await loadImage(url);
+      const [img, face] = await Promise.all([loadImage(url), faceOf(url)]);
       const iw = img.naturalWidth, ih = img.naturalHeight;
-      // Head and shoulders: the top of the picture, a little narrower than it.
-      const sw = Math.min(iw, ih * 0.82), sh = Math.min(ih, sw * 1.25);
+      // Head and shoulders: a little narrower than the picture, from its top; round
+      // the face when it is known, about five faces tall (a full figure's head is
+      // small and high, where the tombstone's dark edge would swallow it).
+      let sw = Math.min(iw, ih * 0.82), sh = Math.min(ih, sw * 1.25);
+      if (face && face[3] * ih * 5 < sh) sw = (sh = face[3] * ih * 5) / 1.25;
+      const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+      const sx = face ? clamp((face[0] + face[2] / 2) * iw - sw / 2, iw - sw) : (iw - sw) / 2;
+      const sy = face ? clamp((face[1] + face[3] / 2) * ih - sh * 0.36, ih - sh) : 0;
       const th = size, tw = Math.max(8, Math.round((sw / sh) * size));
-      const m = await mangaOf(img, (iw - sw) / 2, 0, sw, sh, tw, th);
+      const m = await mangaOf(img, sx, sy, sw, sh, tw, th);
       const a = new Uint8Array(tw * th);
       const r = tw / 2 - 1, cx = (tw - 1) / 2;
       for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {

@@ -12,6 +12,7 @@
  * gavel. Every layer moves with the mouse at its own depth.
  */
 import { BOARD_SKINS } from "../board-skins.js";
+import { facePosition } from "../../art/prepare.js";
 import { esc, rng, seedOf, type MenuItem, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import { ARCH_PATH, actionCard, bell, chair, coins, deckCase, factCard, gavel, handBack, handFront, ironTag, ledger, mapSheet, motifFor, openBook, plaque, scoreboard, shadowbox, skullCandle, tentCard, type BoardData } from "./table/art.js";
 import { tableCss } from "./table/css.js";
@@ -683,7 +684,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       el.setAttribute("aria-label", p.talkable ? `Talk to ${p.name}, ${p.role}` : `${p.name}, ${p.role}`);
       if (!p.talkable) el.setAttribute("aria-disabled", "true");
       if (a?.cutout) el.innerHTML = `<img src="${esc(a.url)}" alt="" draggable="false">`;
-      else el.innerHTML = `<div class="arch">${a ? `<img src="${esc(a.url)}" alt="" draggable="false">` : ""}${shadowbox()}</div>`;
+      else el.innerHTML = `<div class="arch">${a ? `<img src="${esc(a.url)}" alt=""${a.face ? ` style="object-position:${facePosition(a.face)}"` : ""} draggable="false">` : ""}${shadowbox()}</div>`;
       el.addEventListener("click", () => p.talkable && p.talk());
       el.addEventListener("pointerenter", () => setPeek(p.talkable ? `Talk to ${p.name}` : p.name));
       el.addEventListener("pointerleave", () => setPeek(null));

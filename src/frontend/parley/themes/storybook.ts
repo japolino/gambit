@@ -98,9 +98,10 @@ ${P} .sbp-light .motes { position: absolute; inset: 0; width: 100%; height: 100%
 ${P} .figure { z-index: 1; left: 0; right: 32cqw; bottom: -30cqh; height: 128cqh; translate: calc(var(--px, 0) * -4px) 0; transition: translate .6s ease-out; }
 ${P} .face { filter: sepia(.14) drop-shadow(-14px 22px 24px rgba(12,5,2,.8)); }
 /* An opaque portrait stands in a gilt arch, its foot behind the page. */
-${P} .fig.framed { height: 78cqh; aspect-ratio: 260 / 400; margin-bottom: calc(var(--db) + var(--dh) + 24cqh); background: none; border-radius: 0; }
+${P} .fig.framed { height: min(78cqh, 100cqh - var(--db) - var(--dh)); aspect-ratio: 260 / 400; margin-bottom: calc(var(--db) + var(--dh) + 24cqh); background: none; border-radius: 0; }
 ${P} .fig.framed::before { content: ""; position: absolute; inset: 0; clip-path: inset(14.5% 17.7% .5% 17.7% round 50% 50% 0 0 / 27% 27% 0 0); background: radial-gradient(80% 60% at 50% 30%, #5a3418, #120604); }
-${P} .fig.framed .face { border-radius: 0; box-shadow: none; object-position: 50% 18%; clip-path: inset(14.5% 17.7% .5% 17.7% round 50% 50% 0 0 / 27% 27% 0 0); filter: sepia(.18) saturate(.9) contrast(1.04); }
+/* The picture fills the arch's window, not the whole frame, so nothing the frame covers (a head near the top) is lost. */
+${P} .fig.framed .face { inset: 14.5% auto auto 17.7%; width: 64.6%; height: 85%; border-radius: 0; box-shadow: none; object-position: var(--face, 50% 18%); clip-path: inset(0 round 50% 50% 0 0 / 31.8% 31.8% 0 0); filter: sepia(.18) saturate(.9) contrast(1.04); }
 ${P} .fig.framed::after { clip-path: inset(14.5% 17.7% .5% 17.7% round 50% 50% 0 0 / 27% 27% 0 0); border-radius: 0; background: radial-gradient(90% 70% at 50% 40%, transparent 55%, rgba(12,5,2,.7)); }
 ${P} .sbp-arch { display: none; position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 ${P} .fig.framed .sbp-arch { display: block; }
@@ -336,7 +337,8 @@ ${Ph} .fig { flex: none; height: calc(var(--fig) * 3); margin-top: calc(var(--fi
 ${Ph} .face { object-position: 50% 0; }
 ${Ph} .fig.framed { height: var(--fig); width: min(70cqw, calc(var(--fig) * 2.2)); aspect-ratio: auto; margin: 0; box-shadow: -2px 0 0 #d9ad62, 2px 0 0 #d9ad62; }
 ${Ph} .fig.framed::before, ${Ph} .fig.framed .sbp-arch { display: none; }
-${Ph} .fig.framed .face, ${Ph} .fig.framed::after { clip-path: none; object-position: 50% 18%; }
+${Ph} .fig.framed .face, ${Ph} .fig.framed::after { clip-path: none; object-position: var(--face, 50% 18%); }
+${Ph} .fig.framed .face { inset: 0; width: 100%; height: 100%; }
 /* The bar. */
 ${Ph} .sbp-book::before { content: ""; position: absolute; inset: 0 0 auto 0; height: var(--bar); background: url(${hide}) center / 160px; box-shadow: inset 0 -2px 0 ${GILT}, inset 0 -3px 0 #2a1205, 0 2px 4px rgba(0,0,0,.5); }
 ${Ph} .plaque { left: 10px; right: auto; top: 5px; bottom: auto; height: 22px; width: calc(100cqw - 196px); max-width: none; padding: 0; display: block; filter: none; z-index: 6; }

@@ -17,7 +17,7 @@
  * frontier the honeycomb is a brass-bound map among the cards.
  */
 import { BOARD_SKINS } from "../board-skins.js";
-import { esc, seedOf, type DelveView, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
+import { esc, seedOf, type DelveView, type MenuItem, type PersonArt, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import { beatsHtml, isWriting, wireWrite, writeFormHtml } from "./write.js";
 import * as A from "./lobby/art.js";
 import { lobbyCss } from "./lobby/css.js";
@@ -474,6 +474,11 @@ ${b.isNew ? `<div class="new">${A.seal()}<b>NEW</b></div>` : ""}
    * turns behind the head.
    */
   function heroHtml(v: SceneView): string {
+    const faceVars = (a: PersonArt) => {
+      if (!a.face) return "";
+      const x = (a.face[0] + a.face[2] / 2) * 100, y = (a.face[1] + a.face[3] / 2) * 100, pc = (n: number) => `${n.toFixed(1)}%`;
+      return `style="--fx:${pc(x)};--fc:${pc(y + 14)};--ft:${pc(y - 16)};--fk:${pc(y - 4)};--fdy:${pc(Math.max(0, 30 - y))}" `;
+    };
     const halo = (cls: string) => `<div class="halo ${cls}">${haloSvg}</div>`;
     if (!lead) return halo("empty");
     const art = ctx.personArt(v, lead.id, "color");
@@ -485,11 +490,11 @@ ${b.isNew ? `<div class="new">${A.seal()}<b>NEW</b></div>` : ""}
       if (!m) return halo("arriving");
       if (m.cover < 0.06) return `${halo("")}<img src="${esc(art.url)}" alt="${esc(lead.name)}" style="transform:translateX(${(-m.c * 100).toFixed(1)}%)" ${tag} draggable="false">`;
       // A close bust the host keyed itself has rough edges: feather the original painting instead.
-      if (art.keyed && art.source) return `${halo("bust")}<img class="bust opaque" src="${esc(art.source)}" alt="${esc(lead.name)}" ${tag} draggable="false">${brackets}`;
+      if (art.keyed && art.source) return `${halo("bust")}<img class="bust opaque" src="${esc(art.source)}" alt="${esc(lead.name)}" ${faceVars(art)}${tag} draggable="false">${brackets}`;
       return `${halo("bust")}<img class="bust" src="${esc(art.url)}" alt="${esc(lead.name)}" ${tag} draggable="false">${brackets}`;
     }
     // Keying failed: the original painting, feathered on every side.
-    return `${halo("bust")}<img class="bust opaque" src="${esc(art.source || art.url)}" alt="${esc(lead.name)}" ${tag} draggable="false">${brackets}`;
+    return `${halo("bust")}<img class="bust opaque" src="${esc(art.source || art.url)}" alt="${esc(lead.name)}" ${faceVars(art)}${tag} draggable="false">${brackets}`;
   }
 
   function lockets(v: SceneView, people: PersonView[]): string {

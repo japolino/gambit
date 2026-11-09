@@ -61,7 +61,7 @@ const css = (paper: string) => `
 .th-lobby .figure { left: calc(var(--hx) - 34%); right: auto; width: 68%; height: 97%; bottom: -1%; }
 .th-lobby .face { filter: drop-shadow(-3px -2px 4px rgba(255,214,150,.45)) drop-shadow(0 20px 30px rgba(0,0,0,.85)) saturate(.95) sepia(.06); }
 .th-lobby .fig.framed { height: 90%; margin-bottom: 0; aspect-ratio: 3 / 4; background: none; border-radius: 0; }
-.th-lobby .fig.framed .face { object-fit: cover; object-position: 50% 20%; border-radius: 0; box-shadow: none;
+.th-lobby .fig.framed .face { object-fit: cover; object-position: var(--face, 50% 20%); border-radius: 0; box-shadow: none;
   filter: drop-shadow(-3px -2px 5px rgba(255,214,150,.4)) saturate(.95) sepia(.06);
   -webkit-mask-image: radial-gradient(ellipse 50% 58% at 50% 42%, #000 58%, transparent 100%), linear-gradient(180deg, transparent 0, #000 12%, #000 60%, transparent 94%);
   -webkit-mask-composite: source-in; mask-image: radial-gradient(ellipse 50% 58% at 50% 42%, #000 58%, transparent 100%), linear-gradient(180deg, transparent 0, #000 12%, #000 60%, transparent 94%); mask-composite: intersect; }
