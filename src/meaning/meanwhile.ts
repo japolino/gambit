@@ -154,7 +154,10 @@ export function meanwhilePrompt(sheet: CardSheet, bible: Bible | null, b: NightB
   const free = b.people.filter((p) => p.free).map((p) => p.id);
   const touched = [...touchedPlaces(b)];
   const today = [
-    ...b.beats.filter((x) => x.said).map((x) => `- At ${b.places.find((p) => p.id === x.where)?.name ?? "the scene"}: "${clip(x.said, 180)}"${x.roll ? ` [${x.roll}]` : ""}${x.reply ? ` -> ${clip(x.reply, 180)}` : ""}${x.found ? ` (found: ${clip(x.found, 100)})` : ""}`),
+    // What the player wrote, and how the game settled what took over (a fight won or lost, a talk), in the order it happened.
+    ...b.beats
+      .filter((x) => x.said || x.roll)
+      .map((x) => `- At ${b.places.find((p) => p.id === x.where)?.name ?? "the scene"}: ${x.said ? `"${clip(x.said, 180)}"${x.roll ? ` [${x.roll}]` : ""}` : x.roll}${x.reply ? ` -> ${clip(x.reply, 180)}` : ""}${x.found ? ` (found: ${clip(x.found, 100)})` : ""}`),
     ...(b.talks ?? []).map((t) => `- Talked with ${t.who}. ${b.player || "The player"} said: ${t.said.map((s) => `"${clip(s, 200)}"`).join(" / ")}. ${t.who} last answered: "${clip(t.reply, 220)}". How it ended: ${t.ended}.`),
     ...deedsPlain(b.deeds).map((x) => `- ${x}`),
     ...b.chat.map((m) => `- ${m.name}: ${clip(m.content.replace(/\s+/g, " ").trim(), 220)}`),

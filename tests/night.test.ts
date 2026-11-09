@@ -53,6 +53,11 @@ describe("what the night reads", () => {
     expect(user).toMatch(/"place": one of docks,/);
   });
 
+  test("how a fight or a talk came out reaches the writer too, so the night keeps who won", () => {
+    const beats = [{ said: "I attack Eternity.", roll: null, reply: "", where: "docks" }, { said: "", roll: "The fight with Eternity is lost. Eternity claims Hero, carried off to The Docks.", reply: "You come round cuffed.", where: "docks" }];
+    expect(meanwhilePrompt(sheet, null, brief({ beats })).user).toContain("At The Docks: The fight with Eternity is lost. Eternity claims Hero");
+  });
+
   test("a thread that just ended has to be shown", () => {
     const { user } = meanwhilePrompt(sheet, null, brief({ thread: { goal: "Find the boat", found: 1, total: 3, daysLeft: 0, ended: "lost", justEnded: true } }));
     expect(user).toMatch(/ran out of time and is lost today: one scene must show/);

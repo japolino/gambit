@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CardSheet, CardSources, SourceLore } from "../src/engine/card/types.js";
-import { boardLore } from "../src/meaning/board-deck.js";
+import { boardLore, loreScenePrompt } from "../src/meaning/board-deck.js";
 
 const ev = { source: "card" as const, quote: "", verified: true };
 const person = (id: string, main = false) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), role: "a regular", look: "tall", main, pronoun: "she" as const, evidence: ev });
@@ -65,5 +65,11 @@ describe("board deck", () => {
     const again = boardLore({ sheet: { cast: [], facts: [] }, sources: s, met: new Set(), spent: new Set(entryIds), room: 2 });
     expect(again.length).toBe(2);
     expect(boardLore({ sheet, sources: s, met: new Set(), spent: new Set(), room: 3 }).length).toBe(3);
+  });
+
+  test("a scene on the board tells the player the way the story does: an unnamed player is you", () => {
+    const at = (player: { name: string; person?: "second" | "third" }) => loreScenePrompt({ cardName: "Mara", premise: "", tone: "", skin: { genre: "" }, player } as never, { id: "e", kind: "entry", ref: "e", title: "Fog", text: "Fog rolls in.", stars: 3 }, 3, "the docks", ["Hero"]).system;
+    expect(at({ name: "", person: "third" })).toContain("second person");
+    expect(at({ name: "Wren" })).toContain("third person");
   });
 });

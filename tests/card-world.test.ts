@@ -178,7 +178,14 @@ describe("what the playtest turned up in the reading", () => {
   test("the card's person is the narrator's, and a named player is still called by name", () => {
     const { system } = narratorPrompt({ ...ctx, player: { ...ctx.player, person: "second" } }, "I wait.", "", "flavor");
     expect(system).toContain(`second person present, calling Tobin "you"`);
-    expect(narratorPrompt({ ...ctx, player: { name: "", concept: "", person: "third" } }, "I wait.", "", "flavor").system).toContain("third person");
+    // Third person with no name has nothing to call them by: an unnamed player is always "you".
+    expect(narratorPrompt({ ...ctx, player: { name: "", concept: "", person: "third" } }, "I wait.", "", "flavor").system).toContain("second person");
+  });
+
+  test("someone the story meets who fits a card person is them, and the lore about the line holds", () => {
+    const { system, user } = narratorPrompt({ ...ctx, elsewhere: [{ name: "Nina Bovistel", role: "waitress at the Rosedale Tavern", at: "Valeria" }], lore: "The Adventurer Guild has a branch in every kingdom." }, "I ask the waitress her name.", "", "flavor");
+    expect(system).toContain("Nina Bovistel (waitress at the Rosedale Tavern, usually at Valeria)");
+    expect(user).toContain("The Adventurer Guild has a branch in every kingdom.");
   });
 
   test("the player's past and aims are the narrator's to know, not the world's", () => {
