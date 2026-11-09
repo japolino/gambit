@@ -1176,14 +1176,17 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     if (!pictures) return;
     const where = r ? r.world.places[r.scene.placeId]?.name : undefined;
     const who = `${meta.partner} and ${sheet?.player.name || "the persona"}${where ? `, at ${where}` : ""}.`;
-    const drawn = await Promise.all(
-      moments.map(async (mo, i) => {
-        const pic = await pictures!.request(userId, { id: mo.key, chatId, direction: "intimate", text: pictureText(who, mo.text) }).catch((err: unknown) => (log(`scene picture: ${errText(err)}`), null));
-        if (!pic) return null;
-        send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
-        return { page: mo.page, url: pic.url, alt: `${title} (${i + 1}/${moments.length})` };
-      }),
-    );
+    const draw = async (mo: (typeof moments)[number], i: number, base?: string) => {
+      const pic = await pictures!.request(userId, { id: mo.key, chatId, direction: "intimate", text: pictureText(who, mo.text), ...(base ? { base } : {}) }).catch((err: unknown) => (log(`scene picture: ${errText(err)}`), null));
+      if (!pic) return null;
+      send({ type: "art.update", items: [{ key: mo.key, state: "ready", url: pic.url, imageId: pic.imageId, cutout: false, via: "inlay" }] }, userId);
+      return { page: mo.page, url: pic.url, imageId: pic.imageId, alt: `${title} (${i + 1}/${moments.length})` };
+    };
+    // The first picture sets the place; the others are drawn into it (Inlay repaints the people and keeps its frame),
+    // or each picture of one scene picks a place of its own.
+    const [first, ...rest] = moments;
+    const opening = first ? await draw(first, 0) : null;
+    const drawn = [opening, ...(await Promise.all(rest.map((mo, i) => draw(mo, i + 1, opening?.imageId))))];
     const pics = drawn.filter((p): p is NonNullable<typeof p> => !!p);
     if (pics.length && messageId) await pictureReply(chatId, messageId, content, withPictures(content, pages, pics));
   }

@@ -29,7 +29,7 @@ const sheet = {
   kits: [],
 };
 
-function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unknown> } = {}) {
+function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unknown>; pictures?: unknown } = {}) {
   const card = { ...sheet, ...o.sheet };
   const files = new Map<string, unknown>();
   const posted: string[] = [];
@@ -75,7 +75,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
       return s;
     },
   };
-  const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, battles);
+  const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, battles, o.pictures ? { pictures: o.pictures as never } : {});
   const views = () => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : []));
   const last = (): SceneView => views()[views().length - 1]!;
   return { play, files, posted, messages, sent, started, known, talks, last, fights, reshown };
@@ -427,6 +427,31 @@ describe("play on a card", () => {
     const story = (files.get("play/chat1.json") as { story: { scene?: string }[] }).story;
     expect(story.filter((b) => b.scene)).toHaveLength(1);
     expect(await play.onGenerationEnded("chat1", reply, "m2")).toBe(false);
+  });
+
+  test("an adult scene's first picture sets the place: the others are drawn into it once it is in", async () => {
+    const run = async (firstFails: boolean) => {
+      const asked: { id: string; base?: string }[] = [];
+      const pictures = {
+        request: async (_u: string, req: { id: string; base?: string }) => {
+          asked.push(req);
+          const n = req.id.split(".").at(-1);
+          return firstFails && n === "0" ? null : { imageId: `img-${n}`, url: `/api/v1/images/img-${n}` };
+        },
+      };
+      const { play, started, messages } = setup({ cards: { adultOn: async () => true }, pictures });
+      await play.open("u", "chat1");
+      await play.fight("u", "chat1");
+      await play.onBattleEnd(ended(started[0]!, "victory"), "u");
+      await play.act("u", "chat1", "afterglow");
+      await play.intercept([{ role: "user", content: messages.at(-1)!.content }] as never, { userId: "u", chatId: "chat1", generationType: "normal" } as never);
+      await play.onGenerationEnded("chat1", Array.from({ length: 6 }, (_, i) => `Page ${i + 1}. ${"word ".repeat(30).trim()}.`).join("\n\n"), "m2");
+      return asked;
+    };
+    const asked = await run(false);
+    expect(asked.map((a) => a.base)).toEqual([undefined, "img-0", "img-0"]);
+    // Without a first picture, the others are drawn on their own.
+    expect((await run(true)).slice(1).map((a) => a.base)).toEqual([undefined, undefined]);
   });
 
   test("a Parley's end is on the page when you come back, and the scene is refreshed", async () => {

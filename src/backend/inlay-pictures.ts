@@ -47,6 +47,8 @@ export interface InlayPictureRequest {
   direction: InlayPictureDirection;
   /** The moment in words: who, where, what happens. Inlay's analyzer reads it like a chat reply. */
   text: string;
+  /** A Lumiverse image id: Inlay draws this picture into that one's setting (an infill on it). Older Inlays ignore it. */
+  base?: string;
 }
 export interface InlayPicture {
   imageId: string;
