@@ -207,7 +207,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
         // Rebuilt from the id: early entries saved crops under a route that does not serve them.
         const fixed = { ...entry, url: imageUrl(entry.imageId) };
         created.indexMem.set(key, fixed);
-        created.queue.restore({ key, state: "ready", imageId: fixed.imageId, url: fixed.url, cutout: fixed.cutout, ...(fixed.face !== undefined ? { face: fixed.face } : {}) });
+        created.queue.restore({ key, state: "ready", imageId: fixed.imageId, url: fixed.url, cutout: fixed.cutout, ...(fixed.via ? { via: fixed.via } : {}), ...(fixed.face !== undefined ? { face: fixed.face } : {}) });
       }
     });
     created.looksLoaded = loadLooks(created);

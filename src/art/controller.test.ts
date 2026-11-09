@@ -90,6 +90,14 @@ describe("registerArt", () => {
     expect(fake.deleted).toEqual([]);
   });
 
+  test("after a restart, a picture Inlay drew is still known as Inlay's (its figure is cut once from there)", async () => {
+    const fake = createFakeHost({ connections: CONNECTIONS });
+    fake.files.set(INDEX_PATH, { version: 1, entries: { "figure:k": { imageId: "inlay-1", url: "/api/v1/images/inlay-1", cutout: false, at: 1, via: "inlay" } } });
+    const { api } = setup(fake);
+    await api.ready();
+    expect(api.status("figure:k")).toMatchObject({ state: "ready", cutout: false, via: "inlay" });
+  });
+
   test("no image connection: failed status and one notice (placeholders)", async () => {
     const fake = createFakeHost({ connections: [] });
     const { api, sent } = setup(fake);
