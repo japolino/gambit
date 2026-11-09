@@ -31,6 +31,12 @@ describe("board deck", () => {
     expect(out[3]).toMatchObject({ title: "Harbor", stars: 3 });
   });
 
+  test("a fact's tile is titled by who it's about, not by its claim to \"you\"", () => {
+    const owed = { ...fact("debt", 2), claim: "You owe the harbourmaster forty crowns.", about: ["tobin"] };
+    const out = boardLore({ sheet: { ...sheet, facts: [owed, fact("murder", 3)] }, met: new Set(), spent: new Set(), room: 4 });
+    expect(out.filter((c) => c.kind === "fact").map((c) => c.title)).toEqual(["Word going around", "About Tobin"]);
+  });
+
   test("the card's machinery is never dealt as lore: image lists, rules for the model, rulesets, empty folders", () => {
     const lore = [
       entry("💠Eralith💠", { constant: true, content: "### Eralith's Image List\n\nThis image must be printed in Character image slot, According to Eralith's situation.\n\nEralith_smile.png" }),

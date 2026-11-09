@@ -62,13 +62,19 @@ function one(s: string, n = 140): string {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 }
 
+/** Who a fact is about, not the fact: its claim speaks to "you" and gives the secret away before it's opened. */
+function factTitle(about: readonly string[], cast: DeckInput["sheet"]["cast"]): string {
+  const names = about.flatMap((id) => cast.find((m) => m.id === id)?.name ?? []).slice(0, 2);
+  return names.length ? one(`About ${names.join(" and ")}`, 60) : "Word going around";
+}
+
 /** Lore cards for one board, most worth finding first, mixed so no kind crowds the others out. */
 export function boardLore(d: DeckInput): LoreCard[] {
   const found = new Set(d.found ?? []);
   const facts: LoreCard[] = d.sheet.facts
     .filter((f) => !f.known && !found.has(f.id))
     .sort((a, b) => b.weight - a.weight)
-    .map((f) => ({ id: `fact:${f.id}`, kind: "fact", ref: f.id, title: one(f.claim || f.text, 60), text: f.text, stars: f.weight }));
+    .map((f) => ({ id: `fact:${f.id}`, kind: "fact", ref: f.id, title: factTitle(f.about, d.sheet.cast), text: f.text, stars: f.weight }));
   const people: LoreCard[] = d.sheet.cast
     .filter((m) => !m.main && !d.met.has(m.id))
     .map((m) => ({ id: `cast:${m.id}`, kind: "person", ref: m.id, title: m.name, text: one(`${m.name}, ${m.role}. ${m.look}`, 300), stars: 2 }));
