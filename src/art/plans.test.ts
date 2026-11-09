@@ -147,6 +147,14 @@ describe("prompts", () => {
     expect(foe("bloated drowned dockhand, barnacles on grey skin", false).nai.prompt).toStartWith("no humans");
   });
 
+  test("Gambit's own art is never nude, and a moment with nobody in it says so", () => {
+    expect(buildPrompt({ kind: "figure", character: HERO }, LOOKS.modern_anime, { naiAlpha: true }).nai.negative).toContain("nsfw, nude");
+    const marsh = buildPrompt({ kind: "cg", moment: "a leech and a carnivorous plant in the fog", cast: [], location: { id: "m", name: "Great Marsh", description: "fog, mangroves" } }, LOOKS.modern_anime);
+    expect(marsh.nai.prompt).toStartWith("no humans");
+    expect(marsh.nai.negative).toContain("1girl, 1boy, people");
+    expect(marsh.gpt.prompt).toContain("Nobody is in it.");
+  });
+
   test("older NAI models get a white background instead", () => {
     const b = buildPrompt({ kind: "portrait", character: HERO }, LOOKS.modern_anime, { naiAlpha: false });
     expect(b.nai.prompt).toContain("white background");

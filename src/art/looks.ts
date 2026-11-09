@@ -34,6 +34,8 @@ export interface LookPreset {
 export const NAI_NO_TEXT = "text, english text, watermark, signature, logo, username, artist name, speech bubble, letters";
 /** Added to every GPT prompt: no text in images. */
 export const GPT_NO_TEXT = "No text, lettering, numbers, logos, signatures, watermarks, borders, frames or UI elements anywhere in the image.";
+/** Added to every NAI negative of Gambit's own art, which never draws an adult scene (Inlay does, when the chat allows). */
+export const NAI_NO_NSFW = "nsfw, nude, naked, nipples, sex, explicit";
 /** Base quality negative for NAI (V5 Full; V5 Medium sends no negative, see providers.ts). */
 export const NAI_BASE_NEGATIVE = "lowres, worst quality, bad quality, jpeg artifacts, blurry, bad anatomy, bad hands, missing fingers, extra digits";
 

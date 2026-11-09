@@ -490,7 +490,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         art.request(key, { kind: "cg", moment: `${o.moment}. From ${sheet.cardName} (${sheet.skin.genre})`, cast, ...(location ? { location } : {}) }, o.priority ?? 1, userId);
       });
     const told = [o.moment.replace(/\.$/, ""), members.length ? `With ${members.map((m) => m.name).join(", ")}` : "", location ? `At ${location.name}` : ""].filter(Boolean).join(". ");
-    const drawn = (inChat ? inlayPictures.request(userId, { id: key, chatId: inChat, direction: "scene", text: `${told}.` }).catch(() => null) : Promise.resolve(null))
+    // Inlay draws people; a picture with nobody in it is Gambit's own, which says so (Inlay added a girl to an empty marsh).
+    const drawn = (inChat && members.length ? inlayPictures.request(userId, { id: key, chatId: inChat, direction: "scene", text: `${told}.` }).catch(() => null) : Promise.resolve(null))
       .then((pic) => {
         if (!pic) return own();
         art.adopt(key, { ...pic, via: "inlay" }, userId);

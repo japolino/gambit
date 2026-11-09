@@ -40,6 +40,7 @@ const fxAssets = createFxAssets(spindle, (msg, userId) => send(msg, userId), (m)
 const notes = createNotes(spindle);
 const parleys = createParleys(spindle, (msg, userId) => send(msg, userId), art);
 const cards = createCards(spindle, (msg, userId) => send(msg, userId), parleys);
+cutinPictures.inlay.useAdult((userId, chatId) => cards.adultOn(userId, chatId));
 play = createPlay(spindle, (msg, userId) => send(msg, userId), art, cards, battles, { pictures: cutinPictures.inlay });
 // New places come from play (4.5): the reply detector asks where the scene went.
 cards.setPlaceHook({

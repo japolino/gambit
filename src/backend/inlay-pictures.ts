@@ -16,6 +16,7 @@
  */
 import type { SpindleAPI } from "lumiverse-spindle-types";
 import type { InlayStyle } from "../art/look-file.js";
+import { NAI_NO_NSFW } from "../art/looks.js";
 
 const OWNER = "inlay_illustrator";
 const SEGMENT = /^[a-z0-9][a-z0-9_-]*$/;
@@ -35,6 +36,9 @@ export function inlayPictureId(key: string): string {
 }
 
 export type InlayPictureDirection = "parley" | "cutin" | "figure" | "scene" | "intimate";
+
+/** Said with every picture of a chat without adult scenes: Inlay's analyzer reads it, and nobody comes out nude. */
+export const CLOTHED = "Everyone in it is fully clothed, and nothing in it is sexual.";
 
 /** What Inlay's analyzer reads for a figure: it finds the person by name, and their profile gives the rest. */
 export function figureRequestText(name: string, role: string): string {
@@ -76,6 +80,7 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
   const waits = new Map<string, Promise<InlayPicture | null>>();
   const kept = new Map<string, Record<string, InlayPicture>>();
   let styleOf: (userId: string) => InlayStyle | null = () => null;
+  let adultIn: (userId: string, chatId: string) => Promise<boolean> = async () => false;
   /** A picture drawn in a look's style is kept under that look: picking another one draws it again. */
   const scoped = (userId: string, key: string): { key: string; style: InlayStyle | null } => {
     const style = styleOf(userId);
@@ -152,8 +157,10 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
       if (have) return have;
       const wire = inlayPictureId(key);
       const mine = pending.get(userId) ?? new Map<string, WireRequest>();
-      const drawIn = style && ("artist" in style ? { artist: style.artist } : { positive: style.positive, negative: style.negative });
-      mine.set(wire, { ...req, id: wire, ...(drawIn ? { style: drawIn } : {}) });
+      // An adult scene's own pictures are what it is; anything else is kept clothed unless the chat has adult scenes on.
+      const sfw = req.direction !== "intimate" && !(await adultIn(userId, req.chatId).catch(() => false));
+      const drawIn = style && ("artist" in style ? { artist: style.artist } : { positive: style.positive, negative: sfw ? `${style.negative}, ${NAI_NO_NSFW}` : style.negative });
+      mine.set(wire, { ...req, id: wire, ...(sfw ? { text: `${req.text} ${CLOTHED}` } : {}), ...(drawIn ? { style: drawIn } : {}) });
       pending.set(userId, mine);
       let until = Date.now() + GIVE_UP_MS;
       // Inlay draws one at a time: waiting in its line isn't taking too long, up to a point.
@@ -215,7 +222,12 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
     styleOf = of;
   }
 
-  return { request, known, forget, useStyle };
+  /** Whether a chat has adult scenes on (the card's setting); off until set. */
+  function useAdult(of: (userId: string, chatId: string) => Promise<boolean>): void {
+    adultIn = of;
+  }
+
+  return { request, known, forget, useStyle, useAdult };
 }
 
 const shared = new WeakMap<object, ReturnType<typeof createInlayPictures>>();

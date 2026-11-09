@@ -24,7 +24,7 @@
  */
 import type { ClassDef, MonsterDef, RigKind } from "../engine/types.js";
 import type { ArtKind } from "../shared/protocol.js";
-import { GPT_NO_TEXT, LOOKS, NAI_BASE_NEGATIVE, NAI_NO_TEXT, PROBE_BRIEFS, type LookPreset, type ProbeSubject } from "./looks.js";
+import { GPT_NO_TEXT, LOOKS, NAI_BASE_NEGATIVE, NAI_NO_NSFW, NAI_NO_TEXT, PROBE_BRIEFS, type LookPreset, type ProbeSubject } from "./looks.js";
 import { CUTIN_DIRECTION, PARLEY_DIRECTION } from "./directions.js";
 
 /* ------------------------------------------------------------------ */
@@ -365,7 +365,7 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
   // oil-painting look against a cartoon card gave an off-model ink figure).
   const fromCard = (spec.kind === "expression" || spec.kind === "pose") && spec.canonical.source === "card";
   const style = fromCard ? "" : look.nai.positive;
-  const baseNeg = (extra: string) => join(NAI_BASE_NEGATIVE, fromCard ? "" : look.nai.negative, extra, bg.neg, NAI_NO_TEXT);
+  const baseNeg = (extra: string) => join(NAI_BASE_NEGATIVE, fromCard ? "" : look.nai.negative, extra, bg.neg, NAI_NO_NSFW, NAI_NO_TEXT);
   const gptTail = sentences(fromCard ? "Match the reference image's art style exactly." : look.gpt.style, transparent ? GPT_TRANSPARENT : "", fromCard ? "" : look.gpt.avoid, GPT_NO_TEXT);
   const naiSize = NAI_SIZE[spec.kind];
   const out = (prompt: string, negative: string, characterTags: string[], gpt: string): BuiltPrompt => ({
@@ -427,12 +427,12 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
       const parley = spec.direction === "parley";
       const shot = parley ? PARLEY_DIRECTION.tags : "cinematic composition, detailed background, dynamic angle, event illustration";
       const prompt = join(counts.join(", ") || "no humans", style, parley ? "" : spec.tags, shot, where, spec.location?.timeOfDay);
-      const negative = baseNeg(join("multiple views, split screen, border, comic, panels, text, speech bubble", parley ? PARLEY_DIRECTION.negative : ""));
+      const negative = baseNeg(join("multiple views, split screen, border, comic, panels, text, speech bubble", parley ? PARLEY_DIRECTION.negative : "", spec.cast.length ? "" : "1girl, 1boy, people, person, character"));
       // A Parley moment's tags are the person's own reaction: they ride in their caption.
       const captions = spec.cast.map((x, i) => join(x.character.sex ?? "other", x.character.booru || x.character.tags.slice(0, 200), parley && i === 0 ? spec.tags : ""));
       const people = spec.cast.map((x) => `${x.character.name}: ${x.character.description}`).join(" ");
       const lead = parley ? `${PARLEY_DIRECTION.text} The moment: ${spec.moment}.` : `A cinematic illustration of a story moment: ${spec.moment}.`;
-      return out(prompt, negative, captions, sentences(lead, where ? `Setting: ${where}.` : "", people, spec.cast.some((x) => x.ref) ? "Keep each character exactly as in their reference image." : "", gptTail));
+      return out(prompt, negative, captions, sentences(lead, where ? `Setting: ${where}.` : "", people || "Nobody is in it.", spec.cast.some((x) => x.ref) ? "Keep each character exactly as in their reference image." : "", gptTail));
     }
     case "map": {
       const l = spec.location;
