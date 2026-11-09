@@ -79,7 +79,7 @@ spindle.on("GENERATION_ENDED", (p, userId) => {
   void parleys.onGenerationEnded(p.chatId, p.content, userId).catch((e) => spindle.log.error(`gambit narration: ${String(e)}`));
   // An adult scene's reply is read page by page; it never sets up a contest.
   void play!
-    .onGenerationEnded(p.chatId, p.error ? "" : p.content, p.messageId)
+    .onGenerationEnded(p.chatId, p.error ? "" : p.content, p.messageId, p.error)
     .then((wasScene) => {
       if (userId && !wasParley && !wasScene && !p.error) return cards.afterReply(userId, p.chatId, p.messageId, p.generationType);
     })

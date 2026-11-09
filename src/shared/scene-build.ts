@@ -99,6 +99,8 @@ export interface PlayRecord {
   loreSpent?: string[];
   /** The adult scene a fight just offered (opt-in per chat): who with, and how the fight went. Gone once the scene moves on. */
   afterglow?: Afterglow;
+  /** Claimed after a lost fight: who keeps you, and the day it happened. You can't leave until the next morning, or a way out that works. */
+  claimed?: { by: string; day: number };
 }
 
 export interface Afterglow {
@@ -121,6 +123,14 @@ export function spotOf(r: PlayRecord): string {
 export function afterglowHere(r: PlayRecord): boolean {
   return !!r.afterglow && r.afterglow.day === r.scene.day && r.afterglow.placeId === spotOf(r);
 }
+
+/** Who keeps you where you are today, after claiming you in a fight; null once a new day has come. */
+export function heldBy(r: PlayRecord): string | null {
+  return r.claimed && r.claimed.day >= r.scene.day ? r.claimed.by : null;
+}
+
+/** What takes you away from where you are, and is closed while you are held. */
+const LEAVING: ReadonlySet<Hotspot["kind"]> = new Set(["exit", "explore", "delve"]);
 
 /** The menu item an offered adult scene adds: the fight's winner sets the tone. */
 export function afterglowLabel(a: Afterglow): string {
@@ -145,6 +155,11 @@ export function wildCell(r: PlayRecord): Terrain | null {
 
 /** The menu for where you are: a place's hotspots, or the wild's (camp, forage, fight). */
 export function menuFor(sheet: CardSheet, r: PlayRecord): Hotspot[] {
+  const menu = placeMenu(sheet, r);
+  return heldBy(r) ? menu.filter((h) => !LEAVING.has(h.kind)) : menu;
+}
+
+function placeMenu(sheet: CardSheet, r: PlayRecord): Hotspot[] {
   if (r.delve || r.board) return [];
   const t = wildCell(r);
   if (!t) {
@@ -235,7 +250,7 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     place: wild
       ? { id: `wild_${wild}`, name: TERRAIN_NAME[wild], description: WILD_TEXT[wild], art: placeKey(sheet, `wild_${wild}`), added: true }
       : { id: p.id, name: p.name, description: r.memory?.scars[p.id] ? `${p.description}. ${r.memory.scars[p.id]!.note}` : p.description, art: placeArt(sheet, r, p.id), added: p.added },
-    tiles: movement === "lobby" ? others.filter((q) => p.exits.includes(q.id)).map((q) => ({ id: q.id, name: q.name, art: placeArt(sheet, r, q.id) })) : [],
+    tiles: movement === "lobby" && !heldBy(r) ? others.filter((q) => p.exits.includes(q.id)).map((q) => ({ id: q.id, name: q.name, art: placeArt(sheet, r, q.id) })) : [],
     route: r.world.route.map((id) => ({ id, name: r.world.places[id]?.name ?? id })),
     people,
     menu: menuFor(sheet, r),

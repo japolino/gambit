@@ -16,14 +16,34 @@ export interface ScenePage {
   end: number;
 }
 
-/** A paragraph as the reader shows it: a preset's headings and markdown emphasis aren't the story's words. */
+/**
+ * What in a reply isn't the story, though a card's preset may ask for it: code, style and script blocks, HTML and the
+ * card's own tags (Risu image tags, status blocks), comments and macros.
+ */
+const NOT_PROSE = /```[\s\S]*?(?:```|$)|<(style|script|details)\b[\s\S]*?(?:<\/\1\s*>|$)|<!--[\s\S]*?(?:-->|$)|<[^<>]*>|\{\{[\s\S]*?\}\}|!\[[^\]]*\]\([^)]*\)/gi;
+/** A line that opens a menu of what to do next ("Options for User:"): it and everything after it are not the story. */
+const MENU = /^[\s*_#>[(]*(?:options?|choices?|actions?|what (?:will|do|does|should) \S+ do(?: next)?|선택지|선택)\b[^.!?\n:]{0,40}:[\s*_\])]*$|^\s*(?:#{1,6}\s*|\*\*|\[)(?:options?|choices?|actions?|선택지|선택)\b[^.!?\n]{0,40}$/i;
+/** A line of a table, status block or rule. */
+const NOT_A_LINE = /^\s*(?:#{1,6}\s|\||[-*_=]{3,}\s*$)|\|.*\|/;
+
+/**
+ * The reply as the reader reads it: everything that isn't the story is masked, with its whitespace kept, so the reply
+ * still splits into the same paragraphs (withPictures places pictures by those).
+ */
+function prose(reply: string): string {
+  const masked = reply.replace(NOT_PROSE, (m) => m.replace(/\S/g, "\0"));
+  const lines = masked.split("\n");
+  const menu = lines.findIndex((l) => MENU.test(l.replace(/\0/g, "")));
+  return lines.map((l, i) => (menu >= 0 && i >= menu) || NOT_A_LINE.test(l) ? l.replace(/\S/g, "\0") : l).join("\n");
+}
+
+/** A paragraph as the reader shows it, without markdown emphasis. */
 const readable = (p: string): string =>
   p
-    .split("\n")
-    .filter((l) => !/^\s*#{1,6}\s/.test(l))
-    .join(" ")
+    .replace(/\0+/g, " ")
     .replace(/(\*\*|\*|__)(?=\S)([^*_]+?)\1/g, "$2")
     .replace(/\s+/g, " ")
+    .replace(/^[\s*_]+$/, "")
     .trim();
 
 const paragraphs = (reply: string): string[] => reply.split(/\n\s*\n/);
@@ -35,7 +55,7 @@ const paragraphs = (reply: string): string[] => reply.split(/\n\s*\n/);
 export function scenePages(reply: string): ScenePage[] {
   const pages: { text: string; end: number }[] = [];
   let held = "";
-  paragraphs(reply).forEach((raw, i) => {
+  paragraphs(prose(reply)).forEach((raw, i) => {
     const p = readable(raw);
     if (!p) return;
     const text = held ? `${held} ${p}` : p;

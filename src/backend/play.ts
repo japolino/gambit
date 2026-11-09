@@ -75,7 +75,7 @@ import { createFigurePrints } from "./figure-prints.js";
 import { sharedInlayPictures } from "./inlay-pictures.js";
 import type { ToFrontend } from "../shared/protocol.js";
 import type { ThemeId } from "../shared/scene-view.js";
-import { afterglowHere, boardMapKey, buildSceneView, cardTag, feel, menuFor, spotOf, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
+import { afterglowHere, boardMapKey, buildSceneView, cardTag, feel, heldBy, menuFor, spotOf, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type Afterglow, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
 
@@ -1027,6 +1027,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     let fact: string;
     // A fight inside a delve or on a board carries on there; everything else comes back to the page.
     const onPage = state.outcome !== "victory" || (!r.delve && !r.board);
+    const claimer = state.outcome !== "victory" && sheet.skin.defeat === "claimed" ? (enemies.find((c) => c.alive && !c.left) ?? enemies[0] ?? null) : null;
     if (state.outcome === "victory") {
       const loot = fallen.length * 12 + talked.filter((c) => c.left === "surrender").length * 8;
       r.scene = { ...r.scene, vigor: Math.max(0.2, hp / max), coin: Math.max(0, r.scene.coin + loot - bribes) };
@@ -1047,11 +1048,11 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         line += ` The depths of ${r.world.places[r.delve.placeId]?.name ?? "the delve"} fall quiet, and a catalyst waits at the bottom.`;
         bookOf(r).catalysts++;
       }
-    } else if (sheet.skin.defeat === "claimed") {
-      // Where the winner keeps the loser instead of hurting them: taken to where they live, unharmed and unrobbed.
-      const winner = enemies.find((c) => c.alive && !c.left) ?? enemies[0];
-      const who = winner?.name ?? state.meta?.title ?? "the winner";
-      const castId = winner ? castIdOf(sheet, winner.defId) : null;
+    } else if (claimer) {
+      // Where the winner keeps the loser instead of hurting them: taken to where they live, unharmed and unrobbed, and
+      // held there until the next morning or a way out that works.
+      const who = claimer.name;
+      const castId = castIdOf(sheet, claimer.defId);
       const pronoun = sheet.cast.find((c) => c.id === castId)?.pronoun;
       const theirs = pronoun === "she" ? "hers" : pronoun === "he" ? "his" : "theirs";
       const to = (castId ? Object.values(r.world.places).find((p) => p.people.includes(castId))?.id : undefined) ?? r.scene.placeId;
@@ -1067,8 +1068,9 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       }
       const losers = party.map((c) => c.name).join(" and ");
       const where = r.world.places[to]?.name ?? "somewhere of theirs";
-      line = `${state.meta?.title ? `The fight with ${state.meta.title}` : "The fight"} is lost. ${who} claims ${losers}, carried off to ${where}.`;
-      fact = `The fight is lost, and here the winner keeps the loser instead of hurting or robbing them: ${who} claims ${losers} as ${theirs} and carries them off to ${where}. Show them coming round there, unhurt, and what ${who} wants with them now. Nobody is wounded, robbed or killed.`;
+      r.claimed = { by: who, day: r.scene.day };
+      line = `${state.meta?.title ? `The fight with ${state.meta.title}` : "The fight"} is lost. ${who} claims ${losers}, carried off to ${where} and kept there until morning.`;
+      fact = `The fight is lost, and here the winner keeps the loser instead of hurting or robbing them: ${who} claims ${losers} as ${theirs} and carries them off to ${where}, to keep them there until morning. Show them coming round there, unhurt, and what ${who} wants with them now. Nobody is wounded, robbed or killed.`;
     } else {
       // Story difficulty (4.2): lose, retreat, take a consequence. The model never rescues anyone.
       r.scene = { ...r.scene, vigor: 0.35, coin: Math.max(0, Math.round(r.scene.coin * 0.8)), placeId: r.world.start };
@@ -1085,9 +1087,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       fact = `The fight is lost. They come round at ${r.world.places[r.world.start]?.name ?? "somewhere safe"}, bruised and with less ${cur}. Show them coming to, and what it cost.`;
     }
     r.battleId = undefined;
-    // An adult scene with someone you fought (opt-in per chat): offered in the scene's menu until the scene moves on.
-    const partner = enemies.find((c) => state.meta?.monsters?.[c.defId]?.talks) ?? null;
-    r.afterglow = partner && onPage && (await cards.adultOn?.(userId, chatId)) ? { name: partner.name, castId: castIdOf(sheet, partner.defId), won: state.outcome === "victory", look: state.meta?.monsters?.[partner.defId]?.visual.brief ?? "", day: r.scene.day, placeId: spotOf(r) } : undefined;
+    r.afterglow = undefined;
+    // An adult scene (opt-in per chat) with someone who can be talked to: one you beat, or the one who claimed you. A
+    // loss that sends you back robbed has nobody to have it with.
+    const talks = (c: (typeof enemies)[number]) => !!state.meta?.monsters?.[c.defId]?.talks;
+    const partner = !onPage ? null : state.outcome === "victory" ? (enemies.find(talks) ?? null) : claimer && talks(claimer) ? claimer : null;
+    const offer: Afterglow | null = partner && (await cards.adultOn?.(userId, chatId)) ? { name: partner.name, castId: castIdOf(sheet, partner.defId), won: state.outcome === "victory", look: state.meta?.monsters?.[partner.defId]?.visual.brief ?? "", day: r.scene.day, placeId: spotOf(r) } : null;
     // Classes (M7): ranks from wins, catalysts from bosses, skills ready to awaken.
     for (const l of forge.afterBattle(r, state, !!state.meta?.boss)) line += ` ${l}`;
     // The deed ledger (4.6): who fell, who was spared or recruited, and how you fought.
@@ -1122,7 +1127,18 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     reactLater(userId, chatId, sheet, deeds);
     await aside(chatId, line);
     await show(userId, chatId, sheet, r);
-    if (onPage) void aftermath(userId, chatId, sheet, line, fact).catch((err: unknown) => log(`aftermath: ${String(err).slice(0, 160)}`));
+    if (onPage) void afterFight(userId, chatId, sheet, line, fact, offer);
+  }
+
+  /** After a fight on the page: its account first, then the adult scene it offers, so the chat tells it in order. */
+  async function afterFight(userId: string, chatId: string, sheet: CardSheet, result: string, fact: string, offer: Afterglow | null): Promise<void> {
+    await aftermath(userId, chatId, sheet, result, fact).catch((err: unknown) => log(`aftermath: ${String(err).slice(0, 160)}`));
+    if (!offer) return;
+    const r = await load(userId, chatId);
+    if (!r) return;
+    r.afterglow = offer;
+    await save(userId, chatId, r);
+    await show(userId, chatId, sheet, r);
   }
 
   /**
@@ -1139,13 +1155,31 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     await show(userId, chatId, sheet, r);
     const meta: SceneMeta = { id: `${a.day}.${Date.now().toString(36)}`, partner: a.name, castId: a.castId, won: a.won, ...(a.castId ? {} : { look: a.look }) };
     const line = fillNote(noteText(a.won ? "scene.win.line" : "scene.loss.line", await notes.edits(userId)), { player: sheet.player.name, partner: a.name });
+    // Known as written from here, not only once the prompt is built: a generation can fail before that.
+    scenesWriting.set(chatId, { userId, meta, offer: a });
     send({ type: "scene.afterglow", chatId, title: sceneTitle(meta), pages: null }, userId);
     try {
       await spindle.chat.appendMessage(chatId, { role: "user", content: line, metadata: { gambit: { scene: meta } } } as never, { triggerGeneration: true });
     } catch (err) {
       log(`scene: ${errText(err)}`);
-      send({ type: "scene.afterglow", chatId, title: "", pages: [] }, userId);
+      scenesWriting.delete(chatId);
+      await sceneFailed(userId, chatId, a, errText(err));
     }
+  }
+
+  /** An adult scene that came back with nothing to read: the reader closes and says so, and a first take is offered again. */
+  async function sceneFailed(userId: string, chatId: string, offer: Afterglow | undefined, why: string): Promise<void> {
+    send({ type: "scene.afterglow", chatId, title: "", pages: [] }, userId);
+    if (offer) {
+      const r = await load(userId, chatId);
+      const sheet = await cards.sheetFor(userId, chatId);
+      if (r && sheet && !r.afterglow) {
+        r.afterglow = offer;
+        await save(userId, chatId, r);
+        await show(userId, chatId, sheet, r);
+      }
+    }
+    send({ type: "notice", level: "warn", text: `The scene wasn't written${why ? `: ${why}` : ""}.${offer ? " It is still in the menu." : ""}`, chatId }, userId);
   }
 
   /**
@@ -1164,21 +1198,21 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return scene;
   }
 
-  /** Chats whose running generation is an adult scene, and the scene it is. */
-  const scenesWriting = new Map<string, { userId: string; meta: SceneMeta }>();
+  /** Chats whose running generation is an adult scene, the scene it is, and the offer it took on a first take. */
+  const scenesWriting = new Map<string, { userId: string; meta: SceneMeta; offer?: Afterglow }>();
 
   /**
    * An adult scene's reply is in (or was stopped): read it page by page, remember it once, and have Inlay draw its
    * moments into it.
    */
-  async function sceneEnded(chatId: string, content: string, messageId: string | undefined): Promise<void> {
+  async function sceneEnded(chatId: string, content: string, messageId: string | undefined, error?: string): Promise<void> {
     const s = scenesWriting.get(chatId);
     if (!s) return;
     scenesWriting.delete(chatId);
     const { userId, meta } = s;
-    const pages = scenePages(content);
+    const pages = error ? [] : scenePages(content);
     const title = sceneTitle(meta);
-    if (!pages.length) return send({ type: "scene.afterglow", chatId, title, pages: [] }, userId);
+    if (!pages.length) return sceneFailed(userId, chatId, s.offer, error ? error.slice(0, 160) : content.trim() ? "the reply had no story in it" : "");
     const sheet = await cards.sheetFor(userId, chatId);
     const r = await load(userId, chatId);
     const h = [...`${messageId ?? ""}|${content.length}|${content.slice(-40)}`].reduce((x, ch) => Math.imul(x ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
@@ -1845,7 +1879,8 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         const kind = scene.won ? "scene.win.note" : "scene.loss.note";
         const note = fillNote(noteText(kind, await notes.edits(ctx.userId)), { player: sheet?.player.name ?? "", partner: scene.partner, ...(scene.look ? { look: scene.look } : {}) });
         messages = withSuffix(messages, { role: "system", content: note } as LlmMessageDTO);
-        scenesWriting.set(ctx.chatId, { userId: ctx.userId, meta: scene });
+        const taking = scenesWriting.get(ctx.chatId);
+        scenesWriting.set(ctx.chatId, { userId: ctx.userId, meta: scene, ...(taking?.meta.id === scene.id && taking.offer ? { offer: taking.offer } : {}) });
         send({ type: "scene.afterglow", chatId: ctx.chatId, title: sceneTitle(scene), pages: null }, ctx.userId);
       }
       const r = await load(ctx.userId, ctx.chatId).catch(() => null);
@@ -1861,10 +1896,10 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       return withSuffix(messages, { role: "system", content: text } as LlmMessageDTO);
     },
 
-    /** A generation in a chat ended or was stopped: an adult scene's reply is read page by page. True when it was one. */
-    async onGenerationEnded(chatId: string, content: string | undefined, messageId?: string): Promise<boolean> {
+    /** A generation in a chat ended, failed or was stopped: an adult scene's reply is read page by page. True when it was one. */
+    async onGenerationEnded(chatId: string, content: string | undefined, messageId?: string, error?: string): Promise<boolean> {
       if (!scenesWriting.has(chatId)) return false;
-      await sceneEnded(chatId, content ?? "", messageId);
+      await sceneEnded(chatId, content ?? "", messageId, error);
       return true;
     },
 
@@ -1933,6 +1968,12 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (!ctx?.r.hex || ctx.r.delve) return;
       const { sheet, r } = ctx;
       const day = r.scene.day;
+      const held = heldBy(r);
+      if (held) {
+        note(r, `${held} won't let you leave before morning.`);
+        await save(userId, chatId, r);
+        return show(userId, chatId, sheet, r);
+      }
       try {
         const arrived = hexMove(r, { q, r: rr });
         if (arrived) {
@@ -1986,7 +2027,10 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // Whoever the line names can be who it's aimed at: the player's words bring them into the scene.
       const asked = storyContext(sheet, r);
       const away = withPromoted(sheet, r).cast.filter((c) => !asked.people.some((p) => p.id === c.id) && named(c.name, [{ content: line }]));
-      const read = routeBeat(await readLine(userId, { ...asked, people: [...asked.people, ...away.map((c) => ({ id: c.id, name: c.name, role: c.role }))] }, line), { parley: sheet.modules.parley, encounters: sheet.modules.encounters });
+      const routed = routeBeat(await readLine(userId, { ...asked, people: [...asked.people, ...away.map((c) => ({ id: c.id, name: c.name, role: c.role }))] }, line), { parley: sheet.modules.parley, encounters: sheet.modules.encounters });
+      // Held by whoever claimed you: going somewhere is a way out that has to work.
+      const held = heldBy(r);
+      const read = held && routed.route === "travel" ? { ...routed, route: "risk" as const, difficulty: Math.max(2, routed.difficulty) as BeatRead["difficulty"] } : routed;
       log(`story: ${read.route}${read.target ? ` at ${read.target}` : ""}${read.to ? ` to ${read.to}` : ""}`);
       if (read.target) {
         interest(r, `cast:${read.target}`, NOTICE.talk);
@@ -2023,7 +2067,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       }
       if (read.route === "fight") {
         const aimed = fightTarget(read, named(withPromoted(sheet, r).cast.find((c) => c.id === read.target)?.name ?? "", [{ content: line }]));
-        if (read.to) await go(read.to);
+        if (read.to && !held) await go(read.to);
         wrote();
         await save(userId, chatId, r);
         await postBeat(chatId, line, null);
@@ -2039,7 +2083,10 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const from = r.scene.placeId;
       const fromName = r.world.places[from]?.name ?? "here";
       const leaving = read.route === "risk" && read.to ? read.to : null;
-      if (leaving && res.roll?.tier !== "crit_fail") await go(leaving);
+      if (leaving && (held ? beatWorked(res.roll) : res.roll?.tier !== "crit_fail")) {
+        if (held) r.claimed = undefined;
+        await go(leaving);
+      }
       const story = storyContext(sheet, r);
       const left = !leaving ? "" : r.scene.placeId !== from ? ` They do get away, and the scene is now at ${story.place.name}.` : ` They are stopped before they get away, and are still at ${fromName}.`;
 
@@ -2106,7 +2153,8 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const spot = menuFor(sheet, r).find((h) => h.id === hotspot);
       const wild = wildCell(r);
       const day = r.scene.day;
-      if (!spot) return send({ type: "notice", level: "warn", text: "That is not something you can do here.", chatId }, userId);
+      const held = heldBy(r);
+      if (!spot) return send({ type: "notice", level: "warn", text: held && /^(go:|explore$|delve$)/.test(hotspot) ? `${held} won't let you leave before morning.` : "That is not something you can do here.", chatId }, userId);
       if (spot.id === "afterglow") return afterglow(userId, chatId, sheet, r);
       switch (spot.kind) {
         case "talk":

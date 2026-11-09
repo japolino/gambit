@@ -24,6 +24,23 @@ describe("the adult scene after a fight", () => {
     expect(pages[0]!.text.endsWith('"Mine," she says.')).toBe(true);
   });
 
+  test("only the story's prose reaches the pages: no image tags, status blocks, tables, code or option menus", () => {
+    const reply = [
+      `<Character image: Hotaru_smile | Location background: dojo>\n${para(1)}`,
+      "<Hero: User | Job: Unemployed |\nBronze: 12 | Health Points 65%>",
+      `${para(2)} <span class="x">she</span> smiles.`,
+      "```\nstatus: ok\n\nmore\n```",
+      "| HP | 65% |\n|---|---|",
+      para(3),
+      "**Options for User:**\n1. Kiss her",
+      "2. Leave",
+    ].join("\n\n");
+    const pages = scenePages(reply);
+    expect(pages.map((p) => p.text)).toEqual([para(1), `${para(2)} she smiles.`, para(3)]);
+    // The pages still end where the reply's own paragraphs do.
+    expect(pages.map((p) => p.end)).toEqual([0, 2, 6]);
+  });
+
   test("pictures go into the reply after the paragraph their page ends with, and nothing else in it changes", () => {
     const reply = `## Response\n\n${para(1)}\n\nShort.\n \n${para(2)}`;
     const pages = scenePages(reply);
@@ -53,6 +70,13 @@ describe("the adult scene after a fight", () => {
     expect(def).not.toContain("looks like this");
     expect(fillNote(noteText("scene.loss.line", { "scene.loss.line": "*{{partner}} pins {{player}}.*" }), { player: "Tobin", partner: "Rook" })).toBe("*Rook pins Tobin.*");
     expect(fillNote("{{look}}", { player: "", partner: "a wolf girl", look: "grey fur" })).toBe("a wolf girl looks like this: grey fur.");
+  });
+
+  test("without a name the player is \"you\", and the line agrees with it", () => {
+    expect(fillNote(noteText("scene.loss.line", {}), { player: "", partner: "Rook" })).toBe("*You give in to Rook.*");
+    expect(fillNote(noteText("scene.win.line", {}), { player: "", partner: "Rook" })).toBe("*You claim Rook.*");
+    expect(fillNote("{{partner}} carries {{player}} off. {{player}} is hers.", { player: "", partner: "Rook" })).toBe("Rook carries you off. You are hers.");
+    expect(fillNote(noteText("scene.win.note", {}), { player: "", partner: "Rook" })).toContain("follows the fight. You won the fight against Rook, and Rook yields to you.");
   });
 });
 

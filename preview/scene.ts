@@ -10,6 +10,7 @@ import { clearRoom, enterDelve, generateDelve, stepDelve } from "../src/engine/w
 import { buildWorld, moveScene, newScene, TIMES } from "../src/engine/world/places.js";
 import { buildHex, cellOf, hexKey, newHex, stepHex } from "../src/engine/world/hex.js";
 import { fallbackMeanwhile } from "../src/meaning/fallbacks.js";
+import { scenePages } from "../src/meaning/afterglow.js";
 import { boardMapKey, buildSceneView, placeKey, wallKey, type PlayRecord } from "../src/shared/scene-build.js";
 import { npcArtKey } from "../src/shared/art-keys.js";
 import type { ThemeId } from "../src/shared/scene-view.js";
@@ -402,7 +403,7 @@ function refresh(): void {
 }
 /*
  * Screenshot switches: ?delve=1 starts inside a delve, ?at=<placeId> starts
- * at a place, ?busy=1 shows the busy state, ?crowd=1 puts all three people there (?crowd=12 makes it twelve), ?journal=1 / ?classes=1 open those panels, ?log=1 fills the log.
+ * at a place, ?claimed=1 is held there after a claimed loss, ?afterglow=1 opens an adult scene's reader, ?busy=1 shows the busy state, ?crowd=1 puts all three people there (?crowd=12 makes it twelve), ?journal=1 / ?classes=1 open those panels, ?log=1 fills the log.
  */
 {
   const q = new URLSearchParams(location.search);
@@ -412,6 +413,7 @@ function refresh(): void {
   if (CROWD > 3) (r.world.places[r.scene.placeId] as { people: string[] }).people = sheet.cast.map((m) => m.id);
   if (q.get("log") === "1") r = { ...r, log: ["You arrive by the morning ferry.", "Mara eyes your satchel and says nothing.", "You found: a torn wharf ticket.", "Tobin pours you something that might be rum.", "Time passes: afternoon."] };
   if (q.get("board") === "1") setTimeout(dealPreviewBoard, 0);
+  if (q.get("claimed") === "1") r = { ...r, claimed: { by: "Mara", day: r.scene.day } };
   if (q.get("delve") === "1") {
     const map = generateDelve(`preview:${r.scene.placeId}`);
     r = { ...r, delve: { placeId: r.scene.placeId, map, state: enterDelve(map) } };
@@ -422,6 +424,11 @@ refresh();
   const q = new URLSearchParams(location.search);
   const ctx = (document.querySelector(".gs") as unknown as { gambitCtx?: { journal: { toggle(): void }; classes: { toggle(): void } } }).gambitCtx;
   if (q.get("journal") === "1") ctx?.journal.toggle();
+  if (q.get("afterglow") === "1") {
+    const word = (n: number) => Array.from({ length: n }, (_, i) => ["her", "breath", "warm", "against", "the", "furs", "slow", "and"][i % 8]).join(" ");
+    const reply = `## Response\n\n<Character image: Mara_smile | Location background: docks>\nMara pulls you close, ${word(40)}.\n\n<Hero: User | Job: Unemployed | Bronze: 12>\n\nThe lantern gutters, ${word(50)}.\n\n**Options for User:**\n1. Stay\n2. Leave`;
+    handle.afterglow("Claimed by Mara", scenePages(reply).map((p) => ({ text: p.text })));
+  }
   if (q.get("classes") === "1") {
     handle.forge(buildForgeView("preview", book, codex, (o) => o.art ?? `class:${o.def.id}`, null));
     ctx?.classes.toggle();

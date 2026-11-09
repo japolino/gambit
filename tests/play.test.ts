@@ -29,7 +29,7 @@ const sheet = {
   kits: [],
 };
 
-function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unknown>; pictures?: unknown } = {}) {
+function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unknown>; pictures?: unknown; spindle?: Record<string, unknown> } = {}) {
   const card = { ...sheet, ...o.sheet };
   const files = new Map<string, unknown>();
   const posted: string[] = [];
@@ -52,6 +52,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
       getMessages: async () => messages.map((m) => ({ ...m, hidden: false })),
     },
     personas: { getActive: async () => ({ description: "A wiry courier." }) },
+    ...o.spindle,
   };
   const art = { request: () => ({ key: "", state: "queued" }), status: () => null, expect: () => {}, adopt: () => {}, whenDone: () => new Promise(() => {}) };
   const cards = {
@@ -79,6 +80,11 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
   const views = () => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : []));
   const last = (): SceneView => views()[views().length - 1]!;
   return { play, files, posted, messages, sent, started, known, talks, last, fights, reshown };
+}
+
+/** Wait for what play does in the background after a call. */
+async function until(ok: () => boolean, ms = 3000): Promise<void> {
+  for (const end = Date.now() + ms; !ok() && Date.now() < end; ) await new Promise((res) => setTimeout(res, 5));
 }
 
 /** End a started battle the way the engine would, with the given outcome. */
@@ -399,6 +405,7 @@ describe("play on a card", () => {
     await play.open("u", "chat1");
     await play.fight("u", "chat1");
     await play.onBattleEnd(ended(started[0]!, "victory"), "u");
+    await until(() => last().menu.some((h) => h.id === "afterglow"));
     const offer = last().menu.find((h) => h.id === "afterglow")!;
     expect(offer.label).toMatch(/^Claim /);
     await play.act("u", "chat1", "afterglow");
@@ -439,10 +446,11 @@ describe("play on a card", () => {
           return firstFails && n === "0" ? null : { imageId: `img-${n}`, url: `/api/v1/images/img-${n}` };
         },
       };
-      const { play, started, messages } = setup({ cards: { adultOn: async () => true }, pictures });
+      const { play, started, messages, last } = setup({ cards: { adultOn: async () => true }, pictures });
       await play.open("u", "chat1");
       await play.fight("u", "chat1");
       await play.onBattleEnd(ended(started[0]!, "victory"), "u");
+      await until(() => last().menu.some((h) => h.id === "afterglow"));
       await play.act("u", "chat1", "afterglow");
       await play.intercept([{ role: "user", content: messages.at(-1)!.content }] as never, { userId: "u", chatId: "chat1", generationType: "normal" } as never);
       await play.onGenerationEnded("chat1", Array.from({ length: 6 }, (_, i) => `Page ${i + 1}. ${"word ".repeat(30).trim()}.`).join("\n\n"), "m2");
@@ -452,6 +460,80 @@ describe("play on a card", () => {
     expect(asked.map((a) => a.base)).toEqual([undefined, "img-0", "img-0"]);
     // Without a first picture, the others are drawn on their own.
     expect((await run(true)).slice(1).map((a) => a.base)).toEqual([undefined, undefined]);
+  });
+
+  test("a claimed loss holds you where the winner keeps you until morning, unless a way out works", async () => {
+    const { play, started, last, sent } = setup({ sheet: { skin: { ...sheet.skin, defeat: "claimed" } } });
+    await play.open("u", "chat1");
+    await play.act("u", "chat1", "go:tavern");
+    await play.fight("u", "chat1");
+    await play.onBattleEnd(ended(started[0]!, "defeat"), "u");
+    expect(last().story.at(-1)!.roll).toContain("kept there until morning");
+    expect(last().menu.some((h) => h.kind === "exit")).toBe(false);
+    await play.act("u", "chat1", "go:docks");
+    expect(sent.at(-1)).toMatchObject({ type: "notice", text: expect.stringContaining("before morning") });
+    expect(last().place.id).toBe("tavern");
+    // Going somewhere is rolled as a way out: only one that works leaves.
+    for (let i = 0; i < 8 && last().place.id === "tavern"; i++) {
+      await play.say("u", "chat1", "I walk to The Docks");
+      const beat = last().story.at(-1)!;
+      expect(beat.roll).toBeTruthy();
+      if (last().place.id === "docks") expect(beat.roll).toMatch(/success|partial/i);
+    }
+    expect(last().place.id).toBe("docks");
+    expect(last().menu.some((h) => h.kind === "exit")).toBe(true);
+  });
+
+  test("a claim holds only until the next day", async () => {
+    const { play, started, last } = setup({ sheet: { skin: { ...sheet.skin, defeat: "claimed" } } });
+    await play.open("u", "chat1");
+    await play.fight("u", "chat1");
+    await play.onBattleEnd(ended(started[0]!, "defeat"), "u");
+    const day = last().clock.day;
+    for (let i = 0; i < 8 && last().clock.day === day; i++) await play.act("u", "chat1", "wait");
+    expect(last().clock.day).toBe(day + 1);
+    expect(last().menu.some((h) => h.kind === "exit")).toBe(true);
+  });
+
+  test("an adult scene is offered once the fight's account is on the page, and never after a loss that robs you", async () => {
+    let write = () => {};
+    const written = new Promise<void>((res) => (write = res));
+    const writes = { generate: { quietStream: async function* () { await written; yield { type: "done", content: "You come round on warm furs, unhurt, and she is watching you." }; } }, connections: { list: async () => [{ id: "c1", name: "c", provider: "x", model: "m", is_default: true }] } };
+    const claimed = setup({ sheet: { skin: { ...sheet.skin, defeat: "claimed" } }, spindle: writes, cards: { adultOn: async () => true } });
+    await claimed.play.open("u", "chat1");
+    await claimed.play.fight("u", "chat1");
+    const s = ended(claimed.started[0]!, "defeat");
+    await claimed.play.onBattleEnd(s, "u");
+    await new Promise((res) => setTimeout(res, 50));
+    expect(claimed.last().menu.some((h) => h.id === "afterglow")).toBe(false);
+    write();
+    await until(() => claimed.last().menu.some((h) => h.id === "afterglow"));
+    expect(claimed.posted.at(-1)).toContain("warm furs");
+    // It is with the one who claimed you.
+    const claimer = s.combatants.find((c) => c.side === "enemy" && claimed.last().story.some((b) => b.roll?.includes(`${c.name} claims`)))!;
+    expect(claimed.last().menu.find((h) => h.id === "afterglow")!.label).toBe(`Give in to ${claimer.name}`);
+
+    const robbed = setup({ cards: { adultOn: async () => true } });
+    await robbed.play.open("u", "chat1");
+    await robbed.play.fight("u", "chat1");
+    await robbed.play.onBattleEnd(ended(robbed.started[0]!, "defeat"), "u");
+    await new Promise((res) => setTimeout(res, 50));
+    expect(robbed.last().menu.some((h) => h.id === "afterglow")).toBe(false);
+  });
+
+  test("a scene the host fails to write closes the reader with a notice, and the offer comes back", async () => {
+    const { play, started, last, sent } = setup({ cards: { adultOn: async () => true } });
+    await play.open("u", "chat1");
+    await play.fight("u", "chat1");
+    await play.onBattleEnd(ended(started[0]!, "victory"), "u");
+    await until(() => last().menu.some((h) => h.id === "afterglow"));
+    await play.act("u", "chat1", "afterglow");
+    expect(last().menu.some((h) => h.id === "afterglow")).toBe(false);
+    // The generation fails before any prompt is built, so no note was ever added.
+    expect(await play.onGenerationEnded("chat1", "", undefined, "The browser owning this Lua operation disconnected")).toBe(true);
+    expect(sent.some((m) => m.type === "scene.afterglow" && m.pages?.length === 0)).toBe(true);
+    expect(sent.some((m) => m.type === "notice" && m.text.includes("Lua operation disconnected"))).toBe(true);
+    expect(last().menu.some((h) => h.id === "afterglow")).toBe(true);
   });
 
   test("a Parley's end is on the page when you come back, and the scene is refreshed", async () => {
