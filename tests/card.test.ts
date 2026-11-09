@@ -164,6 +164,15 @@ describe("contests from a card", () => {
     expect(persuade).toMatchObject({ track: "resistance", start: 100, floor: 35, winAt: 0 });
   });
 
+  test("a talk that isn't a haggle still carries the sums it names, in the purse's money", () => {
+    const bed = parseFrame({ kind: "persuade", stake: "a warm bed and supper", stake_size: 1, price: 3, unit: "silver" }, sheet, "ilse_varga");
+    expect(contestFrom(bed, sheet.cast[0]!, "copper")).toMatchObject({ money: true, cost: 30 });
+    const job = parseFrame({ kind: "persuade", stake: "the job", stake_size: 2, pay: 5, unit: "silver" }, sheet, "ilse_varga");
+    expect(contestFrom(job, sheet.cast[0]!, "silver")).toMatchObject({ money: true, pay: 5 });
+    const favor = parseFrame({ kind: "persuade", stake: "help at the gate", stake_size: 1, price: 2, unit: "favors" }, sheet, "ilse_varga");
+    expect(contestFrom(favor, sheet.cast[0]!, "silver").money).toBeUndefined();
+  });
+
   test("a price they already offered can be reached, free included", () => {
     const frame = parseFrame({ kind: "haggle", stake: "a room for the night", stake_size: 1, price: 2, lowest_offer: 0, unit: "coppers" }, sheet, "ilse_varga");
     expect(contestFrom(frame, sheet.cast[0]!, "")).toMatchObject({ start: 2, floor: 0, hardFloor: 0 });

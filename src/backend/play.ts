@@ -29,7 +29,7 @@ import { beatWorked, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, 
 import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
 import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
-import { cleanReply } from "../engine/parley/narrate.js";
+import { amount, cleanReply } from "../engine/parley/narrate.js";
 import { pictureMoments, pictureText, scenePages, withPictures } from "../meaning/afterglow.js";
 import { fillNote, noteText } from "../meaning/notes.js";
 import { createNotes } from "./notes.js";
@@ -1815,17 +1815,24 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const bluffed = state.exchanges.some((e) => e.bluff && !e.bluff.fact);
       const caught = state.exchanges.filter((e) => e.bluff?.caught && !e.bluff.fact).length;
       record_(sheet, r, deedsFromParley(castId, name, state.end.kind, tactics, bluffed, r.scene.day, r.scene.placeId, caught));
-      // What was on the line is yours now, and a deal is paid for.
-      const stake = scenario.contest.stake;
+      // What was on the line is yours now: a deal, or what the player offered for it, is paid for, and what they're owed is paid.
+      const c = scenario.contest;
+      const stake = c.stake;
       const got = state.end.kind === "won" || state.end.kind === "deal";
-      const price = state.end.kind === "deal" ? state.end.value : 0;
-      if (price && scenario.contest.money) {
+      const price = state.end.kind === "deal" ? state.end.value : state.end.kind === "won" ? (c.cost ?? 0) : 0;
+      const pay = state.end.kind === "won" ? (c.pay ?? 0) : 0;
+      const unit = c.unit ?? (sheet.skin.currency || "coin");
+      if (price && c.money) {
         r.scene = { ...r.scene, coin: Math.max(0, r.scene.coin - price) };
-        note(r, `You pay ${name} ${price} ${scenario.contest.unit ?? ""}.`.replace(" .", "."));
+        note(r, `You pay ${name} ${amount(price, unit)}.`);
+      }
+      if (pay && c.money) {
+        r.scene = { ...r.scene, coin: r.scene.coin + pay };
+        note(r, `${name} pays you ${amount(pay, unit)}.`);
       }
       if (got) {
         const m = mem(r);
-        if (!m.items.some((x) => x.name === stake)) m.items = [...m.items, { name: stake, description: price ? `Agreed on day ${r.scene.day}, for ${price} ${scenario.contest.unit ?? ""}.`.replace(" .", ".") : `Won on day ${r.scene.day}.`, from: name }];
+        if (!m.items.some((x) => x.name === stake)) m.items = [...m.items, { name: stake, description: price ? `Agreed on day ${r.scene.day}, for ${amount(price, unit)}.` : `Won on day ${r.scene.day}.`, from: name }];
       }
       // The thread only moves when that's what the talk was about.
       const learned = state.end.kind === "won" && scenario.card?.aboutThread ? revealNext(r) : null;

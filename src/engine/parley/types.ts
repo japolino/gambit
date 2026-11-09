@@ -84,8 +84,12 @@ export interface ContestDef {
   floor: number;
   /** Lowest the floor can go with every lever pulled. */
   hardFloor: number;
-  /** A haggle priced in the player's own money: a deal is paid from their purse. */
+  /** Priced in the player's own money: a haggle's deal or `cost` is paid from their purse, and `pay` goes into it. */
   money?: boolean;
+  /** Persuade-style: what winning costs the player (what they offered for the stake). */
+  cost?: number;
+  /** What winning pays the player. */
+  pay?: number;
   /** Persuade-style: reaching this wins. Haggle: absent (the player takes a deal). */
   winAt?: number;
   /** Base DC before the ask and rapport. */

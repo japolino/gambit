@@ -214,10 +214,12 @@ export interface ContestFrame {
   stake: string;
   /** 1 small, 2 real, 3 big, 4 huge. */
   stakeSize: 1 | 2 | 3 | 4;
-  /** Haggle: the asking price, if one was named. */
+  /** Haggle: the asking price, if one was named. Anything else: what the player offered to pay for the stake. */
   price: number | null;
   /** Haggle: the lowest price they already offered in the story (0 for free), which the talk has to be able to reach. */
   offered?: number;
+  /** What they pay the player if the talk goes the player's way. */
+  pay?: number;
   unit: string | null;
   setting: string;
   opening: string;

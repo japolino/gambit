@@ -142,7 +142,11 @@ export function contestFrom(frame: ContestFrame, c: CastMember, currency: string
     const floor = Math.min(Math.round(start * share), offered);
     return { kind: "haggle", track: "price", stake: frame.stake, money, unit: (money ? currency || frame.unit : frame.unit) || undefined, start, floor, hardFloor: Math.min(Math.round(start * 0.5), floor), dc };
   }
-  return { kind: frame.kind, track: TRACK[frame.kind], stake: frame.stake, start: 100, floor: FLOOR_BY_STAKE[frame.stakeSize], hardFloor: 0, winAt: 0, dc };
+  // Money that changes hands when the player wins: what they offered for the stake, or what they're paid.
+  const money = !!(frame.price || frame.pay) && (!frame.unit || !NOT_MONEY.test(frame.unit));
+  // No unit: it would label the track, which isn't counted in money here.
+  const sums = money ? { money, ...(frame.price ? { cost: inCurrency(frame.price, frame.unit, currency) } : {}), ...(frame.pay ? { pay: inCurrency(frame.pay, frame.unit, currency) } : {}) } : {};
+  return { kind: frame.kind, track: TRACK[frame.kind], stake: frame.stake, start: 100, floor: FLOOR_BY_STAKE[frame.stakeSize], hardFloor: 0, winAt: 0, dc, ...sums };
 }
 
 /**

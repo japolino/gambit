@@ -665,9 +665,10 @@ Write:
 {"kind": one of ${CONTEST_KINDS.map((k) => `"${k}"`).join(", ")},
  "stake": "what the player walks away with if this goes their way, a short noun phrase, like 'a place on the night boat'",
  "stake_size": 1-4 (1 small favor, 2 real, 3 big, 4 life-changing),
- "price": the asking price as a number if one was named for a haggle, else null,
+ "price": for a haggle, the asking price; for anything else, what the player offered or agreed to pay for the stake; as a number if a sum was named, else null,
  "lowest_offer": for a haggle, the lowest price ${c?.name ?? "they"} already offered in the roleplay, on any condition (0 if they offered it free), else null,
- "unit": "currency of that price" or null,
+ "pay": what ${c?.name ?? "they"} would pay the player if this goes the player's way (a fee, a reward, wages), as a number if a sum was named, else null,
+ "unit": "currency of those sums" or null,
  "setting": "where this happens, one sentence",
  "opening": "${c?.name ?? "their"} first line now, in their voice as the roleplay shows it, one or two sentences"${c?.voice ? "" : `,\n "voice": "how ${c?.name ?? "they"} talks, going by the roleplay, one short line"`}}`;
   const them = c?.name ?? "They";
@@ -685,6 +686,7 @@ export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castI
   const k = str(raw.kind, 20) as ContestKind;
   const size = Math.round(Number(raw.stake_size ?? raw.stakeSize));
   const price = Number(raw.price);
+  const pay = Number(raw.pay);
   const offered = raw.lowest_offer === null || raw.lowest_offer === undefined || raw.lowest_offer === "" ? NaN : Number(raw.lowest_offer);
   return {
     castId,
@@ -693,6 +695,7 @@ export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castI
     stakeSize: (size >= 1 && size <= 4 ? size : 2) as 1 | 2 | 3 | 4,
     price: Number.isFinite(price) && price > 0 ? Math.round(price) : null,
     ...(Number.isFinite(offered) && offered >= 0 ? { offered: Math.round(offered) } : {}),
+    ...(Number.isFinite(pay) && pay > 0 ? { pay: Math.round(pay) } : {}),
     unit: str(raw.unit, 30) || null,
     setting: str(raw.setting, 300) || sheet.places[0]?.description || sheet.premise,
     opening: str(raw.opening, 500),

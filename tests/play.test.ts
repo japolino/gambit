@@ -201,6 +201,20 @@ describe("play on a card", () => {
       expect(last().story.at(-1)?.found).toBe("Yours now: a place on the night boat.");
     });
 
+    test("a won talk charges what the player offered for it, and pays what they're owed", async () => {
+      const { play, files, last } = setup();
+      await play.open("u", "chat1");
+      const coin = record(files).scene.coin;
+      const won = (contest: object) => ({ ...end("won"), scenario: { npc: { name: "Mara" }, card: { castId: "mara" }, contest: { stake: "a warm bed and supper", money: true, ...contest } } as never });
+      const bed = won({ cost: 3 });
+      await play.onParleyEnd("u", bed.scenario, bed.state);
+      expect(record(files).scene.coin).toBe(coin - 3);
+      const job = won({ stake: "the job", pay: 10 });
+      await play.onParleyEnd("u", job.scenario, job.state);
+      expect(record(files).scene.coin).toBe(coin + 7);
+      expect(last().log.slice(-2).join(" ")).toEqual("You pay Mara 3 crowns. Mara pays you 10 crowns.");
+    });
+
     test("a price that isn't money costs no money", async () => {
       const { play, files } = setup();
       await play.open("u", "chat1");
