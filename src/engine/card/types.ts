@@ -62,6 +62,9 @@ export interface CastMember {
   evidence: Evidence;
 }
 
+/** What a figure is drawn from: someone on the card, or the player (foes.ts playerPerson). */
+export type FigurePerson = Pick<CastMember, "id" | "name" | "role" | "look" | "pronoun">;
+
 export interface SheetFact {
   id: string;
   /** What is true, in the narrator's words. */
@@ -109,6 +112,9 @@ export interface PlayerSheet {
   person?: "second" | "third";
   /** The money the persona or card says the player starts with, in the sheet's currency. */
   coin?: number;
+  /** What they look like (the persona, else what the card says the player is), for their figure. */
+  look?: string;
+  pronoun?: "she" | "he" | "they";
 }
 
 export interface CardSheet {

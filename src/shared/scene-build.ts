@@ -292,7 +292,8 @@ export function boardView(sheet: CardSheet, r: PlayRecord): BoardView {
     party: b.party.map((p, i) => {
       const c = cast.get(p.id.replace(/^p_/, ""));
       const card = c?.faces?.base ?? c?.avatarImageId ?? null;
-      return { id: p.id, name: p.name, q: p.q, r: p.r, imageId: card, ...(c ? { art: figureArtKey(sheet.cardKey, c.id) } : {}), active: i === b.active && !b.done };
+      const figure = c ? c.id : p.id === "p_player" ? p.id : null;
+      return { id: p.id, name: p.name, q: p.q, r: p.r, imageId: card, ...(figure ? { art: figureArtKey(sheet.cardKey, figure) } : {}), active: i === b.active && !b.done };
     }),
     supplies: b.supplies,
     cap: BOARD_SUPPLY_CAP,

@@ -192,8 +192,8 @@ Write this JSON:
  "names": the naming tradition its people and places fit best, going by the names the sources use and where the world is set, one of ${TRADITION_IDS.map((x) => `"${x}"`).join(", ")},
  "modules": {${MODULES.map((m) => `"${m}": true|false`).join(", ")}},
  "places": [{"id": "short_id", "name": "", "description": "one line", "quote": ""}],
- "cast": [{"id": "short_id", "name": "", "role": "who they are, a few words", "pronoun": "she|he|they", "at": "the id of the place above where they're usually found, or empty"}],
- "player": {"concept": "who the persona is, one line", "social": {"presence": 0-4, "menace": 0-4, "guile": 0-4}, "person": "second" or "third" if the sources say how to write the player (as "you", or by name), else null, "coin": how much money the persona or card says the player has at the start, as a number in the currency above, else null},
+ "cast": [{"id": "short_id", "name": "", "role": "who they are, a few words", "pronoun": "she|he|they", "look": "what they look like going by the sources (species, build, hair, eyes, clothes), one line, or empty when the sources don't say", "at": "the id of the place above where they're usually found, or empty"}],
+ "player": {"concept": "who the persona is, one line", "look": "what the player looks like going by the persona, or what the card says the player is when there's no persona (species, build, hair, eyes, clothes), one line, or empty", "pronoun": "she|he|they", "social": {"presence": 0-4, "menace": 0-4, "guile": 0-4}, "person": "second" or "third" if the sources say how to write the player (as "you", or by name), else null, "coin": how much money the persona or card says the player has at the start, as a number in the currency above, else null},
  "not_people": ["the name of any [CARD] above that is a game, narrator, setting or scenario rather than a person someone could meet"]
 }
 Defeat: "claimed" when the sources say whoever wins a fight takes the loser for their own (a prisoner, a pet, a spouse) instead of hurting, robbing or killing them; otherwise "rout".
@@ -540,6 +540,8 @@ export function parseSheet(raw: Record<string, unknown>, src: CardSources, now: 
     player: {
       ...base.player,
       concept: str(p.concept, 160) || base.player.concept,
+      ...(str(p.look, 300) ? { look: str(p.look, 300) } : {}),
+      ...(p.pronoun === "she" || p.pronoun === "he" || p.pronoun === "they" ? { pronoun: p.pronoun } : {}),
       social: { presence: tier(social.presence, 2), menace: tier(social.menace, 1), guile: tier(social.guile, 2) },
       ...(p.person === "second" || p.person === "third" ? { person: p.person } : {}),
       ...(p.coin !== null && p.coin !== "" && Number.isFinite(coin) && coin >= 0 ? { coin } : {}),
@@ -565,7 +567,7 @@ export function mergeEdits(fresh: CardSheet, old: CardSheet | null): CardSheet {
     facts: fresh.facts.map((f) => ({ ...f, about: f.about.map((a) => kept.get(a) ?? a) })),
     modules: old.modulesEdited ? old.modules : fresh.modules,
     modulesEdited: old.modulesEdited,
-    player: old.player.edited && old.player.personaId === fresh.player.personaId ? { ...old.player, person: fresh.player.person, coin: fresh.player.coin } : fresh.player,
+    player: old.player.edited && old.player.personaId === fresh.player.personaId ? { ...old.player, person: fresh.player.person, coin: fresh.player.coin, look: fresh.player.look, pronoun: fresh.player.pronoun } : fresh.player,
   };
 }
 

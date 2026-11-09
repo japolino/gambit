@@ -155,7 +155,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
         if (!missing.length) return;
         const people = missing.map((m) => ({
           name: m.name,
-          description: [`${m.name}: ${m.role}.`, m.look, `A character in ${sheet.cardName} (${sheet.skin.genre}). ${sheet.premise.slice(0, 300)}`, m.evidence?.quote ? `What the card says of them: ${m.evidence.quote.slice(0, 600)}` : ""].filter(Boolean).join(" "),
+          description: [`${m.name}: ${m.role}.`, m.look && `Looks: ${m.look}.`, `A character in ${sheet.cardName} (${sheet.skin.genre}). ${sheet.premise.slice(0, 300)}`, m.evidence?.quote ? `What the card says of them: ${m.evidence.quote.slice(0, 600)}` : ""].filter(Boolean).join(" "),
         }));
         const answer = await inlay.requestProfiles(userId, characterId, people);
         if (!answer || (answer.status !== "started" && answer.status !== "running")) return;

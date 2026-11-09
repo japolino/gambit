@@ -8,7 +8,7 @@
 import { CLASSES } from "../content/classes.js";
 import type { Affinities, Atom, ClassDef, Element, MonsterDef, RigKind, SkillDef, StatBlock, StatusId } from "../types.js";
 import { ELEMENTS } from "../types.js";
-import type { CardSheet, CastMember, Evidence, Tier } from "./types.js";
+import type { CardSheet, CastMember, Evidence, FigurePerson, Tier } from "./types.js";
 
 export type FoeRole = "brute" | "assassin" | "caster" | "support" | "boss";
 export const FOE_ROLES: readonly FoeRole[] = ["brute", "assassin", "caster", "support", "boss"];
@@ -272,6 +272,12 @@ export function partyFromSheet(sheet: Pick<CardSheet, "player" | "cast">, opts: 
     slots.push({ id: `p_${c.id}`, name: c.name, classDef: cls, castId: c.id });
   }
   return slots;
+}
+
+/** The player as their figure is drawn: the persona, else what the card says the player is. */
+export function playerPerson(sheet: Pick<CardSheet, "player">): FigurePerson {
+  const p = sheet.player;
+  return { id: "p_player", name: p.name || "the player", role: p.concept, look: p.look ?? "", pronoun: p.pronoun ?? "they" };
 }
 
 /* ------------------------------ validation ---------------------------- */

@@ -2,9 +2,9 @@
  * A card that is a game or a setting, not a person; a player with no persona; and what such a card's rules ask of a model.
  */
 import { describe, expect, test } from "bun:test";
-import { encounterFrom, parseFoe, partyFromSheet, type SheetFoe } from "../src/engine/card/foes.js";
+import { encounterFrom, parseFoe, partyFromSheet, playerPerson, type SheetFoe } from "../src/engine/card/foes.js";
 import { cleanReply } from "../src/engine/parley/narrate.js";
-import { cardSaysWorld, fallbackSheet, mergeEdits, mergeReads, parseSheet, quoteFound, repairSheet, resolveMacros } from "../src/meaning/card-reader.js";
+import { cardSaysWorld, fallbackSheet, mergeEdits, mergeReads, parseSheet, quoteFound, readerPrompts, repairSheet, resolveMacros } from "../src/meaning/card-reader.js";
 import { salvageJson } from "../src/meaning/referee.js";
 import { narratorPrompt, readFromAnswers, routeQuestions, type StoryContext } from "../src/meaning/story.js";
 import type { CardSheet, CardSources } from "../src/engine/card/types.js";
@@ -87,6 +87,24 @@ describe("a card in Korean", () => {
   test("a quote in Hangul is found in the card", () => {
     expect(quoteFound("토끼 귀를 가진 병사들의 부대다", src.cards[0]!.description)).toBe(true);
     expect(quoteFound("토끼 귀를 가진 마법사들의 왕국이다", src.cards[0]!.description)).toBe(false);
+  });
+});
+
+describe("how people look", () => {
+  const src = sources("Ero Trap Dungeon", "A dungeon run by its officers.");
+
+  test("the reader is asked, and its answer is kept for the cast and the player", () => {
+    expect(readerPrompts(src).world.user).toMatch(/"cast": \[\{[^\]]*"look"/);
+    const sheet = parseSheet(mergeReads({ cast: [{ ...person("Lilim", "trap officer"), look: "short pink twin tails, small bat wings, latex jacket" }], player: { concept: "a newborn monster", look: "a palm-sized green slime", pronoun: "they" } }, null), src, 1);
+    expect(sheet.cast.find((c) => c.name === "Lilim")!.look).toBe("short pink twin tails, small bat wings, latex jacket");
+    expect(sheet.player).toMatchObject({ look: "a palm-sized green slime", pronoun: "they" });
+  });
+
+  test("the player's figure is drawn from the persona, else from what the card says the player is", () => {
+    const sheet = parseSheet({ player: { concept: "a newborn monster", look: "a palm-sized green slime" } }, src, 1);
+    expect(playerPerson(sheet)).toEqual({ id: "p_player", name: "the player", role: "a newborn monster", look: "a palm-sized green slime", pronoun: "they" });
+    const tobin = parseSheet({ player: { concept: "a deserter", look: "dark curly hair, broken nose", pronoun: "he" } }, sources("Harrowmere", "A frontier town.", "Tobin"), 1);
+    expect(playerPerson(tobin)).toMatchObject({ name: "Tobin", look: "dark curly hair, broken nose", pronoun: "he" });
   });
 });
 

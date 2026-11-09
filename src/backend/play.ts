@@ -8,7 +8,7 @@ import type { SpindleAPI } from "lumiverse-spindle-types";
 import type { ArtApi } from "../art/controller.js";
 import { advance, createBattle } from "../engine/battle.js";
 import { chooseAction } from "../engine/ai.js";
-import { encounterFrom, foeFromCast, partyFromSheet, type SheetFoe } from "../engine/card/foes.js";
+import { encounterFrom, foeFromCast, partyFromSheet, playerPerson, type SheetFoe } from "../engine/card/foes.js";
 import { kitClass } from "../engine/card/kits.js";
 import { freshNames } from "../engine/card/naming.js";
 import type { CardSheet, CardSources } from "../engine/card/types.js";
@@ -65,7 +65,7 @@ import { rankOf } from "../engine/forge/forge.js";
 import type { ForgeOp } from "../shared/forge-view.js";
 import type { ClassDef } from "../engine/types.js";
 import { solveSkill } from "../engine/budget.js";
-import type { CastMember } from "../engine/card/types.js";
+import type { CastMember, FigurePerson } from "../engine/card/types.js";
 import { figureCaption, figureTagsPrompt, hasCharacterTag, parseFigureTags, withReaderTags } from "../meaning/figure-tags.js";
 import type { ParleyScenario, ParleyState } from "../engine/parley/types.js";
 import type { InterceptorContextDTO, LlmMessageDTO } from "lumiverse-spindle-types";
@@ -358,7 +358,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
 
 
   /** What keeps a card character the same person in every picture Gambit draws of them. */
-  function castDna(sheet: CardSheet, m: CastMember): CharacterDNA {
+  function castDna(sheet: CardSheet, m: FigurePerson): CharacterDNA {
     const id = `${sheet.cardKey}:${m.id}`;
     return {
       id,
@@ -384,7 +384,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       p = (async () => {
         const look = cards.inlayLook ? await cards.inlayLook(userId, sheet, m).catch(() => null) : null;
         if (look?.tags && hasCharacterTag(look.tags)) return look;
-        const reader = cards.compile ? ((await cards.compile(userId, "figure-tags", figureTagsPrompt(sheet, m), 400, parseFigureTags, () => null, { tries: 2 }).catch(() => null))?.value ?? null) : null;
+        const reader = await readerTags(userId, sheet, m);
         // Inlay's traits without a character tag draw a generic person: the reader's character tag goes in front.
         if (look?.tags) return { ...look, tags: withReaderTags(look.tags, reader) };
         return reader ? { tags: figureCaption(reader), ...(reader.sex !== "other" ? { sex: reader.sex } : {}) } : null;
@@ -396,12 +396,17 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return p;
   }
 
+  /** The reader model's Danbooru tags for someone (the ledger keeps the answer). */
+  const readerTags = async (userId: string, sheet: CardSheet, m: FigurePerson) =>
+    cards.compile ? ((await cards.compile(userId, "figure-tags", figureTagsPrompt(sheet, m), 400, parseFigureTags, () => null, { tries: 2 }).catch(() => null))?.value ?? null) : null;
+
+  /** castDna with these tags as the caption. The description goes to GPT, which reads no tags otherwise. */
+  const withTags = (dna: CharacterDNA, m: FigurePerson, tags: string, sex?: "girl" | "boy" | "other"): CharacterDNA => ({ ...dna, booru: tags, description: `${m.name}: ${m.look || m.role}. ${tags}`, ...(sex ? { sex } : {}) });
+
   /** castDna with Inlay's tags as the caption when Inlay knows them. */
   async function tagDna(userId: string, sheet: CardSheet, m: CastMember): Promise<CharacterDNA> {
-    const dna = castDna(sheet, m);
     const look = await inlayFor(userId, sheet, m);
-    // The description goes to GPT, which reads no tags otherwise.
-    return look?.tags ? { ...dna, booru: look.tags, description: `${m.name}: ${m.look || m.role}. ${look.tags}`, ...(look.sex ? { sex: look.sex } : {}) } : dna;
+    return look?.tags ? withTags(castDna(sheet, m), m, look.tags, look.sex) : castDna(sheet, m);
   }
 
   /**
@@ -409,14 +414,27 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
    * there, else the reader's; no reference image), transparent. It replaces
    * their framed card art, or the old bust portrait. Returns its key.
    */
-  function requestFigure(userId: string, sheet: CardSheet, m: CastMember, priority: 0 | 1 | 2): string | null {
+  function requestFigure(userId: string, sheet: CardSheet, m: CastMember, priority: 0 | 1 | 2): string {
+    return figureOf(userId, sheet, m, priority, true, () => tagDna(userId, sheet, m));
+  }
+
+  /** The player's figure, drawn by Gambit from the reader's tags for the persona: Inlay knows the card's people, not the player. */
+  function requestPlayerFigure(userId: string, sheet: CardSheet, priority: 0 | 1 | 2): string {
+    const me = playerPerson(sheet);
+    return figureOf(userId, sheet, me, priority, false, async () => {
+      const t = await readerTags(userId, sheet, me);
+      return t ? withTags(castDna(sheet, me), me, figureCaption(t), t.sex === "other" ? undefined : t.sex) : castDna(sheet, me);
+    });
+  }
+
+  function figureOf(userId: string, sheet: CardSheet, m: FigurePerson, priority: 0 | 1 | 2, inlay: boolean, dna: () => Promise<CharacterDNA>): string {
     const key = figureArtKey(sheet.cardKey, m.id);
     // Ready: asking again re-sends it (a reloaded page has no other way to learn it); the spec is not used.
     const ready = art.status(key, userId)?.state === "ready";
     if (ready) art.request(key, { kind: "figure", character: castDna(sheet, m) }, priority, userId);
-    const job = tagDna(userId, sheet, m)
+    const job = dna()
       .then((character) => {
-        const chatId = chats.get(chatKey(userId, sheet));
+        const chatId = inlay ? chats.get(chatKey(userId, sheet)) : undefined;
         return figures.request(userId, key, character, priority, log, chatId ? { chatId, role: m.role } : undefined);
       })
       .catch(() => undefined);
@@ -508,6 +526,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     for (const m of b.party) {
       const c = sheet.cast.find((x) => `p_${x.id}` === m.id);
       if (c) requestFigure(userId, sheet, c, 1);
+      else if (m.id === "p_player") requestPlayerFigure(userId, sheet, 1);
     }
   }
 
@@ -918,10 +937,11 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       const book = bookOf(r);
       mine.classDef = { ...pc.def, skills: [...pc.def.skills, ...combo] };
       mine.level = 4 + rankOf(book.classes[book.active]?.wins ?? 0);
+      // A class they made has a portrait of its own; otherwise the player is drawn as who the persona is.
       if (pc.art) {
         mine.art = pc.art;
         classes[pc.def.id] = { id: pc.def.id, name: pc.def.name, visual: pc.def.visual };
-      } else if (pc.def !== cardDef && !pc.def.id.includes("~")) mine.art = `class:${pc.def.id}:${t}.p_player`;
+      } else mine.art = requestPlayerFigure(userId, sheet, 0);
     }
     let state = createBattle({ id: `${t}.${enc.id}.${Date.now().toString(36)}`, seed, party, enemies });
     // Someone from the card fights as themselves, not as a creature drawn from their name.

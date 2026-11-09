@@ -4,7 +4,7 @@
  * lists what they look like, so a V5 figure is drawn on-model without a
  * reference image. Asked once per person (the ledger keeps the answer).
  */
-import type { CardSheet, CastMember } from "../engine/card/types.js";
+import type { CardSheet, FigurePerson } from "../engine/card/types.js";
 
 export interface FigureTags {
   /** "name (series)" when they are a known character, else "". */
@@ -14,7 +14,7 @@ export interface FigureTags {
   sex: "girl" | "boy" | "other";
 }
 
-export function figureTagsPrompt(sheet: CardSheet, m: CastMember): { system: string; user: string } {
+export function figureTagsPrompt(sheet: CardSheet, m: FigurePerson): { system: string; user: string } {
   const user = [
     `Write NovelAI / Danbooru tags to draw one character as a full-body figure.`,
     ``,
