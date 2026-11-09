@@ -124,7 +124,7 @@ When Inlay Illustrator is installed, Gambit reads its character library over the
 - The Card Sheet can be exported as a lorebook, so the narrator can know Gambit's additions even with Gambit off.
 - It stands down on chats where Warp is active (12.1).
 
-**How a contest fits the card.** A contest's *shape* comes from the scene and the sheet: its kind, what is at stake, and the track's unit (crowns, credits, favors, minutes of a guard's patience). Its *size* comes from code tables keyed to the stake and the NPC's stance tier: start, floor, DC, and patience. This is pillar 3 applied to Parley. Encounters work the same way: the card names the enemies and their style, and the budget solver sets the numbers.
+**How a contest fits the card.** A contest's *shape* comes from the scene and the sheet: its kind, what is at stake, and the track's unit (crowns, credits, favors, minutes of a guard's patience). Its *size* comes from code tables keyed to the stake and the NPC's stance tier: start, floor, DC, and patience. A price the NPC already offered in the story (free included) is never below the floor, so the talk can reach it. This is pillar 3 applied to Parley. Encounters work the same way: the card names the enemies and their style, and the budget solver sets the numbers.
 
 **Demo content.** Saltgate (Marta, Pell, Vey) ships as a demo card plus lorebook, not as built-in content, and goes through the same Card Reader. Its hand-written scenarios stay as test fixtures for the engine.
 

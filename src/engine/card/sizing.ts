@@ -117,7 +117,10 @@ export function contestFrom(frame: ContestFrame, c: CastMember, currency: string
     const start = frame.price && frame.price > 0 ? Math.round(frame.price) : DEFAULT_PRICE[frame.stakeSize - 1]!;
     const money = !frame.unit || !NOT_MONEY.test(frame.unit);
     const share = [0.66, 0.7, 0.74, 0.78, 0.82][c.temperament.greed];
-    return { kind: "haggle", track: "price", stake: frame.stake, money, unit: (money ? currency || frame.unit : frame.unit) || undefined, start, floor: Math.round(start * share), hardFloor: Math.round(start * 0.5), dc };
+    // A price they already offered is one they'd take.
+    const offered = frame.offered !== undefined && frame.offered < start ? frame.offered : start;
+    const floor = Math.min(Math.round(start * share), offered);
+    return { kind: "haggle", track: "price", stake: frame.stake, money, unit: (money ? currency || frame.unit : frame.unit) || undefined, start, floor, hardFloor: Math.min(Math.round(start * 0.5), floor), dc };
   }
   return { kind: frame.kind, track: TRACK[frame.kind], stake: frame.stake, start: 100, floor: FLOOR_BY_STAKE[frame.stakeSize], hardFloor: 0, winAt: 0, dc };
 }

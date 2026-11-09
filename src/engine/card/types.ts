@@ -200,6 +200,8 @@ export interface ContestFrame {
   stakeSize: 1 | 2 | 3 | 4;
   /** Haggle: the asking price, if one was named. */
   price: number | null;
+  /** Haggle: the lowest price they already offered in the story (0 for free), which the talk has to be able to reach. */
+  offered?: number;
   unit: string | null;
   setting: string;
   opening: string;

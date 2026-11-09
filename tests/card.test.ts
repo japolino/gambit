@@ -164,6 +164,13 @@ describe("contests from a card", () => {
     expect(persuade).toMatchObject({ track: "resistance", start: 100, floor: 35, winAt: 0 });
   });
 
+  test("a price they already offered can be reached, free included", () => {
+    const frame = parseFrame({ kind: "haggle", stake: "a room for the night", stake_size: 1, price: 2, lowest_offer: 0, unit: "coppers" }, sheet, "ilse_varga");
+    expect(contestFrom(frame, sheet.cast[0]!, "")).toMatchObject({ start: 2, floor: 0, hardFloor: 0 });
+    const higher = parseFrame({ kind: "haggle", stake: "passage upriver", stake_size: 3, price: 200, lowest_offer: 190 }, sheet, "ilse_varga");
+    expect(contestFrom(higher, sheet.cast[0]!, "")).toMatchObject({ floor: 164, hardFloor: 100 });
+  });
+
   test("no talk starts out unwinnable: a wall is never higher than the facts on that person can take down", () => {
     const ilse = sheet.cast[0]!.id;
     const frame = (size: 1 | 2 | 3 | 4) => parseFrame({ kind: "persuade", stake: "passage upriver", stake_size: size }, sheet, ilse);
