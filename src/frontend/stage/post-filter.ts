@@ -1,7 +1,9 @@
 /**
  * The pixel themes' picture treatment (skin.ts PostSkin): the art layers (backdrop, figures, effects, cut-ins)
- * snapped to one screen-wide grid of fat pixels, then ordered-dithered (4x4 Bayer) to two tones (1-bit) or to a
- * small palette (the terminal's EGA half), with optional scanlines. The HUD is drawn natively in the theme and
+ * snapped to one screen-wide grid of fat pixels, then cut to two tones (1-bit: the figures on the manga screens,
+ * the rest ordered-dithered, 4x4 Bayer) or dithered to a small palette (the terminal's EGA half), with optional
+ * scanlines. Generated art comes in already
+ * through the manga treatment (puppet/source.ts mangaCanvas), its ink lines kept in solid ink. The HUD is drawn natively in the theme and
  * is not filtered, so type stays sharp. GLSL only (the stage asks for WebGL).
  */
 import { Filter, GlProgram } from "pixi.js";
@@ -32,6 +34,7 @@ uniform highp vec4 uOutputFrame;
 uniform highp vec4 uInputClamp;
 uniform float uCell;
 uniform float uMono;
+uniform float uScreens;
 uniform float uScan;
 uniform float uCount;
 uniform float uGain;
@@ -41,25 +44,44 @@ uniform vec3 uPal[${MAX}];
 float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
 float bayer(vec2 p) { return bayer2(0.5 * p) * 0.25 + bayer2(p) + 1.0 / 32.0; }
 
+// The manga screens (src/frontend/art/manga.ts SCREEN): checker cells at .28, the sparse dot at .68, the rest at .5.
+float screen2(vec2 p) {
+  vec2 m = mod(p, 2.0);
+  return abs(m.x - m.y) > 0.5 ? 0.28 : (m.x < 0.5 ? 0.68 : 0.5);
+}
+
 void main(void) {
   // Screen position (logical px) so every filtered layer shares one grid.
   vec2 screen = uOutputFrame.xy + vTextureCoord * uInputSize.xy;
   vec2 cell = floor(screen / uCell);
-  vec2 uv = ((cell + 0.5) * uCell - uOutputFrame.xy) * uInputSize.zw;
-  uv = clamp(uv, uInputClamp.xy, uInputClamp.zw);
-  vec4 c = texture(uTexture, uv);
+  // Nine taps across the cell. Art prepared for this shader (puppet/source.ts mangaCanvas) carries its ink lines in
+  // black: a cell is ink when a third of its taps are near black, so a line is not lost between cell centres.
+  vec4 c = vec4(0.0);
+  vec4 rest = vec4(0.0);
+  float ink = 0.0;
+  for (int j = 0; j < 3; j++) {
+    for (int i = 0; i < 3; i++) {
+      vec2 p = (cell + (vec2(float(i), float(j)) + 0.5) / 3.0) * uCell;
+      vec4 s = texture(uTexture, clamp((p - uOutputFrame.xy) * uInputSize.zw, uInputClamp.xy, uInputClamp.zw));
+      c += s;
+      if (s.a > 0.5 && max(s.r, max(s.g, s.b)) < 0.06 * s.a) ink += 1.0;
+      else rest += s;
+    }
+  }
+  c /= 9.0;
   float t = bayer(cell);
   // Hard pixel edges: coverage is dithered too.
   if (c.a < t * 0.9 + 0.05) { finalColor = vec4(0.0); return; }
-  vec3 rgb = c.rgb / max(c.a, 0.0001) * uGain;
+  bool line = ink >= 3.0;
+  vec3 rgb = rest.a > 0.0 ? rest.rgb / rest.a * uGain : vec3(0.0);
   vec3 outc;
   if (uMono > 0.5) {
     float l = dot(rgb, vec3(0.299, 0.587, 0.114));
     // A little contrast so midtones keep shape.
     l = clamp((l - 0.5) * 1.25 + 0.5, 0.0, 1.0);
-    outc = l > t ? uPal[1] : uPal[0];
+    outc = !line && l > (uScreens > 0.5 ? screen2(cell) : t) ? uPal[1] : uPal[0];
   } else {
-    vec3 d = rgb + (t - 0.5) * 0.34;
+    vec3 d = line ? vec3(0.0) : rgb + (t - 0.5) * 0.34;
     float best = 1e9;
     outc = uPal[0];
     for (int i = 0; i < ${MAX}; i++) {
@@ -76,8 +98,11 @@ void main(void) {
 let program: GlProgram | null = null;
 
 export class PostFilter extends Filter {
-  /** `gain` scales the picture before it is quantized (below 1 sinks a backdrop under the figures). */
-  constructor(post: PostSkin, gain = 1) {
+  /**
+   * `gain` scales the picture before it is quantized (below 1 sinks a backdrop under the figures). `screens`: 1-bit
+   * tones go to the manga screens (figures, cut-ins), else to the Bayer dither (soft light, effects, the backdrop).
+   */
+  constructor(post: PostSkin, gain = 1, screens = false) {
     program ??= GlProgram.from({ vertex, fragment, name: "gambit-post" });
     const pal = new Float32Array(MAX * 3);
     post.palette.slice(0, MAX).forEach((c, i) => {
@@ -91,6 +116,7 @@ export class PostFilter extends Filter {
         postUniforms: {
           uCell: { value: 3, type: "f32" },
           uMono: { value: post.kind === "mono" ? 1 : 0, type: "f32" },
+          uScreens: { value: screens ? 1 : 0, type: "f32" },
           uScan: { value: post.scanlines ? 1 : 0, type: "f32" },
           uGain: { value: gain, type: "f32" },
           uCount: { value: Math.min(MAX, post.palette.length), type: "f32" },

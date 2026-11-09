@@ -72,6 +72,8 @@ export class BattleStage {
   private postBack: PostFilter | null = null;
   /** Brighter, for the party busts and timeline chips (small, dark faces vanish in two tones otherwise). */
   private postBust: PostFilter | null = null;
+  /** For the effects: soft light, so dithered rather than screened. */
+  private postFx: PostFilter | null = null;
   readonly flash = new Graphics();
   /** The scene theme's battle (layout, HUD pieces, decoration), fixed for this stage's life. */
   readonly theme: BattleTheme | null = currentBattleTheme();
@@ -104,7 +106,7 @@ export class BattleStage {
   constructor(readonly app: Application, private opts: StageOptions) {
     this.state = opts.state;
     this.clock = new Clock(app.ticker);
-    this.art = new ArtStore();
+    this.art = new ArtStore(SKIN.post);
     this.baseResolution = app.renderer.resolution;
     this.layout = this.computeLayout(app.screen.width, app.screen.height);
     this.floaters = new Floaters(this.floatLayer, this.clock, () => this.layout.ui, () => this.reduced);
@@ -113,15 +115,17 @@ export class BattleStage {
     app.stage.addChild(this.back, this.field, this.bgShade, this.hud, this.fxLayer, this.floatLayer, this.flash, this.cutLayer);
     if (SKIN.post) {
       // Figures, busts, effects and cut-ins each carry the filter; nameplates and the HUD stay sharp.
-      this.post = new PostFilter(SKIN.post);
+      this.post = new PostFilter(SKIN.post, 1, true);
       this.postBack = new PostFilter(SKIN.post, SKIN.post.kind === "mono" ? 0.5 : 0.6);
-      this.postBust = new PostFilter(SKIN.post, 1.35);
+      this.postBust = new PostFilter(SKIN.post, 1.35, true);
+      this.postFx = new PostFilter(SKIN.post);
       this.postBust.fit(app.screen.height);
       this.timeline.chipFilters = [this.postBust];
       this.post.fit(app.screen.height);
       this.postBack.fit(app.screen.height);
+      this.postFx.fit(app.screen.height);
       this.back.filters = [this.postBack];
-      this.fxLayer.filters = [this.post];
+      this.fxLayer.filters = [this.postFx];
       this.cutLayer.filters = [this.post];
     }
     this.hud.addChild(this.timeline, this.menu);
@@ -212,7 +216,7 @@ export class BattleStage {
   setArt(key: string, url: string, opts: ArtOptions = {}): void {
     if (key === this.state.meta?.backdrop) {
       // A card battle is fought in the scene's own painting (6.1).
-      void this.art.setArt(key, url, false).then((src) => {
+      void this.art.setArt(key, url, false, true).then((src) => {
         if (!src || this.destroyed) return;
         this.bg.texture = src.texture;
         this.plate.filters = [];
@@ -263,6 +267,7 @@ export class BattleStage {
     this.post?.fit(h);
     this.postBack?.fit(h);
     this.postBust?.fit(h);
+    this.postFx?.fit(h);
     this.bgShade.clear();
     const shadeTop = l.portrait ? l.enemyArea.h * 0.86 : l.floorY - 20 * l.ui;
     this.bgShade.rect(0, shadeTop, w, h - shadeTop).fill(vgrad(C.ink, C.ink, 0, l.portrait ? 0.92 : 0.78));

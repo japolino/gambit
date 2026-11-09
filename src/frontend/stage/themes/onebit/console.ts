@@ -404,7 +404,7 @@ export function decorateConsole(stage: BattleStage): StageDecor {
     // The art shaders on this grid.
     const cellH = u * post.rows;
     const s = stage as unknown as Record<string, PostFilter | null | undefined>;
-    for (const k of ["post", "postBack", "postBust"]) s[k]?.fit(cellH);
+    for (const k of ["post", "postBack", "postBust", "postFx"]) s[k]?.fit(cellH);
     // The place lit as the scene's viewport is (the stage sinks it for its own HUD); the vignette darkens it here.
     const pb = s.postBack as unknown as { resources: { postUniforms: { uniforms: { uGain: number } } } } | undefined;
     // (A phone's vignette is lighter, so the place is held down instead: the figures must carry the small view.)

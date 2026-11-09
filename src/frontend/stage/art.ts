@@ -15,6 +15,7 @@ import { paintBattlefield, paintBust, paintFigure } from "./placeholder.js";
 import { keyedSourceFromUrl, sourceFromCanvas, sourceFromUrl, type FigureSource } from "./puppet/source.js";
 import { buildFigureRig } from "./puppet/rig-build.js";
 import { parsePalette } from "./theme.js";
+import type { PostSkin } from "./skin.js";
 
 /** Palette of a class or monster id; a hash-picked muted palette for unknown ids (generated content). */
 export function paletteFor(defId: string, art: string): number[] {
@@ -61,6 +62,9 @@ function faceCrop(pick: ArtPick, kind: RigKind, tall: boolean): { texture: Textu
 }
 
 export class ArtStore {
+  /** `post`: a pixel theme's shader, which generated art is prepared for (puppet/source.ts). */
+  constructor(private post: PostSkin | null = null) {}
+
   private figures = new Map<string, FigureSource>();
   private busts = new Map<string, FigureSource>();
   private crops = new Map<string, { texture: Texture; face: { x: number; y: number } }>();
@@ -68,19 +72,22 @@ export class ArtStore {
 
   /**
    * Set the generated image for an art key. Resolves with the loaded source
-   * (null when it fails); the same URL again is a no-op.
+   * (null when it fails); the same URL again is a no-op. `whole`: the image
+   * fills the stage (the backdrop), so a pixel theme prepares it at its full
+   * rows; figures stand a little over half as tall.
    */
-  setArt(key: string, url: string, cutout = true): Promise<FigureSource | null> {
+  setArt(key: string, url: string, cutout = true, whole = false): Promise<FigureSource | null> {
     const prev = this.custom.get(key);
     if (prev && prev.url === url && prev.asked === cutout) return prev.promise;
     const entry: Custom = { url, asked: cutout, cutout, source: null, promise: Promise.resolve(null) };
+    const prep = this.post ? { post: this.post, rows: Math.round(this.post.rows * (whole ? 1 : 0.6)) } : null;
     // An opaque cut-in face (V5 inset on white) is keyed so it stands in the band.
     const load = !cutout && isCutinArtKey(key)
-      ? keyedSourceFromUrl(url).then((keyed) => {
+      ? keyedSourceFromUrl(url, prep).then((keyed) => {
           if (keyed) entry.cutout = true;
-          return keyed ?? sourceFromUrl(url);
+          return keyed ?? sourceFromUrl(url, prep);
         })
-      : sourceFromUrl(url);
+      : sourceFromUrl(url, prep);
     entry.promise = load.then((src) => {
       if (this.custom.get(key) === entry) entry.source = src;
       return src;
