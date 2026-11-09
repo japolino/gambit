@@ -31,7 +31,7 @@ import { PostFilter } from "../../post-filter.js";
 import { SKIN } from "../../skin.js";
 import { STATUS_STYLE } from "../../theme.js";
 import type { StageDecor } from "../types.js";
-import { Frame, INK, PAPER, bayer, type Rect } from "../../../scene/themes/onebit/fb.js";
+import { Frame, INK, PAPER, bayer, drawForeign, type Rect } from "../../../scene/themes/onebit/fb.js";
 import { loadFont, wrap, type BitFont } from "../../../scene/themes/onebit/font.js";
 import { ROW, inner, isCompact, pillarW, viewIn, type ObLayout, type ObStageLayout } from "./layout.js";
 import { ObCard, ObMenu, ObOrder, dirty } from "./hud.js";
@@ -43,6 +43,8 @@ const HOLE = 3;
 const CAP_H = 24;
 const C_INK = 0xff070708;
 const C_PAPER = 0xffe6eef0;
+const CSS_INK = "#080707";
+const CSS_PAPER = "#f0eee6";
 
 const GLASS = [
   ["#######", "#.....#", ".#####.", "..###..", "...#...", "..#.#..", ".#...#.", "#.....#", "#######"],
@@ -99,6 +101,14 @@ export function decorateConsole(stage: BattleStage): StageDecor {
   const sprite = new Sprite();
   sprite.roundPixels = true;
   stage.hud.addChildAt(sprite, 0);
+  // Letters the bitmap face lacks, drawn sharp on a layer over the frame (fb.ts drawForeign).
+  const fxCanvas = document.createElement("canvas");
+  const fxg = fxCanvas.getContext("2d")!;
+  let fxTex: Texture | null = null;
+  let fxShown = false;
+  let k = 1;
+  const fxSprite = new Sprite();
+  stage.hud.addChildAt(fxSprite, 1);
   // A soft light behind the figures (inside the place's layer, so the place's dither prints it): the vault
   // above their heads reads lit, and the ink moat around their hoods shows against it.
   const glowCv = document.createElement("canvas");
@@ -401,6 +411,17 @@ export function decorateConsole(stage: BattleStage): StageDecor {
     }
     sprite.scale.set(u);
     sprite.position.set(0, 0);
+    fb.foreign ??= [];
+    k = Math.max(1, Math.round(u * stage.app.renderer.resolution));
+    if (!fxTex || fxCanvas.width !== L.W * k || fxCanvas.height !== L.H * k) {
+      fxCanvas.width = L.W * k;
+      fxCanvas.height = L.H * k;
+      fxTex?.destroy(true);
+      fxTex = Texture.from(fxCanvas);
+      fxSprite.texture = fxTex;
+      fxShown = true;
+    }
+    fxSprite.scale.set(u / k);
     // The art shaders on this grid.
     const cellH = u * post.rows;
     const s = stage as unknown as Record<string, PostFilter | null | undefined>;
@@ -1088,6 +1109,13 @@ export function decorateConsole(stage: BattleStage): StageDecor {
     for (let i = 0; i < p.length; i++) out[i] = p[i] === HOLE ? 0 : p[i] ? C_PAPER : C_INK;
     g2.putImageData(img, 0, 0);
     tex?.source.update();
+    // The layer is uploaded only while it shows letters, and once more to clear them.
+    const shows = !!fb.foreign?.length;
+    if (shows || fxShown) {
+      drawForeign(fb, fxg, k, CSS_INK, CSS_PAPER);
+      fxTex?.source.update();
+    }
+    fxShown = shows;
     syncHits();
   }
 
@@ -1122,6 +1150,7 @@ export function decorateConsole(stage: BattleStage): StageDecor {
       layer.remove();
       dirty.fn = () => {};
       tex?.destroy(true);
+      fxTex?.destroy(true);
       glow.destroy();
       glowTex.destroy(true);
     },

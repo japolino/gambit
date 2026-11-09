@@ -12,6 +12,8 @@ export type Glyph = Uint8Array;
 
 export interface BitFont {
   glyph(ch: string): Glyph;
+  /** False for a letter the face lacks (Hangul, kana, Cyrillic...): its 8x8 sample can't be read, so a console draws it sharp over the frame (fb.ts). */
+  has(ch: string): boolean;
 }
 
 const EXTRA: Record<string, number[]> = {
@@ -37,7 +39,8 @@ export function plain(s: string): string {
     .replace(/…/g, "...")
     .replace(/ /g, " ")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFC");
 }
 
 let loading: Promise<BitFont> | null = null;
@@ -74,9 +77,7 @@ async function build(): Promise<BitFont> {
   let ox = N, oy = N;
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (h[(y * N + x) * 4 + 3]! > 127) { ox = Math.min(ox, x); oy = Math.min(oy, y); }
   if (ox >= N) { ox = O; oy = O; }
-  const table = new Map<string, Glyph>();
-  for (let code = 32; code < 127; code++) {
-    const ch = String.fromCharCode(code);
+  const sample = (ch: string): Glyph => {
     const d = raw(ch);
     const rows = new Uint8Array(8);
     for (let r = 0; r < 8; r++) {
@@ -88,11 +89,16 @@ async function build(): Promise<BitFont> {
       }
       rows[r] = bits;
     }
-    table.set(ch, rows);
-  }
+    return rows;
+  };
+  const table = new Map<string, Glyph>();
+  for (let code = 32; code < 127; code++) table.set(String.fromCharCode(code), sample(String.fromCharCode(code)));
   for (const [k, rows] of Object.entries(EXTRA)) table.set(k, Uint8Array.from(rows));
-  const unknown = table.get("?")!;
-  return { glyph: (ch) => table.get(ch) ?? unknown };
+  const sampled = new Map<string, Glyph>();
+  return {
+    glyph: (ch) => table.get(ch) ?? sampled.get(ch) ?? sampled.set(ch, sample(ch)).get(ch)!,
+    has: (ch) => table.has(ch),
+  };
 }
 
 /** Word-wrap to `cols` characters; words longer than a line are cut. */

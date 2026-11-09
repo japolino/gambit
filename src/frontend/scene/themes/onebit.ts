@@ -25,7 +25,7 @@ import { esc, type MenuItem, type SceneView, type ThemeCtx, type ThemeFactory, t
 import { loadFont, plain, wrap, wrapStyled, type BitFont } from "./onebit/font.js";
 import { storyRuns } from "../../story-text.js";
 import { beatsHtml, canWrite, isWriting, wireWrite, writeFormHtml } from "./write.js";
-import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "./onebit/fb.js";
+import { BAYER8, Frame, INK, PAPER, drawForeign, type Bits, type Rect } from "./onebit/fb.js";
 import { bustBits, personBits, placeField, textureField } from "./onebit/art.js";
 import { screen } from "../../art/manga.js";
 import { Corridor } from "./onebit/corridor.js";
@@ -47,6 +47,7 @@ const CSS = `
 .ob-thumb { position: absolute; right: 0; width: 4px; background: ${CSS_PAPER}; outline: 1px solid ${CSS_INK}; pointer-events: none; z-index: 3; }
 .ob-stage { position: relative; }
 .ob-cv { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.ob-fx { position: absolute; left: 0; top: 0; pointer-events: none; }
 .ob-hits { position: absolute; inset: 0; }
 /* Nothing here is drawn at native resolution, the words you type included: the field is there for the keyboard and the
    caret, and the frame buffer paints what's in it. 16px, or a phone zooms in on it. */
@@ -159,7 +160,7 @@ const pad = (r: Rect, n: number): Rect => ({ x: r.x + n, y: r.y + n, w: r.w - 2 
 
 export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const root = ctx.root;
-  root.innerHTML = `<style>${CSS}</style><div class="ob"><div class="ob-scroll"><div class="ob-stage"><canvas class="ob-cv" aria-hidden="true"></canvas><div class="ob-hits"></div>${writeFormHtml("ob-say")}</div></div><div class="ob-world"></div><svg class="ob-hexsrc" aria-hidden="true"></svg><div class="ob-sr" role="region" aria-label="Scene"></div></div>`;
+  root.innerHTML = `<style>${CSS}</style><div class="ob"><div class="ob-scroll"><div class="ob-stage"><canvas class="ob-cv" aria-hidden="true"></canvas><canvas class="ob-fx" aria-hidden="true"></canvas><div class="ob-hits"></div>${writeFormHtml("ob-say")}</div></div><div class="ob-world"></div><svg class="ob-hexsrc" aria-hidden="true"></svg><div class="ob-sr" role="region" aria-label="Scene"></div></div>`;
   const ob = root.querySelector(".ob") as HTMLDivElement;
   const scroller = root.querySelector(".ob-scroll") as HTMLDivElement;
   // A phone's page is taller than the screen, and its scrollbar is hidden: say so, and offer a thumb's way down.
@@ -213,6 +214,8 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const sr = root.querySelector(".ob-sr") as HTMLDivElement;
   (root.querySelector(".ob-world") as HTMLDivElement).append(ctx.world);
   const g2 = cv.getContext("2d")!;
+  const fx = root.querySelector(".ob-fx") as HTMLCanvasElement;
+  const fxg = fx.getContext("2d")!;
   const host = root.parentElement as HTMLElement | null;
 
   let font: BitFont | null = null;
@@ -1488,13 +1491,20 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     L = layout(v);
     if (fb.w !== L.W || fb.h !== L.H) {
       fb = new Frame(L.W, L.H);
+      fb.foreign = [];
       cv.width = L.W;
       cv.height = L.H;
     }
+    if (fx.width !== L.W * s || fx.height !== L.H * s) {
+      fx.width = L.W * s;
+      fx.height = L.H * s;
+    }
     stage.style.width = `${L.W * u}px`;
     stage.style.height = `${L.H * u}px`;
-    cv.style.width = `${L.W * u}px`;
-    cv.style.height = `${L.H * u}px`;
+    for (const c of [cv, fx]) {
+      c.style.width = `${L.W * u}px`;
+      c.style.height = `${L.H * u}px`;
+    }
     const rw = root.clientWidth, rh = root.clientHeight;
     stage.style.left = `${Math.max(0, Math.floor((rw - L.W * u) / 2))}px`;
     stage.style.top = L.mode === "tall" ? "0px" : `${Math.max(0, Math.floor((rh - L.H * u) / 2))}px`;
@@ -1517,6 +1527,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     if (ctx.journal.open) paintJournal(v);
     if (themeMenu) paintThemeMenu(v);
     fb.present(g2, C_INK, C_PAPER);
+    drawForeign(fb, fxg, s, CSS_INK, CSS_PAPER);
     syncHits();
     lastPaint = time;
     // A phone's page holds the whole story: take them to the newest beat. (Here, not on arrival: the first paints come before the font.)

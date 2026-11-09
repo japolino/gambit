@@ -159,6 +159,12 @@ if (new URLSearchParams(location.search).get("long") === "1") {
   const long = ["Captain Hollis Ashworth", "River Gate Guards", "Sister Maren Voss"];
   (sheet.cast as { name: string }[]).forEach((m, i) => (m.name = long[i % 3]!));
 }
+// ?ko=1: names in Hangul and kana, as Korean and Japanese cards have them, to check that every theme shows them.
+const KO = new URLSearchParams(location.search).get("ko") === "1";
+if (KO) {
+  const ko = ["레퍼리드 사단", "한소연", "リリム"];
+  (sheet.cast as { name: string }[]).forEach((m, i) => (m.name = ko[i % 3]!));
+}
 // ?story=N: a story long enough to test the reading room.
 const storyBeats = Number(new URLSearchParams(location.search).get("story") ?? 0);
 if (storyBeats) {
@@ -431,6 +437,7 @@ refresh();
   layer.style.cssText = "position:absolute;inset:0;z-index:50;";
   if (kind === "battle") {
     const state = demoBattle(q.get("seed") ?? "encounter");
+    if (KO) state.combatants.forEach((c, i) => (c.name = ["레퍼리드 사단", "한소연", "リリム", "Привет"][i % 4]!));
     const staged = handle.encounter({
       kind: "battle",
       enemies: state.combatants.filter((c) => c.side === "enemy").map((c) => ({ id: c.id, name: c.name, art: c.art })),
@@ -445,7 +452,7 @@ refresh();
     const staged = handle.encounter({ kind: "parley", personId: "marrow", name: "Marrow the Ferryman" });
     if (!staged) handle.hide();
     const frame = document.createElement("iframe");
-    frame.src = `/parley?${theme ? `theme=${theme}&` : ""}snap=${q.get("snap") ?? "0"}${staged ? "&inroom=1" : ""}`;
+    frame.src = `/parley?${theme ? `theme=${theme}&` : ""}${KO ? "ko=1&" : ""}snap=${q.get("snap") ?? "0"}${staged ? "&inroom=1" : ""}`;
     frame.setAttribute("allowtransparency", "true");
     frame.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;";
     layer.append(frame);

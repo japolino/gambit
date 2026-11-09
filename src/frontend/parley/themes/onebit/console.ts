@@ -18,7 +18,7 @@
  * a wide short screen (landscape) puts the input and the deal beside the log.
  */
 import type { ParleyDecor, ParleyThemeCtx } from "../types.js";
-import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "../../../scene/themes/onebit/fb.js";
+import { BAYER8, Frame, INK, PAPER, drawForeign, type Bits, type Rect } from "../../../scene/themes/onebit/fb.js";
 import { loadFont, wrap, type BitFont } from "../../../scene/themes/onebit/font.js";
 import { bustBits, personBits, placeField } from "../../../scene/themes/onebit/art.js";
 import { screen } from "../../../art/manga.js";
@@ -26,6 +26,8 @@ import { ditherUrl } from "../../../art/dither.js";
 
 const C_INK = 0xff070708;
 const C_PAPER = 0xffe6eef0;
+const CSS_INK = "#080707";
+const CSS_PAPER = "#f0eee6";
 
 type Mode = "wide" | "std" | "tall";
 interface Lay { mode: Mode; W: number; H: number; view: Rect; log: Rect; head: Rect; foot: Rect; keys: Rect; /** What you know: its own window (null: over the chronicle, when F1 opens it). */ know: Rect | null }
@@ -49,6 +51,12 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
   cv.setAttribute("aria-hidden", "true");
   root.prepend(cv);
   const g2 = cv.getContext("2d")!;
+  const fx = document.createElement("canvas");
+  fx.className = "ob-cv";
+  fx.setAttribute("aria-hidden", "true");
+  cv.after(fx);
+  const fxg = fx.getContext("2d")!;
+  let k = 2;
   // The function keys and the journal window: the view's own buttons and list, moved onto the strip / a window.
   const keys = document.createElement("div");
   keys.className = "ob-keys";
@@ -198,14 +206,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     P = { W, H, short, land, sheet, playing, head, foot, area, log, gut, view, modeRow, know, knowGut };
     L = { mode: "tall", W, H, view: view ?? area, log, head, foot, keys: area, know };
     root.classList.toggle("ob-playing", playing);
-    if (cv.width !== W || cv.height !== H) {
-      cv.width = W;
-      cv.height = H;
-      fb = new Frame(W, H);
-      img = null;
-    }
-    cv.style.width = `${W * u}px`;
-    cv.style.height = `${H * u}px`;
+    frameAt(W, H);
     // The DOM on the boxes. The scene takes no room unless the picture is out; a playing moment takes the whole log.
     put(q<HTMLElement>(".head"), head.x + 2, head.y + (short ? 1 : 11), head.w - 4, head.h - (short ? 2 : 12));
     const btnW = 38;
@@ -220,6 +221,26 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     root.style.setProperty("--ob-jh", "100%");
     lightKey = "";
     paint();
+  }
+
+  /** The frame, and the layer of sharp letters over it, at W x H. */
+  function frameAt(W: number, H: number): void {
+    if (cv.width !== W || cv.height !== H) {
+      cv.width = W;
+      cv.height = H;
+      fb = new Frame(W, H);
+      fb.foreign = [];
+      img = null;
+    }
+    k = Math.max(1, Math.round(u * (window.devicePixelRatio || 1)));
+    if (fx.width !== W * k || fx.height !== H * k) {
+      fx.width = W * k;
+      fx.height = H * k;
+    }
+    for (const c of [cv, fx]) {
+      c.style.width = `${W * u}px`;
+      c.style.height = `${H * u}px`;
+    }
   }
 
   let wasPhone = false;
@@ -245,14 +266,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     L = layout();
     root.style.setProperty("--u", `${u}px`);
     root.classList.toggle("ob-tall", L.mode === "tall");
-    if (cv.width !== L.W || cv.height !== L.H) {
-      cv.width = L.W;
-      cv.height = L.H;
-      fb = new Frame(L.W, L.H);
-      img = null;
-    }
-    cv.style.width = `${L.W * u}px`;
-    cv.style.height = `${L.H * u}px`;
+    frameAt(L.W, L.H);
     place(ctx.scene, L.view);
     place(q(".head"), L.head);
     place(q(".log"), L.log);
@@ -548,6 +562,7 @@ export function decorateParley(ctx: ParleyThemeCtx): ParleyDecor {
     const p = fb.pix;
     for (let i = 0; i < p.length; i++) out[i] = p[i] ? C_PAPER : C_INK;
     g2.putImageData(img, 0, 0);
+    drawForeign(fb, fxg, k, CSS_INK, CSS_PAPER);
     jwin.classList.toggle("open", !!journalList?.classList.contains("open"));
     queueMicrotask(edges);
   }

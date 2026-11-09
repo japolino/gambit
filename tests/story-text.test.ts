@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { storyHtml, storyRuns, type Voices } from "../src/frontend/story-text.js";
-import { wrapStyled } from "../src/frontend/scene/themes/onebit/font.js";
+import { Frame, PAPER } from "../src/frontend/scene/themes/onebit/fb.js";
+import { wrap, wrapStyled, type BitFont } from "../src/frontend/scene/themes/onebit/font.js";
 
 const voices: Voices = {
   cast: [
@@ -99,4 +100,13 @@ test("1-bit type keeps each character's emphasis through the wrap", () => {
     { t: "plain slanted", st: [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1] },
     { t: "words and bold", st: [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 2, 2, 2, 2] },
   ]);
+});
+
+test("1-bit type keeps a Hangul syllable one letter, and sets aside the letters its face lacks to be drawn sharp", () => {
+  expect(wrap("레퍼리드 사단 is here", 9)).toEqual(["레퍼리드 사단", "is here"]);
+  const font: BitFont = { glyph: () => new Uint8Array(8).fill(0xff), has: (ch) => ch < "\u007f" };
+  const fb = new Frame(40, 8);
+  fb.foreign = [];
+  expect(fb.text(font, 0, 0, "A한", PAPER)).toBe(16);
+  expect(fb.foreign.map((t) => [t.x, t.ch, t.c])).toEqual([[8, "한", PAPER]]);
 });

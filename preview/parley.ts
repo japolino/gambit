@@ -75,7 +75,7 @@ const scenario: ParleyScenario = {
   opening: "\"Sixty crowns, and you sit where I tell you. The Greywater takes the careless, and I don't fish them out for free.\"",
   npc: {
     id: "marrow",
-    name: q.get("long") ? "Captain Hollis Ashworth" : "Marrow the Ferryman",
+    name: q.get("long") ? "Captain Hollis Ashworth" : q.get("ko") ? "한소연" : "Marrow the Ferryman",
     role: "keeper of the last ferry across the Greywater",
     pronoun: "he",
     voice: "Slow and gravelly, every word weighed like cargo; dry humour, no patience for haste.",

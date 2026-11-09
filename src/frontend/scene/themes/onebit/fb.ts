@@ -24,8 +24,13 @@ export interface Rect { x: number; y: number; w: number; h: number }
 /** A 1-bit picture with its own see-through mask (1 = drawn). */
 export interface Bits { w: number; h: number; pix: Uint8Array; mask: Uint8Array }
 
+/** A letter the face lacks, where it was drawn: `sig` is its cell then, so a window drawn over it later hides it. */
+interface Foreign { x: number; y: number; size: number; ch: string; c: number; sig: number }
+
 export class Frame {
   pix: Uint8Array;
+  /** Letters the face lacks, kept for a console that draws them sharp over the frame (drawForeign); null where none does. */
+  foreign: Foreign[] | null = null;
   private img: ImageData | null = null;
   constructor(public w: number, public h: number) {
     this.pix = new Uint8Array(w * h);
@@ -86,6 +91,8 @@ export class Frame {
     let cx = x;
     for (const ch of str) {
       const gl = f.glyph(ch);
+      const size = 8 * scale;
+      const own = c === XOR ? (this.pix[(y + (size >> 1)) * this.w + cx + (size >> 1)] ?? INK) ^ 1 : c;
       for (let r = 0; r < 8; r++) {
         const bits = gl[r]!;
         if (!bits) continue;
@@ -100,9 +107,16 @@ export class Frame {
           else this.fill({ x: cx + col * scale, y: y + r * scale, w: scale, h: scale }, c);
         }
       }
-      cx += 8 * scale;
+      if (this.foreign && !f.has(ch)) this.foreign.push({ x: cx, y, size, ch, c: own, sig: this.sig(cx, y, size) });
+      cx += size;
     }
     return cx - x;
+  }
+  /** A hash of a square of the frame. */
+  sig(x: number, y: number, size: number): number {
+    let h = 2166136261;
+    for (let j = y; j < y + size; j++) for (let i = x; i < x + size; i++) h = Math.imul(h ^ (i >= 0 && j >= 0 && i < this.w && j < this.h ? this.pix[j * this.w + i]! : 9), 16777619);
+    return h >>> 0;
   }
   /** 3x5 digits; `xor` flips what is underneath instead of painting. */
   tiny(x: number, y: number, s: string, c: number, xor = false): number {
@@ -177,6 +191,47 @@ export class Frame {
     for (let i = 0; i < p.length; i++) out[i] = p[i] ? paper : ink;
     g.putImageData(this.img, 0, 0);
   }
+}
+
+const sharp = new Map<string, HTMLCanvasElement>();
+/** A letter the face lacks, `px` device pixels square, from the system's fonts, thresholded to one colour. */
+function sharpGlyph(ch: string, px: number, color: string): HTMLCanvasElement {
+  const key = `${ch}|${px}|${color}`;
+  let cv = sharp.get(key);
+  if (cv) return cv;
+  cv = document.createElement("canvas");
+  cv.width = cv.height = px;
+  const g = cv.getContext("2d", { willReadFrequently: true })!;
+  let size = Math.round(px * 0.95);
+  g.font = `700 ${size}px sans-serif`;
+  const w = g.measureText(ch).width;
+  if (w > px) g.font = `700 ${(size = Math.floor((size * px) / w))}px sans-serif`;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillStyle = color;
+  g.fillText(ch, px / 2, px / 2 + size * 0.06);
+  const img = g.getImageData(0, 0, px, px);
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = img.data[i]! > 110 ? 255 : 0;
+  g.putImageData(img, 0, 0);
+  sharp.set(key, cv);
+  return cv;
+}
+
+/**
+ * Draw the letters the bitmap face lacks sharp, at `k` device pixels per frame
+ * pixel, onto a canvas laid over the frame's, wherever the frame still shows
+ * them; then forget them for the next paint.
+ */
+export function drawForeign(fb: Frame, g: CanvasRenderingContext2D, k: number, ink: string, paper: string): void {
+  g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+  for (const t of fb.foreign ?? []) {
+    if (fb.sig(t.x, t.y, t.size) !== t.sig) continue;
+    const px = t.size * k;
+    g.fillStyle = t.c === PAPER ? ink : paper;
+    g.fillRect(t.x * k, t.y * k, px, px);
+    g.drawImage(sharpGlyph(t.ch, px, t.c === PAPER ? paper : ink), t.x * k, t.y * k);
+  }
+  if (fb.foreign) fb.foreign = [];
 }
 
 /** Grow a mask by one pixel (8-neighbour); used for sprite outlines. */
