@@ -311,7 +311,7 @@ export function warmGround(url: string, done: () => void): string {
       img.crossOrigin = "anonymous";
       img.onload = () => {
         try {
-          const W = Math.min(640, img.naturalWidth), H = Math.round((img.naturalHeight / img.naturalWidth) * W);
+          const W = Math.min(1600, img.naturalWidth), H = Math.round((img.naturalHeight / img.naturalWidth) * W);
           const [c, g] = canvas(W, H);
           g.drawImage(img, 0, 0, W, H);
           const im = g.getImageData(0, 0, W, H);

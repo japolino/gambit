@@ -1324,7 +1324,7 @@ export class Table3D {
     if (!p) {
       p = loadImage(url)
         .then((img) => {
-          const H = Math.min(900, img.height);
+          const H = Math.min(2048, img.height);
           const W = Math.round((img.width * H) / img.height);
           const pad = 8;
           if (cutout) {

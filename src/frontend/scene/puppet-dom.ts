@@ -18,8 +18,10 @@ import { easeMood, PUPPET_GESTURE_S, PUPPET_NEUTRAL_MOOD, puppetMoodFor, type Pu
 import { puppetGrid, puppetMeshPositions, puppetPhase, puppetPose, type PuppetGrid } from "../../vendor/cue-puppet/sprite-puppet-rig.js";
 import { alphaBBox, buildFigureRig, type AlphaBox, type FigureRig } from "../stage/puppet/rig-build.js";
 
-/** Tallest canvas drawn (px); the CSS box scales it. */
-const MAX_H = 640;
+/** Tallest canvas drawn (px), for GPU memory. Below it a canvas is as tall as it is shown, in device pixels, and never above the picture's own. */
+const MAX_H = 2048;
+/** Before the canvas is laid out. */
+const FIRST_H = 640;
 const FRAME_MS = 33;
 const GRID: PuppetGrid = puppetGrid(16, 24);
 
@@ -226,14 +228,35 @@ export function createPuppetDom(): PuppetDom {
     }
   }
 
-  const fit = (canvas: HTMLCanvasElement, loaded: Loaded) => {
-    const k = Math.min(1, MAX_H / loaded.h);
-    canvas.width = Math.max(1, Math.round(loaded.w * k));
-    canvas.height = Math.max(1, Math.round(loaded.h * k));
+  /**
+   * The canvas takes the box the theme gives its <img> (theme rules often
+   * select img, which a canvas doesn't match), and that many device pixels.
+   * False when nothing changed.
+   */
+  const fit = (l: Live): boolean => {
+    if (!l.load) return false;
+    const off = l.img.style.display === "none";
+    if (off) l.img.style.display = "";
+    const w = l.img.offsetWidth, shown = l.img.offsetHeight;
+    if (off) l.img.style.display = "none";
+    if (shown) {
+      l.canvas.style.width = `${w}px`;
+      l.canvas.style.height = `${shown}px`;
+    }
+    const h = Math.max(1, Math.round(Math.min(l.load.h, MAX_H, shown ? shown * (window.devicePixelRatio || 1) : FIRST_H)));
+    if (h === l.canvas.height) return false;
+    l.canvas.height = h;
+    l.canvas.width = Math.max(1, Math.round((l.load.w * h) / l.load.h));
+    return true;
   };
+  // The box a theme shows a figure in can change without a new render (sizes in container units).
+  const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver((entries) => {
+    for (const e of entries) for (const l of live) if (l.img.parentElement === e.target && fit(l)) draw(l, performance.now() / 1000);
+  }) : null;
   const run = (l: Live) => {
     live.push(l);
     io?.observe(l.canvas);
+    if (l.img.parentElement) ro?.observe(l.img.parentElement);
     draw(l, performance.now() / 1000);
     if (!raf) raf = requestAnimationFrame(tick);
   };
@@ -241,7 +264,6 @@ export function createPuppetDom(): PuppetDom {
   function swap(img: HTMLImageElement, loaded: Loaded): void {
     if (!img.isConnected || img.dataset.puppet === "on" || !gl()) return;
     const canvas = document.createElement("canvas");
-    fit(canvas, loaded);
     canvas.className = img.className;
     const style = img.getAttribute("style");
     if (style) canvas.setAttribute("style", style);
@@ -256,7 +278,9 @@ export function createPuppetDom(): PuppetDom {
     img.after(canvas);
     const g = canvas.getContext("2d");
     if (!g) return;
-    run({ img, canvas, g, load: loaded, phase: puppetPhase(img.currentSrc || img.src), clocks: { breath: Math.random() * 3, sway: Math.random() * 5 }, visible: true, mood: { ...target } });
+    const l: Live = { img, canvas, g, load: loaded, phase: puppetPhase(img.currentSrc || img.src), clocks: { breath: Math.random() * 3, sway: Math.random() * 5 }, visible: true, mood: { ...target } };
+    fit(l);
+    run(l);
   }
 
   return {
@@ -307,7 +331,7 @@ export function createPuppetDom(): PuppetDom {
           if (!loaded?.cut || !gl()) return plain();
           l.load = loaded;
           l.phase = puppetPhase(url);
-          fit(canvas, loaded);
+          fit(l);
           canvas.hidden = false;
           img.style.visibility = "hidden";
           draw(l, performance.now() / 1000);
@@ -329,6 +353,7 @@ export function createPuppetDom(): PuppetDom {
       destroyed = true;
       if (raf) cancelAnimationFrame(raf);
       io?.disconnect();
+      ro?.disconnect();
       for (const l of live) l.watch?.disconnect();
       live = [];
       for (const p of loads.values()) void p.then((l) => l?.tex.dispose());
