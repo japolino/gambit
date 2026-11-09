@@ -150,6 +150,21 @@ describe("reading a card again", () => {
     const ids = mergeEdits(again, first).cast.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+  test("a read that comes back with fewer facts keeps the ones it missed, and says so", () => {
+    const facts = [
+      { id: "debt", text: "Orla owes money.", about: ["Orla Venn"] },
+      { id: "lamp", text: "Tam broke the lamp.", about: ["Tam"] },
+      { id: "wreck", text: "A ship went down last winter.", about: [] },
+    ];
+    const full = parseSheet({ cast: [{ ...person("Orla Venn"), id: "orla_venn" }, { ...person("Tam"), id: "tam" }], facts }, src, 1);
+    const short = parseSheet({ cast: [{ ...person("Orla Venn"), id: "orla" }], facts: [facts[0]] }, src, 2);
+    const merged = mergeEdits(short, full);
+    // Tam isn't on the new sheet, so the fact about him goes with him.
+    expect(merged.facts.map((f) => f.id)).toEqual(["debt", "wreck"]);
+    expect(merged.facts[0]!.about).toEqual(["orla_venn"]);
+    expect(merged.notes[0]).toContain("kept from the last read");
+    expect(mergeEdits(full, short).facts).toHaveLength(3);
+  });
 });
 
 describe("a player with no persona", () => {

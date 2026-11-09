@@ -102,6 +102,8 @@ const chatPath = (chatId: string) => `cards/chat/${encodeURIComponent(chatId)}.j
 const DEMO = "cards/demo.json";
 const READ_MS = 240_000;
 const READ_IDLE_MS = 60_000;
+/** The token cap of each half of the card read. */
+const READ_TOKENS = 8000;
 /** Framing answers are short, but some providers send nothing until done (one took 25 s+). */
 const FRAME_MS = 45_000;
 const DETECT_MS = 12_000;
@@ -522,19 +524,21 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
   };
 
   /** The Architect's read: the world and the people, asked at the same time, merged and checked in code. */
-  async function architectRead(userId: string, src: CardSources, fresh = false): Promise<CardSheet> {
+  async function architectRead(userId: string, src: CardSources, fresh = false, had = 0): Promise<CardSheet> {
     const now = Date.now();
     const prompts = readerPrompts(src);
-    const [world, first] = await Promise.all([askRaw(userId, "read-world", prompts.world, 3200, fresh), askRaw(userId, "read-people", prompts.people, 3500, fresh)]);
+    // Room for a thinking model's reasoning too, which counts against the cap: at 3500 a re-read came back cut off after two people.
+    const [world, first] = await Promise.all([askRaw(userId, "read-world", prompts.world, READ_TOKENS, fresh), askRaw(userId, "read-people", prompts.people, READ_TOKENS, fresh)]);
     const secs = (ms: number) => `${Math.round(ms / 1000)} s`;
     log(`read: world ${world.raw ? `ok (${world.by})` : `failed (${world.why})`} in ${secs(world.ms)}, people ${first.raw ? `ok (${first.by})` : `failed (${first.why})`} in ${secs(first.ms)}`);
-    // A people read with no facts at all is often a model skipping half the question (live: 0 facts, then 8 for the same card): ask once more.
-    // A stored answer has had its second ask already.
+    // A people read with no facts, or fewer than the last read had, is often a model skipping half the question or cut off
+    // (live: 0 facts, then 8 for the same card): ask once more and keep the fuller one. A stored answer has had its second ask already.
+    const factsOf = (x: typeof first) => (Array.isArray(x.raw?.facts) ? (x.raw.facts as unknown[]).length : 0);
     let people = first;
-    if (first.raw && first.by === "model" && !(Array.isArray(first.raw.facts) && first.raw.facts.length)) {
-      const again = await askRaw(userId, "read-people", prompts.people, 3500, true);
-      log(`read: people came back with no facts, asked again: ${again.raw ? `${Array.isArray(again.raw.facts) ? again.raw.facts.length : 0} facts` : `failed (${again.why})`} in ${secs(again.ms)}`);
-      if (again.raw && Array.isArray(again.raw.facts) && again.raw.facts.length) people = again;
+    if (first.raw && first.by === "model" && factsOf(first) < Math.max(1, had)) {
+      const again = await askRaw(userId, "read-people", prompts.people, READ_TOKENS, true);
+      log(`read: people came back with ${factsOf(first)} facts (the last read had ${had}), asked again: ${again.raw ? `${factsOf(again)} facts` : `failed (${again.why})`} in ${secs(again.ms)}`);
+      if (factsOf(again) > factsOf(first)) people = again;
     }
     // The last read's prompts, answers, and outcome, for diagnosing a model that will not answer or answers oddly.
     void spindle.userStorage
@@ -591,7 +595,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       job = (async () => {
         // Only a read that will happen ranks the lore by meaning (an embedding call).
         await semanticLore(userId, src);
-        const sheet = { ...(await faces.attachFaces(userId, mergeEdits(await architectRead(userId, src, force), old))), facesAt: Date.now() };
+        const sheet = { ...(await faces.attachFaces(userId, mergeEdits(await architectRead(userId, src, force, old?.facts.length), old))), facesAt: Date.now() };
         await saveSheet(userId, sheet);
         log(`read ${sheet.cardName}: ${sheet.by}, ${sheet.cast.length} cast, ${sheet.facts.length} facts, modules ${Object.entries(sheet.modules).filter(([, v]) => v).map(([k]) => k).join("+")}`);
         // The World Bible compiles while the player reviews the sheet (4.5).

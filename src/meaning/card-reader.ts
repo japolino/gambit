@@ -18,6 +18,7 @@ import { TACTICS } from "../engine/parley/types.js";
 import { chipLabel } from "../engine/card/sizing.js";
 import {
   MODULES,
+  ownSecret,
   SHAPES,
   type CardSheet,
   type CardSources,
@@ -561,10 +562,25 @@ export function mergeEdits(fresh: CardSheet, old: CardSheet | null): CardSheet {
     kept.set(m.id, was.id);
     taken.add(was.id);
   }
+  const cast = fresh.cast.map((m) => ({ ...m, id: kept.get(m.id) ?? m.id }));
+  const facts = fresh.facts.map((f) => ({ ...f, about: f.about.map((a) => kept.get(a) ?? a) }));
+  // A read that came back with fewer facts (cut off, or half the question skipped) keeps the ones the last read had,
+  // as long as they are about people still on the sheet and, for the persona's own, the same persona.
+  const notes = [...fresh.notes];
+  if (facts.length < old.facts.length) {
+    const ids = new Set(cast.map((m) => m.id));
+    const samePersona = old.player.personaId === fresh.player.personaId;
+    const missed = old.facts.filter((f) => !facts.some((n) => n.id === f.id || n.text === f.text) && f.about.every((a) => ids.has(a)) && (samePersona || !ownSecret(f)));
+    if (missed.length) {
+      facts.push(...missed);
+      notes.unshift(`This read found ${fresh.facts.length} facts and the last one ${old.facts.length}, so the ${missed.length} it missed are kept from the last read.`);
+    }
+  }
   return {
     ...fresh,
-    cast: fresh.cast.map((m) => ({ ...m, id: kept.get(m.id) ?? m.id })),
-    facts: fresh.facts.map((f) => ({ ...f, about: f.about.map((a) => kept.get(a) ?? a) })),
+    cast,
+    facts,
+    notes,
     modules: old.modulesEdited ? old.modules : fresh.modules,
     modulesEdited: old.modulesEdited,
     player: old.player.edited && old.player.personaId === fresh.player.personaId ? { ...old.player, person: fresh.player.person, coin: fresh.player.coin, look: fresh.player.look, pronoun: fresh.player.pronoun } : fresh.player,
