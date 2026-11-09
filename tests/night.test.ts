@@ -278,7 +278,7 @@ describe("a night in play", () => {
       },
       chat: { appendMessage: async (_c: string, m: { content: string }) => void posted.push(m.content) },
     };
-    const art = { request: (key: string) => (requested.push(key), { key, state: "queued" }), status: () => null, whenDone: () => new Promise(() => {}) };
+    const art = { request: (key: string) => (requested.push(key), { key, state: "queued" }), status: () => null, expect: () => {}, adopt: () => {}, whenDone: () => new Promise(() => {}) };
     const cards = {
       sheetFor: async () => full as never,
       armory: async () => full as never,
@@ -345,7 +345,7 @@ describe("a night in play", () => {
   test("a Parley's words reach that night and the next day's narrator", async () => {
     const { play, asked } = setup(answer);
     await play.open("u", "c8");
-    await play.onParleyEnd("u", { card: { castId: "orla" }, npc: { name: "Orla" } } as never, { chatId: "c8", end: { kind: "refused" }, exchanges: [{ text: "Here, take the ledger back.", reply: "She takes it without a word.", read: { tactic: "offer" } }] } as never);
+    await play.onParleyEnd("u", { card: { castId: "orla" }, npc: { name: "Orla" }, contest: { stake: "a favor" } } as never, { chatId: "c8", end: { kind: "refused" }, exchanges: [{ text: "Here, take the ledger back.", reply: "She takes it without a word.", read: { tactic: "offer" } }] } as never);
     await play.act("u", "c8", "rest");
     expect(asked[0]!.user).toContain("Here, take the ledger back");
     const out = await play.intercept([{ role: "system", content: "preset" }, { role: "user", content: "hi" }] as never, { chatId: "c8", userId: "u", generationType: "normal" } as never);

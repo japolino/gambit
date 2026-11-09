@@ -518,7 +518,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     tags.innerHTML = shown
       .map((s) => {
         const at = place.get(s)!;
-        // The scroll's curve holds about a dozen letters at a phone's size, and cuts off the rest: there, a long name gives its first word.
+        // The scroll shrinks a long name to fit; at a phone's size that gets too small to read, so there it gives its first word.
         const label = phone && s.p.name.length > 11 ? s.p.name.split(/\s+/)[0]! : s.p.name;
         const art = nameScroll(esc(label), s.p.talkable, `t${seedOf(s.p.id)}`);
         return s.p.talkable

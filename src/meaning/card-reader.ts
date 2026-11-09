@@ -605,7 +605,7 @@ export function chipFromAnswers(sheet: CardSheet, answers: Record<string, Decisi
 
 /* -------------------------------- frame ------------------------------- */
 
-export function framePrompt(sheet: CardSheet, castId: string, recent: { name: string; content: string }[], kind?: ContestKind, line?: string): { system: string; user: string } {
+export function framePrompt(sheet: CardSheet, castId: string, recent: { name: string; content: string }[], kind?: ContestKind, line?: string, carried?: { feel: string; remembers: string[]; thread?: string }): { system: string; user: string } {
   const c = sheet.cast.find((m) => m.id === castId);
   const system = [
     "You frame one contest of words in a roleplay game. You name what is at stake; the engine sets every number.",
@@ -635,7 +635,15 @@ Write:
  "unit": "currency of that price" or null,
  "setting": "where this happens, one sentence",
  "opening": "${c?.name ?? "their"} first line now, in their voice as the roleplay shows it, one or two sentences"${c?.voice ? "" : `,\n "voice": "how ${c?.name ?? "they"} talks, going by the roleplay, one short line"`}}`;
-  return { system, user };
+  const them = c?.name ?? "They";
+  return {
+    system,
+    user: [
+      user,
+      ...(carried?.remembers.length ? [`${them} remembers this about the player, and feels ${carried.feel} toward them. The opening should show it: ${carried.remembers.join("; ")}`] : []),
+      ...(carried?.thread ? [`Also add "about_thread": true if what's at stake bears on this, false if it doesn't: <<<${clip(carried.thread, 400)}>>>`] : []),
+    ].join("\n\n"),
+  };
 }
 
 export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castId: string, kindHint?: ContestKind): ContestFrame {
@@ -652,6 +660,7 @@ export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castI
     setting: str(raw.setting, 300) || sheet.places[0]?.description || sheet.premise,
     opening: str(raw.opening, 500),
     ...(str(raw.voice, 160) ? { voice: str(raw.voice, 160) } : {}),
+    ...(raw.about_thread === true ? { aboutThread: true } : {}),
     by: "architect",
   };
 }

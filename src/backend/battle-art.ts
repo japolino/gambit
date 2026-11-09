@@ -88,7 +88,8 @@ export function requestBattleArt(art: ArtApi, state: BattleState, userId: string
       const face = state.meta?.faces?.[c.id];
       if (face) {
         // The card's own art is the cut-in's reference: the move drawn in its style.
-        const dna = { id: c.id, name: c.name, tags: "", description: c.name, seed: seedOf(c.art) };
+        const looks = state.meta?.looks?.[c.id];
+        const dna = { id: c.id, name: c.name, tags: "", description: looks ? `${c.name}: ${looks}` : c.name, seed: seedOf(c.art), ...(looks ? { booru: looks } : {}) };
         const own = () => {
           const action = cutinAction(cutinSkill(state, c));
           art.request(actionArtKey(c.art), { kind: "pose", character: dna, pose: action.tags, poseText: action.text, canonical: { imageId: face, source: "card" } }, 1, userId);
@@ -98,7 +99,8 @@ export function requestBattleArt(art: ArtApi, state: BattleState, userId: string
       }
       // A card character's own figure (play.ts): its cut-in is drawn from it.
       if (isFigureArtKey(c.art)) {
-        const dna = { id: c.id, name: c.name, tags: "", description: c.name, seed: seedOf(c.art) };
+        const looks = state.meta?.looks?.[c.id];
+        const dna = { id: c.id, name: c.name, tags: "", description: looks ? `${c.name}: ${looks}` : c.name, seed: seedOf(c.art), ...(looks ? { booru: looks } : {}) };
         const drawn = art.whenDone(c.art, userId);
         const own = () => void drawn.then((f) => f.state === "ready" && f.imageId && requestCutins(art, state, c, dna, f.imageId, userId, false));
         const viaInlay = inlayCutin(pictures, state, c, userId, own);

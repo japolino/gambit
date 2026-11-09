@@ -28,7 +28,8 @@ export type DeedKind =
   | "deal"
   | "walked"
   | "refused"
-  | "lied_to"
+  | "lied_to" // and got away with it: only the player knows
+  | "caught_lying" // n: how many times, in one talk
   | "threatened"
   | "charmed"
   | "bribed"
@@ -124,13 +125,14 @@ export function deedsFromBattle(state: BattleState, day: number, place: string, 
 }
 
 /** Deeds from a finished Parley with someone on the card: the outcome, and how you spoke. */
-export function deedsFromParley(castId: string, name: string, end: string, tactics: readonly string[], bluffed: boolean, day: number, place?: string): Deed[] {
+export function deedsFromParley(castId: string, name: string, end: string, tactics: readonly string[], bluffed: boolean, day: number, place?: string, caughtLies = 0): Deed[] {
   const out: Deed[] = [];
   const at = place ? { place } : {};
   const kind: DeedKind | null = end === "won" ? "won_over" : end === "deal" ? "deal" : end === "walked" ? "walked" : end === "refused" ? "refused" : null;
   if (kind) out.push({ day, kind, target: castId, name, ...at });
   // Only a claim the game rolled as a bluff is a lie: how a line was read doesn't make it one (a true fact pressed hard is still true).
-  if (bluffed) out.push({ day, kind: "lied_to", target: castId, name, ...at });
+  if (caughtLies) out.push({ day, kind: "caught_lying", target: castId, name, n: caughtLies, ...at });
+  else if (bluffed) out.push({ day, kind: "lied_to", target: castId, name, ...at });
   if (tactics.filter((t) => t === "threat").length) out.push({ day, kind: "threatened", target: castId, name, ...at });
   if (tactics.some((t) => t === "flattery" || t === "empathy" || t === "humor")) out.push({ day, kind: "charmed", target: castId, name, ...at });
   if (tactics.includes("bribe")) out.push({ day, kind: "bribed", target: castId, name, ...at });
@@ -233,12 +235,23 @@ const TONE: Partial<Record<DeedKind, { tone: -1 | 0 | 1; delta: number; text: (d
   deal: { tone: 0, delta: 0.5, text: (d, p) => `struck a deal with ${p} on day ${d.day}` },
   walked: { tone: -1, delta: -0.5, text: (d, p) => `${p} walked away from them on day ${d.day}` },
   refused: { tone: -1, delta: -0.5, text: (d, p) => `refused ${p} on day ${d.day}` },
-  lied_to: { tone: -1, delta: -2, text: (d, p) => `${p} lied to them on day ${d.day}` },
+  // A lie that worked isn't here: nobody remembers what they never noticed.
+  caught_lying: { tone: -1, delta: -2, text: (d, p) => `caught ${p} lying on day ${d.day}` },
   threatened: { tone: -1, delta: -1.5, text: (d, p) => `${p} threatened them on day ${d.day}` },
   charmed: { tone: 1, delta: 0.75, text: (d, p) => `${p} was kind to them on day ${d.day}` },
   caught: { tone: -1, delta: -1, text: (d, p) => `caught ${p} at it on day ${d.day}: ${d.method ?? "something they tried"}` },
   bribed: { tone: 0, delta: 0.25, text: (d, p) => `${p} paid them off on day ${d.day}` },
 };
+
+/** How someone's feeling about you sets where a talk with them starts. */
+export function rapportFrom(affinity: number): number {
+  return Math.max(-3, Math.min(3, Math.round(affinity / 2.5))) + 0;
+}
+
+/** Lies this person caught you in, over the whole story. */
+export function caughtLies(deeds: readonly Deed[], target: string): number {
+  return deeds.reduce((sum, d) => (d.kind === "caught_lying" && d.target === target ? sum + (d.n ?? 1) : sum), 0);
+}
 
 /** Fold new deeds into what people remember. Only deeds done to someone on the card count. */
 export function remember(mem: Record<string, NpcMemory>, deeds: readonly Deed[], castIds: ReadonlySet<string>, player: string): Record<string, NpcMemory> {

@@ -14,12 +14,12 @@
  * rewinds the Parley to before it.
  */
 import { createFigurePrints } from "./figure-prints.js";
-import { createInlayPictures } from "./inlay-pictures.js";
+import { sharedInlayPictures } from "./inlay-pictures.js";
 import type { InterceptorContextDTO, InterceptorResultDTO, LlmMessageDTO, SpindleAPI } from "lumiverse-spindle-types";
 import type { ArtApi } from "../art/controller.js";
 import type { CharacterDNA } from "../art/specs.js";
 import { PARLEYS } from "../engine/content/parleys.js";
-import { applyExchange, closeParley, createParley, replayParley } from "../engine/parley/exchange.js";
+import { applyExchange, canPay, closeParley, createParley, replayParley } from "../engine/parley/exchange.js";
 import { momentIndexes, parleyMoment } from "../engine/parley/moments.js";
 import { cleanReply, fallbackReply, narratorPrompt, outcomeBlock, sceneBlock } from "../engine/parley/narrate.js";
 import type { Exchange, ParleyScenario, ParleyState, RefereeRead } from "../engine/parley/types.js";
@@ -87,8 +87,13 @@ const metaOf = (meta: unknown): ParleyMessageMeta | null => {
 export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: ParleyState) => void;
 
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { retryMs = [1500, 4000] }: { retryMs?: number[] } = {}) {
-  const figures = createFigurePrints(spindle, art);
-  let pictures: ReturnType<typeof createInlayPictures> | null = null;
+  const figures = createFigurePrints(spindle, art, sharedInlayPictures(spindle, (m) => log(m)));
+  /** Where Inlay can draw this person: the chat the scene belongs to, and who they are. */
+  const figureVia = (scenario: ParleyScenario) => {
+    const key = scenario.card?.journalKey ?? "";
+    return key.startsWith("chat/") ? { chatId: key.slice(5), role: scenario.npc.role } : undefined;
+  };
+  let pictures: ReturnType<typeof sharedInlayPictures> | null = null;
   let endHook: ParleyEndHook | null = null;
   const told = new Set<string>();
   const live = new Map<string, ParleyState>();
@@ -155,6 +160,10 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
     const dna = npcDna(scenario);
     art.request(placeArtKey(scenario.id), { kind: "background", location: { id: scenario.id, name: scenario.name, description: scenario.setting, palette: scenario.npc.look.palette } }, 1, userId);
     const wanted = [...new Set(Object.values(EXPRESSION_FOR_MOOD).filter((e): e is NonNullable<typeof e> => !!e))];
+    /** Moods drawn from an older figure of them show their old looks: those go first. */
+    const fromFigure = async (imageId: string) => {
+      if (await figures.movedOn(userId, key, imageId)) await Promise.all(wanted.map((expression) => art.forget(expressionArtKey(key, expression), userId)));
+    };
     const expressions = (imageId: string, source?: "card") => {
       for (const expression of wanted) {
         art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId, ...(source ? { source } : {}) } }, 2, userId);
@@ -188,11 +197,12 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
       const figure = figureArtKey(card.cardKey, card.castId);
       // Through the tag prints: a figure whose tags changed is drawn again (figure-prints.ts).
       void figures
-        .request(userId, figure, dna, 0, log)
+        .request(userId, figure, dna, 0, log, figureVia(scenario))
         .then(() => art.whenDone(figure, userId))
-        .then((f) => {
+        .then(async (f) => {
         if (f.state === "ready" && f.imageId && f.url) {
-          send({ type: "art.update", items: [{ key, state: "ready", url: f.url, imageId: f.imageId, cutout: true, via: "figure", ...(f.face !== undefined ? { face: f.face } : {}) }] }, userId);
+          await fromFigure(f.imageId);
+          send({ type: "art.update", items: [{ key, state: "ready", url: f.url, imageId: f.imageId, cutout: f.cutout === true, via: "figure", ...(f.face !== undefined ? { face: f.face } : {}) }] }, userId);
           for (const expression of missing) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: f.imageId } }, 2, userId);
         } else {
           for (const expression of missing) art.request(expressionArtKey(key, expression), { kind: "expression", character: dna, expression, canonical: { imageId: baseId, source: "card" } }, 2, userId);
@@ -213,11 +223,12 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
     if (person) {
       const figure = figureArtKey(person.cardKey, person.castId);
       void figures
-        .request(userId, figure, dna, 0, log)
+        .request(userId, figure, dna, 0, log, figureVia(scenario))
         .then(() => art.whenDone(figure, userId))
-        .then((f) => {
+        .then(async (f) => {
           if (f.state !== "ready" || !f.imageId || !f.url) return portrait();
-          send({ type: "art.update", items: [{ key, state: "ready", url: f.url, imageId: f.imageId, cutout: true, via: "figure", ...(f.face !== undefined ? { face: f.face } : {}) }] }, userId);
+          await fromFigure(f.imageId);
+          send({ type: "art.update", items: [{ key, state: "ready", url: f.url, imageId: f.imageId, cutout: f.cutout === true, via: "figure", ...(f.face !== undefined ? { face: f.face } : {}) }] }, userId);
           expressions(f.imageId);
         })
         .catch(() => portrait());
@@ -234,7 +245,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
    */
   function requestMoments(scenario: ParleyScenario, state: ParleyState, userId: string): void {
     const figureKey = scenario.card ? figureArtKey(scenario.card.cardKey, scenario.card.castId) : npcArtKey(scenario.npc.id);
-    pictures ??= createInlayPictures(spindle, (m) => log(m));
+    pictures ??= sharedInlayPictures(spindle, (m) => log(m));
     for (const index of momentIndexes(scenario, state)) {
       const ex = state.exchanges[index];
       const m = ex && parleyMoment(scenario, ex);
@@ -459,6 +470,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
         const state = await load(userId, parleyId);
         const scenario = state && (await scenarioOf(userId, state.scenarioId));
         if (!state || !scenario) return;
+        if (how === "deal" && !canPay(scenario, state.value)) return send({ type: "parley.error", error: "You don't have that much." }, userId);
         const closed = closeParley(scenario, state, how);
         await save(userId, closed);
         if (closed !== state && scenario.card && closed.chatId) {

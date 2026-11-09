@@ -71,6 +71,16 @@ export function parseOffer(text: string, scenario: ParleyScenario): number | nul
   return nums.length ? nums[nums.length - 1]! : null;
 }
 
+/** Caught lies count against a talk from its first word, up to here: a hard listener, never an unwinnable one. */
+const MAX_CAUGHT_CARRIED = 2;
+const startRapport = (scenario: ParleyScenario): number => scenario.history?.rapport ?? 0;
+const startCaught = (scenario: ParleyScenario): number => Math.min(MAX_CAUGHT_CARRIED, scenario.history?.caughtLies ?? 0);
+
+/** Whether the player has the money for this price. Anything not priced in their money is always payable. */
+export function canPay(scenario: ParleyScenario, value: number): boolean {
+  return !scenario.contest.money || scenario.purse === undefined || value <= scenario.purse;
+}
+
 export function createParley(scenario: ParleyScenario, seed: string, chatId: string | null = null): ParleyState {
   const c = scenario.contest;
   return {
@@ -81,9 +91,9 @@ export function createParley(scenario: ParleyScenario, seed: string, chatId: str
     value: c.start,
     floor: c.floor,
     patience: scenario.npc.stance.patience,
-    rapport: 0,
+    rapport: startRapport(scenario),
     usedFacts: [],
-    caughtBluffs: 0,
+    caughtBluffs: startCaught(scenario),
     known: [...scenario.known],
     exchanges: [],
     end: null,
@@ -289,7 +299,7 @@ export function closeParley(scenario: ParleyScenario, prev: ParleyState, how: "d
 
 /** Rebuild a Parley from its words and reads (after a message is deleted or edited). */
 export function replayParley(scenario: ParleyScenario, start: ParleyState, inputs: readonly { text: string; read: RefereeRead; messageId?: string; reply?: string }[]): ParleyState {
-  let state: ParleyState = { ...start, value: scenario.contest.start, floor: scenario.contest.floor, patience: scenario.npc.stance.patience, rapport: 0, usedFacts: [], caughtBluffs: 0, exchanges: [], end: null };
+  let state: ParleyState = { ...start, value: scenario.contest.start, floor: scenario.contest.floor, patience: scenario.npc.stance.patience, rapport: startRapport(scenario), usedFacts: [], caughtBluffs: startCaught(scenario), exchanges: [], end: null };
   for (const input of inputs) {
     if (state.end) break;
     const r = applyExchange(scenario, state, input.text, input.read);

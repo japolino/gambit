@@ -258,6 +258,8 @@ export interface BattleMeta {
   monsters?: Record<string, MonsterDef>;
   /** Party portraits by combatant id: Lumiverse image ids of card art. */
   faces?: Record<string, string>;
+  /** Party members' looks by combatant id, as tags (Inlay's when it knows them). */
+  looks?: Record<string, string>;
   /** A boss fight (leaves a catalyst, M7). */
   boss?: boolean;
   /** Delve room the fight is in, to mark it cleared. */

@@ -248,7 +248,7 @@ export function hotspotsOf(world: World, placeId: string, sheet: Pick<CardSheet,
   const cast = new Map(sheet.cast.map((m) => [m.id, m]));
   for (const id of present ?? p.people) {
     const m = cast.get(id);
-    if (m && sheet.modules.parley) out.push({ id: `talk:${id}`, kind: "talk", label: `Talk to ${m.name}`, target: id });
+    if (m) out.push({ id: `talk:${id}`, kind: "talk", label: `Talk to ${m.name}`, target: id });
   }
   out.push({ id: "search", kind: "search", label: "Look around" });
   for (const to of p.exits) out.push({ id: `go:${to}`, kind: "exit", label: `Go to ${world.places[to]?.name ?? to}`, target: to });

@@ -229,7 +229,7 @@ describe("classes in play", () => {
       },
       chat: { appendMessage: async (_c: string, m: { content: string }) => void posted.push(m.content) },
     };
-    const art = { request: (key: string) => (requested.push(key), { key, state: "queued" }), status: () => null };
+    const art = { request: (key: string) => (requested.push(key), { key, state: "queued" }), status: () => null, expect: () => {}, adopt: () => {} };
     const cards = { sheetFor: async () => sheet as never, armory: async () => sheet as never, talk: async () => {}, recent: async () => [] };
     const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, { startState: async (_u: string, s: BattleState) => void started.push(s) });
     const forge = (): ForgeView => sent.flatMap((m) => (m.type === "forge.state" ? [m.view] : [])).at(-1)!;

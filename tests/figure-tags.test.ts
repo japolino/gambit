@@ -1,5 +1,21 @@
+import { standsOnTwoLegs } from "../src/art/specs.js";
 import { describe, expect, test } from "bun:test";
 import { figureCaption, hasCharacterTag, parseFigureTags, withReaderTags } from "../src/meaning/figure-tags.js";
+
+describe("a body that isn't on two legs", () => {
+  test("isn't told to stand on them", () => {
+    for (const tags of ["lamia, snake lower body", "naga", "green snake tail", "centaur", "mermaid", "arachne", "slime girl"]) expect(standsOnTwoLegs(tags)).toBe(false);
+    for (const tags of ["wolf ears, long hair", "tail, red skin", "fox tail", "snakeskin boots"]) expect(standsOnTwoLegs(tags)).toBe(true);
+  });
+});
+
+describe("what goes in front of Inlay's reading", () => {
+  test("the reader's guess at their hair or eyes doesn't, but what Inlay lacks does", () => {
+    const reader = { character: "", tags: ["wolf ears", "blonde hair", "blue eyes", "slender"], sex: "girl" as const };
+    expect(withReaderTags("auburn hair, brown eyes", reader)).toBe("wolf ears, slender, auburn hair, brown eyes");
+    expect(withReaderTags("glasses", reader)).toBe("wolf ears, blonde hair, blue eyes, slender, glasses");
+  });
+});
 
 describe("figure tags", () => {
   test("parses the character tag and appearance, lowercased, character first", () => {

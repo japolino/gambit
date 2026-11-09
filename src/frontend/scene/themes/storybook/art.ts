@@ -6,6 +6,7 @@
  * filters and leaf shapes live once in DEFS (one hidden <svg> in the theme
  * root); the pieces reference them by id (all ids start with "sb-").
  */
+import { scrollFontSize } from "./scroll-fit.js";
 import { brocade, leather, mahogany, parchment, silk } from "./textures.js";
 
 const f = (n: number) => +n.toFixed(1);
@@ -589,6 +590,7 @@ export function cameo(url: string, uid: string): string {
  * a gilt diamond "↑ Talk" badge perched on its top rim.
  */
 export function nameScroll(name: string, talk: boolean, uid: string): string {
+  const size = scrollFontSize(name.replace(/&[a-z#0-9]+;/gi, "x"));
   const rib = "M8,24 C60,14 140,14 192,24 L182,37 L192,50 C140,40 60,40 8,50 L18,37 Z";
   return `<svg class="ns-art" viewBox="0 -18 200 72" aria-hidden="true" focusable="false">
     <path d="${rib}" fill="#000" opacity=".55" transform="translate(0,4)" filter="url(#sb-soft)"/>
@@ -598,7 +600,7 @@ export function nameScroll(name: string, talk: boolean, uid: string): string {
     <path d="${rib}" fill="none" stroke="#1a0904" stroke-width="1.1"/>
     <circle cx="16" cy="37" r="2.4" fill="url(#sb-berry)"/><circle cx="184" cy="37" r="2.4" fill="url(#sb-berry)"/>
     <path id="sb-nsp-${uid}" d="M26,40 C70,31 130,31 174,40" fill="none"/>
-    <text font-family="Gambit Cinzel, serif" font-weight="800" font-size="15" fill="#fff0cc" letter-spacing="2.4" text-anchor="middle" stroke="#2a0606" stroke-width=".6" paint-order="stroke"><textPath href="#sb-nsp-${uid}" startOffset="50%">${name.toUpperCase()}</textPath></text>
+    <text font-family="Gambit Cinzel, serif" font-weight="800" font-size="${size}" fill="#fff0cc" letter-spacing="${Math.round(size * 16) / 100}" text-anchor="middle" stroke="#2a0606" stroke-width=".6" paint-order="stroke"><textPath href="#sb-nsp-${uid}" startOffset="50%">${name.toUpperCase()}</textPath></text>
     ${talk ? `<g class="tk">
       <path d="M100,-16 L142,-1 L100,14 L58,-1 Z" fill="#000" opacity=".5" transform="translate(0,3)" filter="url(#sb-soft)"/>
       <path d="M100,-16 L142,-1 L100,14 L58,-1 Z" fill="url(#sb-plaque)" stroke="url(#sb-gold-h)" stroke-width="2"/>

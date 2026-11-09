@@ -84,6 +84,8 @@ export interface ContestDef {
   floor: number;
   /** Lowest the floor can go with every lever pulled. */
   hardFloor: number;
+  /** A haggle priced in the player's own money: a deal is paid from their purse. */
+  money?: boolean;
   /** Persuade-style: reaching this wins. Haggle: absent (the player takes a deal). */
   winAt?: number;
   /** Base DC before the ask and rapport. */
@@ -113,10 +115,23 @@ export interface ParleyScenario {
   story?: string;
   /** Facts written into the journal when the player wins. */
   reveals?: string[];
+  /** What this person already has with the player, from earlier in the story. A talk starts from here, not from nothing. */
+  history?: {
+    /** Where rapport starts (-3..3). */
+    rapport: number;
+    /** Lies they caught in earlier talks. */
+    caughtLies: number;
+    feel: string;
+    remembers: string[];
+  };
+  /** What the player can pay, when the talk began. */
+  purse?: number;
   /** Built from a Card Sheet (docs/DESIGN.md 4.0) rather than hand-written. */
   card?: {
     cardKey: string;
     castId: string;
+    /** Winning this bears on the story's central thread, so its next piece comes out with it. */
+    aboutThread?: boolean;
     /** The journal this scene reads and writes: one per chat. */
     journalKey: string;
     /** The card's avatar: the NPC's canonical face. */
@@ -210,7 +225,7 @@ export interface ParleyState {
   rapport: number;
   /** Facts already used as Leverage (their floor shift applies once). */
   usedFacts: string[];
-  /** Bluffs the NPC caught: remembered for the whole contest. */
+  /** Bluffs the NPC caught, with the lies they caught in earlier talks. */
   caughtBluffs: number;
   known: string[];
   exchanges: Exchange[];

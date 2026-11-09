@@ -77,7 +77,7 @@ export function renderCard(root: HTMLElement, s: CardStatus | null, hasChat: boo
         .map((c) => {
           const faceId = c.faces?.base ?? c.avatarImageId;
           const av = faceId ? `/api/v1/images/${faceId}` : c.avatarUrl;
-          return `<div class="who"><div class="av" ${av ? `style="background-image:url('${esc(av)}')"` : ""}>${av ? "" : esc(c.name.slice(0, 1))}</div><div><div class="nm">${esc(c.name)}</div><div class="rl" title="${esc(c.role)}">${esc(c.role)}</div></div><button data-talk="${esc(c.id)}">Talk</button></div>`;
+          return `<div class="who"><div class="av" ${av ? `style="background-image:url('${esc(av)}')"` : ""}>${av ? "" : esc(c.name.slice(0, 1))}</div><div><div class="nm">${esc(c.name)}</div><div class="rl" title="${esc(c.role)}">${esc(c.role)}</div></div><button data-talk="${esc(c.id)}" title="Press them for something: this opens a contest of words">Press</button></div>`;
         })
         .join("")}</div>`,
     );

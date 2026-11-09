@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { beatsHtml, canWrite, isWriting, writeFormHtml } from "../src/frontend/scene/themes/write.js";
 import { typewriterHtml } from "../src/frontend/scene/themes/typewriter.js";
+import { scrollFontSize } from "../src/frontend/scene/themes/storybook/scroll-fit.js";
 import type { SceneView } from "../src/frontend/scene/themes/contract.js";
 
 const view = (over: Partial<SceneView>) => ({ story: [], ...over }) as unknown as SceneView;
@@ -94,5 +95,14 @@ describe("the words on the page", () => {
   test("a find the narrator already showed isn't printed twice", () => {
     expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "There: a hidden door, behind the shelf." })])).not.toContain('class="found"');
     expect(beatsHtml([beat({ said: "I look", found: "A hidden door.", reply: "Dust everywhere." })])).toContain('class="found"');
+  });
+});
+
+describe("the name scroll", () => {
+  test("a short name keeps its size, a long one shrinks to fit the curve", () => {
+    expect(scrollFontSize("Mara")).toBe(15);
+    expect(scrollFontSize("Tessera Ashbourne")).toBeLessThan(10);
+    // Wide capitals with their spacing take about 0.9em each; the curve is about 146 units long.
+    for (const name of ["Orla Tamsin Wren", "Lord Dov of the Long Grey Tide"]) expect([...name].length * 0.9 * scrollFontSize(name)).toBeLessThanOrEqual(146);
   });
 });

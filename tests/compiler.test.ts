@@ -192,7 +192,7 @@ describe("the compiler in play", () => {
       compile: ledger.compile,
       jaot,
     };
-    const play = createPlay(spindle as never, (m) => sent.push(m), { request: () => ({ key: "", state: "queued" }), status: () => null, whenDone: () => new Promise(() => {}) } as never, cards, { startState: async () => {} });
+    const play = createPlay(spindle as never, (m) => sent.push(m), { request: () => ({ key: "", state: "queued" }), status: () => null, expect: () => {}, adopt: () => {}, whenDone: () => new Promise(() => {}) } as never, cards, { startState: async () => {} });
     const last = (): SceneView => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : [])).at(-1)!;
     return { play, files, posted, sent, last, jaot, asked };
   }

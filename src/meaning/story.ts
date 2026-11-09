@@ -64,7 +64,7 @@ export function routeQuestions(c: StoryContext): Questions {
         flavor: "Talking, feeling, looking, ordinary actions: nothing uncertain that matters",
         risk: "Something uncertain where failing would matter: sneaking, stealing, lying, forcing, a dangerous feat",
         seek: "Actively searching or investigating to learn or find something",
-        press: "Directly pressing someone to give way: demanding, threatening, bargaining, persuading them to do or give something",
+        press: "Directly pressing someone to give way: demanding, threatening, bargaining, persuading them to do or give something they'd rather not. A question, a chat, or a small ask that costs them nothing is flavor",
         fight: "Starting real violence against someone or something",
         travel: "Leaving for somewhere else",
       },

@@ -95,6 +95,10 @@ export interface ArtApi {
   refreshProviders(userId?: string): Promise<ProviderSet>;
   /** Drop a finished key so the next request draws it again. */
   forget(key: string, userId?: string): Promise<void>;
+  /** This key is being drawn elsewhere (Inlay): it shows as queued, and whenDone waits for the job before answering. */
+  expect(key: string, job: Promise<unknown>, userId?: string): void;
+  /** A finished picture from elsewhere (Inlay) is this key from now on. Not cut out: the frontend keys its flat ground. */
+  adopt(key: string, picture: { imageId: string; url: string; via: string }, userId?: string): void;
   /** Save a look file as one of the user's looks (import, "match the card"). */
   addLook(file: LookFile, source: "user" | "card", userId?: string): Promise<void>;
   /** The locked look's palette tokens for the code-drawn layer, or null (5.2a). */
@@ -124,6 +128,8 @@ interface UserState {
   noProviderNoticeSent: boolean;
   /** Requests waiting for the index and the provider discovery before they reach the queue. */
   enqueuing: Map<string, { priority: ArtPriority; done: Promise<void> }>;
+  /** Keys being drawn elsewhere (Inlay). */
+  elsewhere: Map<string, Promise<unknown>>;
   /** Final statuses the queue does not hold (no provider, icons sliced from a sheet). */
   local: Map<string, ArtStatus>;
   /** Sheets being sliced right now (one slice per sheet at a time). */
@@ -171,6 +177,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       sheetIcons: new Map(),
       noProviderNoticeSent: false,
       enqueuing: new Map(),
+      elsewhere: new Map(),
       local: new Map(),
       slicing: new Set(),
       looks: new Map(),
@@ -684,6 +691,7 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       const s = state(userId);
       await s.indexLoaded;
       const key = scopedKey(currentLook(s).id, bare);
+      await s.elsewhere.get(key)?.catch(() => undefined);
       await s.enqueuing.get(key)?.done;
       const now = statusOf(s, key);
       if (now && (now.state === "ready" || now.state === "failed")) return { ...now, key: bare };
@@ -706,6 +714,24 @@ export function registerArt(spindle: ArtHost, send: ArtSend, options: ArtOptions
       s.indexMem.delete(key);
       s.local.delete(key);
       await s.index.delete(key);
+    },
+    expect: (bare, job, userId) => {
+      const s = state(userId);
+      const key = scopedKey(currentLook(s).id, bare);
+      if (statusOf(s, key)?.state !== "ready") queueSend(s, { key, state: "queued" });
+      s.elsewhere.set(key, job);
+      const gone = () => {
+        if (s.elsewhere.get(key) === job) s.elsewhere.delete(key);
+      };
+      job.then(gone, gone);
+    },
+    adopt: (bare, picture, userId) => {
+      const s = state(userId);
+      const key = scopedKey(currentLook(s).id, bare);
+      const status: ArtStatus = { key, state: "ready", imageId: picture.imageId, url: picture.url, cutout: false, via: picture.via };
+      s.queue.forget(key);
+      s.queue.restore(status);
+      onStatus(s, status);
     },
     dispose: async () => {
       for (const s of users.values()) {

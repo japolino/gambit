@@ -1,8 +1,9 @@
 /**
- * Pictures drawn by Inlay Illustrator (inlay-illustrator src/backend/pipeline/shared-pictures.ts): Parley moments and
- * combat cut-ins go through Inlay's own chat pipeline (the chat's cast and their looks, the user's Atelier preset and
- * parser) with Inlay's Gambit guidelines ("Gambit: Parley", "Gambit: Cut-in"; the user can edit them in the Maid
- * Atelier). Gambit's own art pipeline is the fallback when Inlay is missing, older, has no chat to read, or fails.
+ * Pictures drawn by Inlay Illustrator (inlay-illustrator src/backend/pipeline/shared-pictures.ts): anything of a
+ * character (figures, Parley moments, cut-ins, CGs) goes through Inlay's own chat pipeline (the chat's cast and their
+ * looks, the user's Atelier preset and parser, artist and negatives) with Inlay's Gambit guidelines ("Gambit: Figure",
+ * "Gambit: Parley", "Gambit: Cut-in", "Gambit: Scene"; the user can edit them in the Maid Atelier). Gambit building its
+ * own prompt from Inlay's tags loses most of that, so that is only what happens without Inlay. Gambit's own art pipeline is the fallback when Inlay is missing, older, has no chat to read, or fails.
  *
  * Shared RPC pool: Gambit publishes what it wants on its own endpoint `gambit.inlay.pictures.<user>`, then reading
  * `inlay_illustrator.pictures.<user>` makes Inlay queue them and answers each one's status. Gambit reads again until
@@ -16,6 +17,7 @@ const SEGMENT = /^[a-z0-9][a-z0-9_-]*$/;
 const STORE = "art/inlay-pictures.json";
 const POLL_MS = 4000;
 const GIVE_UP_MS = 8 * 60_000;
+const MAX_QUEUED_MS = 30 * 60_000;
 const MAX_KEPT = 300;
 
 /** The id Inlay accepts for a key (letters, digits, `_.:-`, at most 96): Gambit's keys can hold `#` and `|`. */
@@ -27,7 +29,17 @@ export function inlayPictureId(key: string): string {
   return `${safe.slice(0, 86)}.${(h >>> 0).toString(36)}`;
 }
 
-export type InlayPictureDirection = "parley" | "cutin";
+export type InlayPictureDirection = "parley" | "cutin" | "figure" | "scene";
+
+/** What Inlay's analyzer reads for a figure: it finds the person by name, and their profile gives the rest. */
+export function figureRequestText(name: string, role: string): string {
+  return `${name}${role ? `, ${role},` : ""} alone, the whole of their body in view, facing the viewer.`;
+}
+/** NovelAI lets one generation run at a time, and Gambit's own art shares the account: that's a wait, not a failure. */
+const BUSY = /\b429\b|concurrent|locked/i;
+const BUSY_RETRIES = 3;
+/** Inlay answers a failure as it is for a minute before trying again. */
+const BUSY_WAIT_MS = 61_000;
 export interface InlayPictureRequest {
   /** Gambit's art key, also the request id Inlay sees. */
   id: string;
@@ -126,7 +138,10 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
       const mine = pending.get(userId) ?? new Map<string, InlayPictureRequest>();
       mine.set(wire, { ...req, id: wire });
       pending.set(userId, mine);
-      const until = Date.now() + GIVE_UP_MS;
+      let until = Date.now() + GIVE_UP_MS;
+      // Inlay draws one at a time: waiting in its line isn't taking too long, up to a point.
+      const last = Date.now() + MAX_QUEUED_MS;
+      let busy = BUSY_RETRIES;
       try {
         for (;;) {
           const all = await exchange(userId);
@@ -141,11 +156,18 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
             log(`inlay pictures: ${req.direction} ${req.id} ready`);
             return pic;
           }
+          if (st.status === "failed" && busy > 0 && BUSY.test(st.error ?? "") && Date.now() < until) {
+            busy -= 1;
+            log(`inlay pictures: ${req.id} waits for the image model (${st.error})`);
+            await new Promise((r) => setTimeout(r, BUSY_WAIT_MS));
+            continue;
+          }
           if (st.status === "failed") {
             log(`inlay pictures: ${req.direction} ${req.id} failed: ${st.error ?? "no reason"}; Gambit draws it`);
             void spindle.userStorage.setJson("cards/debug/inlay-picture-failed.json", { at: Date.now(), id: req.id, direction: req.direction, error: st.error ?? null }, { userId }).catch(() => {});
             return null;
           }
+          if (st.status === "queued") until = Math.min(last, Date.now() + GIVE_UP_MS);
           if (Date.now() > until) {
             log(`inlay pictures: ${req.id} took too long; Gambit draws it`);
             return null;
@@ -162,7 +184,23 @@ export function createInlayPictures(spindle: SpindleAPI, log: (m: string) => voi
     return wait;
   }
 
-  return { request, known };
+  /** Forget a kept picture: the next request asks Inlay again (its person's looks changed). */
+  async function forget(userId: string, key: string): Promise<void> {
+    const s = await store(userId);
+    if (!(key in s)) return;
+    delete s[key];
+    await spindle.userStorage.setJson(STORE, s, { userId }).catch(() => {});
+  }
+
+  return { request, known, forget };
+}
+
+const shared = new WeakMap<object, ReturnType<typeof createInlayPictures>>();
+/** One per backend: each publishes its whole list on the same endpoint, so two would keep replacing each other's. */
+export function sharedInlayPictures(spindle: SpindleAPI, log: (m: string) => void): ReturnType<typeof createInlayPictures> {
+  let p = shared.get(spindle);
+  if (!p) shared.set(spindle, (p = createInlayPictures(spindle, log)));
+  return p;
 }
 
 export type InlayPictures = ReturnType<typeof createInlayPictures>;

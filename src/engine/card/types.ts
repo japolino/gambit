@@ -201,6 +201,8 @@ export interface ContestFrame {
   opening: string;
   /** How they talk, read off the story, for someone the card never gave a voice. */
   voice?: string;
+  /** Winning this bears on the story's central thread. */
+  aboutThread?: boolean;
   by: "architect" | "fallback";
 }
 

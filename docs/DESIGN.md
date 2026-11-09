@@ -132,6 +132,10 @@ When Inlay Illustrator is installed, Gambit reads its character library over the
 
 Parley covers every non-combat contest of words: haggling, persuading, intimidating, deceiving, seducing, interrogating, calming a mob, talking down a boss. It also runs *inside* combat (see 4.2).
 
+**Talking is not a contest.** "Talk to someone" puts you in the write box, addressed to them, and the narrator answers in the story. A Parley opens only when a line presses them for something they'd rather not give, or from an explicit chip or drawer button, and its first line says what's on the line.
+
+**A talk starts from the story and leaves something behind.** How they feel about you sets the starting rapport, they carry what they remember into how they read and voice you, and a lie they caught counts against later talks (one they never caught doesn't). A won talk gives you what was at stake, as an item the story holds to; a deal is also paid for from your purse when it's priced in your money, and you can't take one you can't pay. The thread's next revelation comes out only if the talk was about the thread.
+
 #### 4.1.1 Every NPC has a hidden stance
 
 The Architect writes it when the NPC is created; it is stored as data:
@@ -449,6 +453,8 @@ Notes:
 - **Avy's RPG Maker icon packs** were considered. Their style is low-resolution RTP-era and does not match the look, and their terms forbid reposting, so they are left out. Generated icons, with game-icons.net as the instant fallback, cover the need.
 
 ### 5.3a Figures, the cut-out, and CGs
+
+**In a chat, Inlay draws anything of a character.** Figures and CGs go to Inlay as pictures on request, like Parley moments and cut-ins do, so they get what its in-chat pictures get: the person's form and outfit, the user's parser, artist, fixed tags and negatives. A figure is asked for by name, with the whole of their body in view, on a white ground the browser keys out; it is never told to stand, because a lamia has no legs to stand on. Gambit's own drawing, below, is what happens without Inlay, or without a chat, or when Inlay fails. It then tries Inlay once more on the next run, and the figure on screen stays until a new one is in. When someone's figure changes, what was drawn from it (their moods, their action picture, their cut-in) is drawn again.
 
 - **Figures, not frames.** Everyone on the card who appears in a scene is drawn once as a full V5 figure with a transparent background, from their tags. No reference image is used. Scenes and the board show the figure when it is ready (card art meanwhile). Moods, poses and cut-in poses are then drawn *from the figure* with the V5 reference inset.
 - **Where the tags come from.**

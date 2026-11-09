@@ -11,7 +11,7 @@
 import type { DecisionAnswer, DecisionQuestion } from "lumiverse-spindle-types";
 import type { ParleyScenario, ParleyState, RefereeRead, Tactic } from "../engine/parley/types.js";
 import { TACTICS } from "../engine/parley/types.js";
-import { formatValue } from "../engine/parley/narrate.js";
+import { formatValue, historyLines } from "../engine/parley/narrate.js";
 
 export type Questions = Record<string, DecisionQuestion>;
 export type Answers = Record<string, DecisionAnswer | undefined>;
@@ -54,6 +54,7 @@ export function refereeState(scenario: ParleyScenario, state: ParleyState, text:
     contest: { kind: scenario.contest.kind, about: scenario.contest.stake, [scenario.contest.track]: formatValue(scenario, state.value) },
     scene: scenario.setting,
     ...(scenario.story ? { story_so_far: scenario.story, story_note: "This is what really happened (the labels can be the card's name even when someone else talks). A claim it shows to be true is no bluff." } : {}),
+    ...(historyLines(scenario).length ? { what_they_carry: historyLines(scenario).join(" ") } : {}),
     earlier_lines_from_speaker: recent,
     speech: `<<<${text.slice(0, 2000)}>>>`,
   };

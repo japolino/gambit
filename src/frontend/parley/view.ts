@@ -9,7 +9,8 @@
  * backend; this file only shows them.
  */
 import { FACTS } from "../../engine/content/parleys.js";
-import { formatValue, effectLine, immersiveRead, rollLine, smartQuotes, whyText } from "../../engine/parley/narrate.js";
+import { canPay } from "../../engine/parley/exchange.js";
+import { formatValue, effectLine, immersiveRead, rollLine, smartQuotes, stakeLine, whyText } from "../../engine/parley/narrate.js";
 import type { Exchange, Mood, ParleyScenario, ParleyState } from "../../engine/parley/types.js";
 import { TIER_NAMES } from "../../engine/parley/types.js";
 import { expressionArtKey, isExpressionArtKey, momentIndexOf, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
@@ -249,7 +250,7 @@ export function mountParley(
   const side = el("div", "side");
   const head = el("header", "head");
   const titleRow = el("div", "title-row");
-  titleRow.append(el("div", "kind", `${c.kind} · ${c.stake}`));
+  titleRow.append(el("div", "kind", stakeLine(scenario)));
   const modeSwitch = el("div", "mode");
   const modeBtns = (["immersive", "transparent"] as const).map((m) => {
     const b = el("button", undefined, m === "immersive" ? "Immersive" : "Transparent");
@@ -553,8 +554,10 @@ export function mountParley(
     hint.classList.toggle("hidden", over);
     // The box itself never locks: you can go on writing while they answer, it just can't be sent yet.
     sayBtn.disabled = busy;
-    dealBtn.textContent = `${finalOffer ? "Take the final offer" : "Take it"} at ${formatValue(scenario, state.value)}`;
-    dealBtn.disabled = walkBtn.disabled = busy;
+    const short = !canPay(scenario, state.value);
+    dealBtn.textContent = short ? `You have ${formatValue(scenario, scenario.purse ?? 0)}` : `${finalOffer ? "Take the final offer" : "Take it"} at ${formatValue(scenario, state.value)}`;
+    dealBtn.disabled = busy || short;
+    walkBtn.disabled = busy;
     endBox.textContent = "";
     endBox.classList.toggle("show", over);
     if (over) {
@@ -562,6 +565,7 @@ export function mountParley(
       const title =
         e.kind === "deal" ? `Deal: ${c.stake} for ${formatValue(scenario, e.value)}` : e.kind === "won" ? `${npc.name} gives in` : e.kind === "walked" ? "You walk away" : e.kind === "refused" ? `${npc.name} refuses` : "Over";
       endBox.append(el("div", "end-title", title));
+      if (e.kind === "won" || e.kind === "deal") endBox.append(el("div", "end-sub", `Yours now: ${c.stake}.`));
       if (e.kind === "deal") {
         const saved = c.start - e.value;
         endBox.append(el("div", "end-sub", saved > 0 ? `${saved} ${c.unit ?? ""} under the asking price.` : "At the asking price."));

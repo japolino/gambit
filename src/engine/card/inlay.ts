@@ -35,6 +35,8 @@ export interface InlayLook {
   /** Outfit reference first (it shows the outfit worn), else the form's. Lumiverse image id. */
   referenceImageId: string | null;
   outfit?: string;
+  /** A custom character, not someone from the card's lorebooks: worth asking whether the lorebook has them now. */
+  custom?: boolean;
 }
 
 const isMember = (v: unknown): v is InlayMember => {
@@ -77,5 +79,6 @@ export function inlayLookOf(characterId: string, member: InlayMember): InlayLook
   const sex = SEX[form.gender];
   if (sex) look.sex = sex;
   if (outfit?.label) look.outfit = outfit.label;
+  if (member.kind === "custom") look.custom = true;
   return tags || look.referenceImageId ? look : null;
 }

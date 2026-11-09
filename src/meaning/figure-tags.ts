@@ -22,6 +22,7 @@ export function figureTagsPrompt(sheet: CardSheet, m: CastMember): { system: str
     `Character: ${m.name}. ${m.role}${m.look ? `. Looks: ${m.look}` : ""}`,
     ``,
     `If they are a known character from a show, game, comic or book, give their exact Danbooru character tag ("name (series)"), as artists tag them. Otherwise leave it empty.`,
+    `Only tag what the text gives or what a known character's tag settles: if it doesn't say their hair or eye color, leave those out rather than guess.`,
     `Then 10 to 20 appearance tags in Danbooru style: species or non-human traits first (e.g. "owl head", "wolf ears", "horns", "tail", "red skin", "white fur"), then build, hair, eyes, and their usual outfit. Only what they look like: no pose, mood, background, style or quality tags.`,
     ``,
     `Answer with JSON only: {"character": "", "tags": ["..."], "sex": "girl" | "boy" | "other"}`,
@@ -69,6 +70,8 @@ export function hasCharacterTag(caption: string): boolean {
   return caption.split(",").some((t) => /^[^()]+\([^()]+\)$/.test(t.trim()));
 }
 
+const COLOR_PARTS = ["hair", "eyes", "skin", "fur"];
+
 /**
  * Inlay's caption, with the reader's character tag and leading traits
  * (species, size, build: the prompt asks for those first) put in front when
@@ -78,6 +81,9 @@ export function hasCharacterTag(caption: string): boolean {
 export function withReaderTags(inlay: string, reader: FigureTags | null): string {
   if (!reader || hasCharacterTag(inlay)) return inlay;
   const have = new Set(inlay.split(",").map((t) => t.trim().toLowerCase()));
-  const lead = [reader.character, ...reader.tags.slice(0, 6)].filter((t) => t && !have.has(t));
+  // Where Inlay has read their hair or eyes off the card, the reader's guess at them doesn't go in front of it.
+  const says = (part: string) => [...have].some((t) => t.includes(part));
+  const settled = (t: string) => COLOR_PARTS.some((part) => t.includes(part) && says(part));
+  const lead = [reader.character, ...reader.tags.slice(0, 6).filter((t) => !settled(t))].filter((t) => t && !have.has(t));
   return [...lead, inlay].filter(Boolean).join(", ");
 }

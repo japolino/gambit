@@ -246,7 +246,6 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       const chatId = view.chatId;
       scene = mountScene(ov.content, view, {
         act: (hotspot) => {
-          if (hotspot.startsWith("talk:")) want = "parley";
           send({ type: "scene.act", chatId, hotspot });
         },
         say: (text) => send({ type: "scene.say", chatId, text }),

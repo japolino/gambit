@@ -304,7 +304,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       group: groupOf(h.kind),
       ...(h.target ? { target: h.target } : h.kind === "talk" ? { target: h.id.slice(5) } : {}),
       art: h.kind === "exit" && h.target ? urlOf(tileArt.get(h.target)) : null,
-      run: () => a.act(h.id),
+      run: () => act(h.id),
     }));
     if (v.canFight && !v.menu.some((h) => h.kind === "fight")) items.push({ key: "fight", kind: "fight", label: fightLabel(v.skin.fight), group: "fight", run: () => a.fight() });
     return items.sort((x, y) => order.indexOf(x.group) - order.indexOf(y.group));
@@ -536,7 +536,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
             name: p.name,
             role: p.role,
             talkable: v.menu.some((h) => h.id === `talk:${p.id}`),
-            talk: () => a.act(`talk:${p.id}`),
+            talk: () => act(`talk:${p.id}`),
           })),
     personArt(v, id, mode = "color", rows = 120) {
       const p = v.people.find((x) => x.id === id);
@@ -685,6 +685,21 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   // A talk, a fight or a night takes the screen away. Whoever was writing comes back still writing;
   // anyone using the keys as commands keeps them as commands.
   const writeField = () => [...el.querySelectorAll<HTMLElement>("[data-write]")].find((f) => f.offsetParent);
+
+  /* ------------------ "Talk to someone" is writing to them ------------------ */
+  // No contest starts here: that takes a line that presses them.
+  function act(id: string): void {
+    if (id.startsWith("talk:")) writeTo(view.menu.find((h) => h.id === id)?.label.replace(/^Talk to /, "") ?? "");
+    a.act(id);
+  }
+  function writeTo(name: string): void {
+    const field = writeField() as HTMLTextAreaElement | undefined;
+    if (!field || !name) return;
+    field.value = `To ${name}: ${field.value.replace(/^To [^:\n]{1,60}: /, "")}`;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }
   let wasWriting = false;
   function noteWriting(): void {
     const active = (el.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;

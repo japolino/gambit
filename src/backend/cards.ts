@@ -82,6 +82,8 @@ const biblePath = (key: string) => `cards/bible/${encodeURIComponent(key)}.json`
 const BIBLE_RETRY_MS = 10 * 60_000;
 
 /** Play's side of "where is the scene now" (4.5: new places come from play). */
+type ParleyScenarioHistory = NonNullable<ReturnType<typeof scenarioFromSheet>>["history"];
+
 export interface PlaceHook {
   where(userId: string, chatId: string): Promise<({ here: { id: string; name: string }; places: { id: string; name: string }[] } & SceneNow) | null>;
   moved(userId: string, chatId: string, pick: string, p: number, lines: { name: string; content: string }[]): Promise<void>;
@@ -91,6 +93,8 @@ export interface PlaceHook {
   notice?(userId: string, chatId: string, lines: { name: string; content: string; isUser: boolean }[]): Promise<void>;
   /** People the chat's world promoted (4.6): they can be talked to like the card's own cast. */
   extraCast?(userId: string, chatId: string): Promise<CardSheet["cast"]>;
+  /** What someone already has with the player, the player's money and the story's thread: a talk starts from here. */
+  standing?(userId: string, chatId: string, castId: string): Promise<{ history: NonNullable<ParleyScenarioHistory>; purse: number; thread?: string } | null>;
 }
 const chatPath = (chatId: string) => `cards/chat/${encodeURIComponent(chatId)}.json`;
 const DEMO = "cards/demo.json";
@@ -145,11 +149,11 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     if (!p) {
       p = (async () => {
         const looks = await Promise.all(sheet.cast.map((m) => inlay.lookFor(userId, m.name, [m.characterId, ...sheet.characterIds]).catch(() => null)));
-        const missing = sheet.cast.filter((_, i) => !looks[i]?.tags);
+        const missing = sheet.cast.filter((_, i) => !looks[i]?.tags || looks[i]?.custom);
         if (!missing.length) return;
         const people = missing.map((m) => ({
           name: m.name,
-          description: [`${m.name}: ${m.role}.`, m.look, `A character in ${sheet.cardName} (${sheet.skin.genre}). ${sheet.premise.slice(0, 300)}`].filter(Boolean).join(" "),
+          description: [`${m.name}: ${m.role}.`, m.look, `A character in ${sheet.cardName} (${sheet.skin.genre}). ${sheet.premise.slice(0, 300)}`, m.evidence?.quote ? `What the card says of them: ${m.evidence.quote.slice(0, 600)}` : ""].filter(Boolean).join(" "),
         }));
         const answer = await inlay.requestProfiles(userId, characterId, people);
         if (!answer || (answer.status !== "started" && answer.status !== "running")) return;
@@ -623,8 +627,8 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     }
   }
 
-  async function frame(userId: string, sheet: CardSheet, lines: { name: string; content: string; isUser: boolean }[], castId: string, kind?: ContestKind, line?: string) {
-    const { system, user } = framePrompt(sheet, castId, lines, kind, line);
+  async function frame(userId: string, sheet: CardSheet, lines: { name: string; content: string; isUser: boolean }[], castId: string, kind?: ContestKind, line?: string, carried?: { feel: string; remembers: string[]; thread?: string }) {
+    const { system, user } = framePrompt(sheet, castId, lines, kind, line, carried);
     try {
       const res = await models.quiet(userId, roleForKind("frame"), {
         messages: [
@@ -748,7 +752,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     inlayLook: async (userId: string, sheet: CardSheet, m: CastMember) => {
       const ids = [m.characterId, ...sheet.characterIds];
       const now = await inlay.lookFor(userId, m.name, ids).catch(() => null);
-      if (now?.tags) return now;
+      if (now?.tags && !now.custom) return now;
       await profiled(userId, sheet);
       return inlay.lookFor(userId, m.name, ids).catch(() => null);
     },
@@ -873,10 +877,15 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       if (!sheet || !who) return send({ type: "parley.error", error: "Gambit has no sheet for this chat yet." }, userId);
       send({ type: "card.starting", chatId, castName: who.name }, userId);
       const lines = await recent(userId, chatId, 8);
-      const f = await frame(userId, sheet, lines, castId, chip?.kind ?? kind, firstLine);
+      const standing = (await placeHook?.standing?.(userId, chatId, castId).catch(() => null)) ?? null;
+      const f = await frame(userId, sheet, lines, castId, chip?.kind ?? kind, firstLine, standing ? { feel: standing.history.feel, remembers: standing.history.remembers, ...(standing.thread ? { thread: standing.thread } : {}) } : undefined);
       const scenario = scenarioFromSheet(sheet, f, chatId, `card:${chatId.slice(0, 8)}:${castId}:${Date.now().toString(36)}`, []);
       if (!scenario) return send({ type: "parley.error", error: "Could not set that scene up." }, userId);
       scenario.story = storySoFar(lines);
+      if (standing) {
+        scenario.history = standing.history;
+        scenario.purse = standing.purse;
+      }
       // Their art, looked up fresh: sprites become moods, the base is the reference for the rest.
       const [art, look] = await Promise.all([
         faces.facesFor(userId, sheet, who).catch(() => null).then((f) => f ?? who.faces ?? null),

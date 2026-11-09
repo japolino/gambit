@@ -104,14 +104,20 @@ export function npcFrom(sheet: CardSheet, c: CastMember): NpcDef {
   };
 }
 
+/** An asking price when nobody named one: small asks stay within a new player's purse. */
+const DEFAULT_PRICE = [25, 50, 100, 200] as const;
+/** A price in these isn't paid out of the purse. Anything else named as a unit is treated as money. */
+const NOT_MONEY = /\b(favou?rs?|hours?|minutes?|days?|weeks?|services?|debts?|secrets?|promises?)\b/i;
+
 /** Start, floor, DC, and patience of a framed contest, from tables. */
 export function contestFrom(frame: ContestFrame, c: CastMember, currency: string): ContestDef {
   const prideStep = Math.round((c.temperament.pride - 2) / 2);
   const dc = Math.max(10, Math.min(17, 11 + frame.stakeSize + prideStep));
   if (frame.kind === "haggle") {
-    const start = frame.price && frame.price > 0 ? Math.round(frame.price) : 100;
+    const start = frame.price && frame.price > 0 ? Math.round(frame.price) : DEFAULT_PRICE[frame.stakeSize - 1]!;
+    const money = !frame.unit || !NOT_MONEY.test(frame.unit);
     const share = [0.66, 0.7, 0.74, 0.78, 0.82][c.temperament.greed];
-    return { kind: "haggle", track: "price", stake: frame.stake, unit: frame.unit || currency || undefined, start, floor: Math.round(start * share), hardFloor: Math.round(start * 0.5), dc };
+    return { kind: "haggle", track: "price", stake: frame.stake, money, unit: (money ? currency || frame.unit : frame.unit) || undefined, start, floor: Math.round(start * share), hardFloor: Math.round(start * 0.5), dc };
   }
   return { kind: frame.kind, track: TRACK[frame.kind], stake: frame.stake, start: 100, floor: FLOOR_BY_STAKE[frame.stakeSize], hardFloor: 0, winAt: 0, dc };
 }
@@ -167,6 +173,7 @@ export function scenarioFromSheet(sheet: CardSheet, frame: ContestFrame, chatId:
     card: {
       cardKey: sheet.cardKey,
       castId: c.id,
+      ...(frame.aboutThread ? { aboutThread: true } : {}),
       journalKey: chatId ? `chat/${chatId}` : `card/${sheet.cardKey}`,
       avatar: c.avatarImageId || c.avatarUrl ? { imageId: c.avatarImageId ?? null, url: c.avatarImageId ? `/api/v1/images/${c.avatarImageId}` : (c.avatarUrl ?? null) } : undefined,
     },

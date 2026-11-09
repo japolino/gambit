@@ -49,6 +49,8 @@ import {
   remember,
   type Deed,
   type Promotion,
+  caughtLies,
+  rapportFrom,
 } from "../engine/memory/memory.js";
 import { fallbackPromotion, parsePromotion, promotedId, promotePrompt } from "../meaning/night.js";
 import { baseClassFor } from "../engine/card/foes.js";
@@ -64,6 +66,7 @@ import type { InterceptorContextDTO, LlmMessageDTO } from "lumiverse-spindle-typ
 import { figureArtKey, npcArtKey } from "../shared/art-keys.js";
 import type { CharacterDNA } from "../art/specs.js";
 import { createFigurePrints } from "./figure-prints.js";
+import { sharedInlayPictures } from "./inlay-pictures.js";
 import type { ToFrontend } from "../shared/protocol.js";
 import type { ThemeId } from "../shared/scene-view.js";
 import { boardMapKey, buildSceneView, cardTag, feel, menuFor, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
@@ -339,8 +342,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         return reader ? { tags: figureCaption(reader), ...(reader.sex !== "other" ? { sex: reader.sex } : {}) } : null;
       })();
       inlayTags.set(k, p);
-      // A miss is asked again later (Inlay may get a document for them).
-      void p.then((x) => !x && setTimeout(() => inlayTags.delete(k), 5 * 60_000));
+      // Asked again later: Inlay may have got a document for them, or corrected what it had.
+      void p.then(() => setTimeout(() => inlayTags.delete(k), 5 * 60_000));
     }
     return p;
   }
@@ -349,7 +352,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
   async function tagDna(userId: string, sheet: CardSheet, m: CastMember): Promise<CharacterDNA> {
     const dna = castDna(sheet, m);
     const look = await inlayFor(userId, sheet, m);
-    return look?.tags ? { ...dna, booru: look.tags, ...(look.sex ? { sex: look.sex } : {}) } : dna;
+    // The description goes to GPT, which reads no tags otherwise.
+    return look?.tags ? { ...dna, booru: look.tags, description: `${m.name}: ${m.look || m.role}. ${look.tags}`, ...(look.sex ? { sex: look.sex } : {}) } : dna;
   }
 
   /**
@@ -362,12 +366,25 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     // Ready: asking again re-sends it (a reloaded page has no other way to learn it); the spec is not used.
     const ready = art.status(key, userId)?.state === "ready";
     if (ready) art.request(key, { kind: "figure", character: castDna(sheet, m) }, priority, userId);
-    void tagDna(userId, sheet, m)
-      .then((character) => figures.request(userId, key, character, priority, log))
+    const job = tagDna(userId, sheet, m)
+      .then((character) => {
+        const chatId = chats.get(chatKey(userId, sheet));
+        return figures.request(userId, key, character, priority, log, chatId ? { chatId, role: m.role } : undefined);
+      })
       .catch(() => undefined);
+    if (!ready) art.expect(key, job, userId);
     return key;
   }
-  const figures = createFigurePrints(spindle, art);
+  const inlayPictures = sharedInlayPictures(spindle, log);
+  const figures = createFigurePrints(spindle, art, inlayPictures);
+  const cgDrawing = new Set<string>();
+  const castAsked = new Set<string>();
+  /** The chat each card is being played in: Inlay draws from a chat's cast. */
+  const chats = new Map<string, string>();
+  const chatKey = (userId: string, sheet: CardSheet) => `${userId}:${sheet.cardKey}`;
+  /** Someone's tags if they're known already: a fight doesn't wait on a profile being written. */
+  const tagsNow = (userId: string, sheet: CardSheet, m: CastMember): Promise<string | null> =>
+    Promise.race([inlayFor(userId, sheet, m).then((x) => x?.tags ?? null).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 1500))]);
 
   /**
    * A key moment as a CG: a wide illustration with the people in it drawn
@@ -393,19 +410,31 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         : undefined;
     const before = art.status(key, userId);
     if (!(r.album ?? []).some((x) => x.key === key)) r.album = [...(r.album ?? []), { key, caption: o.caption, day: r.scene.day }].slice(-48);
-    if (before?.state === "ready") return key;
+    if (before?.state === "ready" || cgDrawing.has(`${userId}:${key}`)) return key;
     const chatId = o.chatId;
-    // Each person by their tags (Inlay's when there); their figure rides along only for a GPT edit.
-    void Promise.all(
-      members.map(async (m) => {
-        const fig = art.status(figureArtKey(sheet.cardKey, m.id), userId);
-        return { character: await tagDna(userId, sheet, m), ...(fig?.state === "ready" && fig.imageId ? { ref: { imageId: fig.imageId } } : {}) };
-      }),
-    )
-      .then((cast) => {
+    const inChat = o.chatId ?? chats.get(chatKey(userId, sheet));
+    /** Gambit's own CG, when Inlay can't: each person by their tags; their figure rides along only for a GPT edit. */
+    const own = () =>
+      Promise.all(
+        members.map(async (m) => {
+          const fig = art.status(figureArtKey(sheet.cardKey, m.id), userId);
+          return { character: await tagDna(userId, sheet, m), ...(fig?.state === "ready" && fig.imageId ? { ref: { imageId: fig.imageId } } : {}) };
+        }),
+      ).then((cast) => {
         art.request(key, { kind: "cg", moment: `${o.moment}. From ${sheet.cardName} (${sheet.skin.genre})`, cast, ...(location ? { location } : {}) }, o.priority ?? 1, userId);
-        return chatId ? art.whenDone(key, userId) : null;
+      });
+    const told = [o.moment.replace(/\.$/, ""), members.length ? `With ${members.map((m) => m.name).join(", ")}` : "", location ? `At ${location.name}` : ""].filter(Boolean).join(". ");
+    const drawn = (inChat ? inlayPictures.request(userId, { id: key, chatId: inChat, direction: "scene", text: `${told}.` }).catch(() => null) : Promise.resolve(null))
+      .then((pic) => {
+        if (!pic) return own();
+        art.adopt(key, { ...pic, via: "inlay" }, userId);
       })
+      .catch(() => undefined)
+      .finally(() => cgDrawing.delete(`${userId}:${key}`));
+    cgDrawing.add(`${userId}:${key}`);
+    art.expect(key, drawn, userId);
+    void drawn
+      .then(() => art.whenDone(key, userId))
       .then((st) => (chatId && st?.state === "ready" && st.imageId ? picture(chatId, st.imageId, o.caption) : undefined))
       .catch(() => {});
     return key;
@@ -461,6 +490,12 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
 
   async function show(userId: string, chatId: string, sheet: CardSheet, r: PlayRecord, busy?: string): Promise<void> {
     const s = withPromoted(sheet, r);
+    chats.set(chatKey(userId, sheet), chatId);
+    // Inlay hears about the whole cast on the way in, once a run: someone it has wrong is put right before they walk on.
+    if (!castAsked.has(chatKey(userId, sheet)) && s.cast[0]) {
+      castAsked.add(chatKey(userId, sheet));
+      void inlayFor(userId, s, s.cast[0]).catch(() => undefined);
+    }
     send({ type: "scene.state", view: view(s, chatId, r, busy) }, userId);
     requestSceneArt(userId, s, r);
   }
@@ -851,7 +886,17 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       first.sort((a, b) => a.next - b.next).forEach((c, i) => (c.next = Math.min(c.next, lead - first.length + i)));
     }
     const wildHere = wildCell(r);
-    state.meta = { title: enc.name, chatId, ...(enc.boss ? { boss: true } : {}), ...(Object.keys(classes).length ? { classes } : {}), backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : wildHere ? placeKey(sheet, `wild_${wildHere}`) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}), ...(opts.board ? { board: true } : {}) };
+    chats.set(chatKey(userId, sheet), chatId);
+    // Their looks ride along: a cut-in drawn from their figure or card art has nothing else to go on.
+    const looks: Record<string, string> = {};
+    await Promise.all(
+      slots.map(async (p) => {
+        const m = p.castId ? sheet.cast.find((c) => c.id === p.castId) : undefined;
+        const tags = m && (await tagsNow(userId, sheet, m));
+        if (tags) looks[p.id] = tags;
+      }),
+    );
+    state.meta = { title: enc.name, chatId, ...(Object.keys(looks).length ? { looks } : {}), ...(enc.boss ? { boss: true } : {}), ...(Object.keys(classes).length ? { classes } : {}), backdrop: r.delve ? placeKey(sheet, r.delve.placeId) : wildHere ? placeKey(sheet, `wild_${wildHere}`) : placeKey(sheet, r.scene.placeId), monsters, faces, ...(opts.room ? { room: opts.room } : {}), ...(opts.board ? { board: true } : {}) };
     state = advance(state, { enemyPolicy: chooseAction }).state;
     r = (await load(userId, chatId)) ?? r;
     if (cardDef) forge.playerClass(sheet, r, cardDef);
@@ -1178,6 +1223,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const night = m.nights?.at(-1);
     if (night && night.day >= r.scene.day - 1) out.push(`- Last night, while ${sheet.player.name || "the player"} slept (they didn't see this, but can run into what came of it): ${night.lines.slice(0, 4).join(" ")}`);
     for (const x of m.recruits) out.push(`- ${x.name} travels with the party now (once a foe).`);
+    if (m.items.length) out.push(`- ${sheet.player.name || "The player"} has: ${m.items.slice(-8).map((x) => x.name).join("; ")}. Hold to it.`);
     for (const x of recalled) out.push(`- Recalled: ${x}`);
     return out.length ? `[World memory from the game, for continuity. Background only; do not recite it.]\n${out.join("\n")}` : null;
   }
@@ -1463,6 +1509,27 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
     /** The class panel (M7). */
     forgeAct: (userId: string, chatId: string, op: ForgeOp, arg?: string, arg2?: string, text?: string) => forge.act(userId, chatId, op, arg, arg2, text),
 
+    /** What someone already has with the player, as a talk with them begins. */
+    async standing(userId: string, chatId: string, castId: string) {
+      const sheet = await cards.sheetFor(userId, chatId);
+      const r = await load(userId, chatId);
+      if (!sheet || !r) return null;
+      const who = withPromoted(sheet, r).cast.find((c) => c.id === castId)?.name;
+      const n = r.memory?.npc[castId];
+      const last = (r.talks ?? []).findLast((t) => t.who === who);
+      const next = r.thread?.revelations.find((x) => !r.revealed?.includes(x.id));
+      return {
+        history: {
+          rapport: rapportFrom(n?.affinity ?? 0),
+          caughtLies: caughtLies(r.memory?.deeds ?? [], castId),
+          feel: feel(n?.affinity ?? 0),
+          remembers: [...(n?.notes ?? []).slice(-4).map((x) => x.text), ...(last ? [`on day ${last.day} they talked, and it ended: ${last.ended}`] : [])],
+        },
+        purse: r.scene.coin,
+        ...(r.thread ? { thread: `${r.thread.goal}${next ? ` (still to come out: ${next.text})` : ""}` } : {}),
+      };
+    },
+
     /** A Parley with someone on the card ended: the outcome and how you spoke become deeds. */
     async onParleyEnd(userId: string, scenario: ParleyScenario, state: ParleyState) {
       const chatId = state.chatId;
@@ -1474,9 +1541,22 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const name = withPromoted(sheet, r).cast.find((c) => c.id === castId)?.name ?? scenario.npc.name;
       const tactics = state.exchanges.map((e) => e.read.tactic);
       const bluffed = state.exchanges.some((e) => e.bluff && !e.bluff.fact);
-      record_(sheet, r, deedsFromParley(castId, name, state.end.kind, tactics, bluffed, r.scene.day, r.scene.placeId));
-      // Winning someone over gets you the next piece of what you're after.
-      const learned = state.end.kind === "won" ? revealNext(r) : null;
+      const caught = state.exchanges.filter((e) => e.bluff?.caught && !e.bluff.fact).length;
+      record_(sheet, r, deedsFromParley(castId, name, state.end.kind, tactics, bluffed, r.scene.day, r.scene.placeId, caught));
+      // What was on the line is yours now, and a deal is paid for.
+      const stake = scenario.contest.stake;
+      const got = state.end.kind === "won" || state.end.kind === "deal";
+      const price = state.end.kind === "deal" ? state.end.value : 0;
+      if (price && scenario.contest.money) {
+        r.scene = { ...r.scene, coin: Math.max(0, r.scene.coin - price) };
+        note(r, `You pay ${name} ${price} ${scenario.contest.unit ?? ""}.`.replace(" .", "."));
+      }
+      if (got) {
+        const m = mem(r);
+        if (!m.items.some((x) => x.name === stake)) m.items = [...m.items, { name: stake, description: price ? `Agreed on day ${r.scene.day}, for ${price} ${scenario.contest.unit ?? ""}.`.replace(" .", ".") : `Won on day ${r.scene.day}.`, from: name }];
+      }
+      // The thread only moves when that's what the talk was about.
+      const learned = state.end.kind === "won" && scenario.card?.aboutThread ? revealNext(r) : null;
       if (learned) note(r, `${name} lets it out: ${learned}`);
       // How it ended, as a picture: the two of you at the talk's last beat.
       const how = PARLEY_END_SCENE[state.end.kind] ?? "the talk ends";
@@ -1486,7 +1566,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // Back on the page, the story has moved on: where the talk got to, and how it ended.
       const lastSaid = state.exchanges.findLast((e) => e.text)?.text ?? "";
       const lastReply = state.exchanges.findLast((e) => e.reply)?.reply ?? "";
-      r.story = [...(r.story ?? []), { said: "", roll: `Talking with ${name}: ${PARLEY_END_TAG[state.end.kind] ?? "it's over"}`, reply: cleanReply(lastReply, 120), day: r.scene.day, where: r.scene.placeId, ...(learned ? { found: learned } : {}) }].slice(-40);
+      r.story = [...(r.story ?? []), { said: "", roll: `Talking with ${name}: ${PARLEY_END_TAG[state.end.kind] ?? "it's over"}`, reply: cleanReply(lastReply, 120), day: r.scene.day, where: r.scene.placeId, ...(learned || got ? { found: learned ?? `Yours now: ${stake}.` } : {}) }].slice(-40);
       await save(userId, chatId, r);
       await show(userId, chatId, sheet, r);
       // The talk may have sent someone off, or brought them along: the scene shows the same story.
@@ -1802,9 +1882,10 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (!spot) return send({ type: "notice", level: "warn", text: "That is not something you can do here." }, userId);
       switch (spot.kind) {
         case "talk":
+          // Talking is writing to them, in the box the screen has just addressed. Only a line that presses them starts a contest.
           interest(r, `cast:${spot.target}`, NOTICE.talk);
           await save(userId, chatId, r);
-          return cards.talk(userId, chatId, spot.target!);
+          return;
         case "exit": {
           if (r.hex) {
             await travel(userId, chatId, sheet, r, spot.target!);

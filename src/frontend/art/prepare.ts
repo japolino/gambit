@@ -63,7 +63,14 @@ export async function prepareArtFresh(url: string, key: boolean): Promise<Prepar
     // backgrounds too. A cut that kept scenery or looks like two figures is
     // not trusted, and the flat-background key below gets its turn.
     const cut = await modelCut(url);
-    if (cut) return { url: URL.createObjectURL(cut), cutout: true, stats: figureStats(data.data) };
+    if (cut) {
+      // Measured on the cut: the picture it came from covers everything, and the view would frame it.
+      const drawn = await createImageBitmap(cut);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.drawImage(drawn, 0, 0, c.width, c.height);
+      drawn.close();
+      return { url: URL.createObjectURL(cut), cutout: true, stats: figureStats(ctx.getImageData(0, 0, c.width, c.height).data) };
+    }
   }
   if (!key || !keyFlatBackground(data.data, c.width, c.height)) return { url, cutout: false, stats: figureStats(data.data) };
   const stats = figureStats(data.data);

@@ -119,11 +119,15 @@ describe("factions adapt, and say so first", () => {
 });
 
 describe("people remember, companions react", () => {
-  test("a lie makes someone wary; kindness warms them", () => {
-    const deeds = deedsFromParley("mara", "Mara", "walked", ["bluff"], true, 2);
+  test("a caught lie makes someone wary; one they never noticed doesn't", () => {
+    const deeds = deedsFromParley("mara", "Mara", "walked", ["bluff"], true, 2, undefined, 1);
+    expect(deeds.map((d) => d.kind)).toEqual(["walked", "caught_lying"]);
     const m = remember({}, deeds, new Set(["mara"]), "Wren");
-    expect(m.mara!.notes.map((n) => n.text)).toEqual(["Wren walked away from them on day 2", "Wren lied to them on day 2"]);
+    expect(m.mara!.notes.map((n) => n.text)).toEqual(["Wren walked away from them on day 2", "caught Wren lying on day 2"]);
     expect(m.mara!.affinity).toBe(-2.5);
+    const unnoticed = remember({}, deedsFromParley("mara", "Mara", "walked", ["bluff"], true, 2), new Set(["mara"]), "Wren");
+    expect(unnoticed.mara!.notes.map((n) => n.text)).toEqual(["Wren walked away from them on day 2"]);
+    expect(unnoticed.mara!.affinity).toBe(-0.5);
     expect(remember({}, deeds, new Set(["tobin"]), "Wren")).toEqual({});
   });
 
@@ -173,7 +177,7 @@ describe("memory in play", () => {
       },
       chat: { appendMessage: async (_c: string, m: { content: string }) => void posted.push(m.content) },
     };
-    const art = { request: (key: string) => (requested.push(key), { key, state: "queued" }), status: () => null, whenDone: () => new Promise(() => {}) };
+    const art = { request: (key: string) => (requested.push(key), { key, state: "queued" }), status: () => null, expect: () => {}, adopt: () => {}, whenDone: () => new Promise(() => {}) };
     const cards = { sheetFor: async () => sheet as never, armory: async () => sheet as never, talk: async (_u: string, _c: string, id: string) => void talked.push(id), recent: async () => [] };
     const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, { startState: async (_u: string, s: BattleState) => void started.push(s) });
     const last = (): SceneView => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : [])).at(-1)!;
@@ -198,10 +202,10 @@ describe("memory in play", () => {
     await play.fight("u", "c1");
     expect(started[1]!.combatants.filter((c) => c.side === "party").length).toBeGreaterThan(started[0]!.combatants.filter((c) => c.side === "party").length);
 
-    await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" } } as never, { chatId: "c1", end: { kind: "walked" }, exchanges: [{ read: { tactic: "bluff" }, bluff: { fact: null } }] } as never);
+    await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" }, contest: { stake: "a favor" } } as never, { chatId: "c1", end: { kind: "walked" }, exchanges: [{ read: { tactic: "bluff" }, bluff: { fact: null, caught: true } }] } as never);
     const out = await play.intercept([{ role: "system", content: "preset" }, { role: "user", content: "hi" }] as never, { chatId: "c1", userId: "u", generationType: "normal" } as never);
     expect(out).toHaveLength(3);
-    expect(String(out[1]!.content)).toMatch(/Mara remembers \(feels wary\): .*lied to them/);
+    expect(String(out[1]!.content)).toMatch(/Mara remembers \(feels wary\): .*caught Wren lying/);
   });
 
   test("resting runs the night: a bloodied place is redrawn, and a group you keep hurting adapts with a rumour", async () => {
@@ -254,7 +258,7 @@ describe("memory in play", () => {
   test("a companion at the bond line gets a personal quest and a combo skill", async () => {
     const { play, started, last } = setup();
     await play.open("u", "c4");
-    for (let i = 0; i < 8; i++) await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" } } as never, { chatId: "c4", end: { kind: "won" }, exchanges: [] } as never);
+    for (let i = 0; i < 8; i++) await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" }, contest: { stake: "a favor" } } as never, { chatId: "c4", end: { kind: "won" }, exchanges: [] } as never);
     expect(last().journal.companions.find((c) => c.id === "mara")?.affinity ?? 0).toBeGreaterThanOrEqual(BOND_AT); // a finished talk refreshes the scene
     await play.act("u", "c4", "rest");
     await new Promise((res) => setTimeout(res, 5)); // the night phase finishes in the background

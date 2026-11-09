@@ -44,7 +44,7 @@ function setup() {
     },
     chat: { appendMessage: async (_chatId: string, m: { content: string }) => void posted.push(m.content) },
   };
-  const art = { request: () => ({ key: "", state: "queued" }), status: () => null, whenDone: () => new Promise(() => {}) };
+  const art = { request: () => ({ key: "", state: "queued" }), status: () => null, expect: () => {}, adopt: () => {}, whenDone: () => new Promise(() => {}) };
   const cards = {
     sheetFor: async () => sheet as never,
     armory: async () => sheet as never,
@@ -158,6 +158,62 @@ describe("play on a card", () => {
     expect(last().busy).toBeUndefined();
     // What you wrote stays written: the talk's ending follows it.
     expect(last().story.map((b: { said: string }) => b.said)).toEqual(["I threaten Mara until she talks"]);
+  });
+
+  test("talking to someone is talking: no contest starts until a line presses them", async () => {
+    const { play, talks } = setup();
+    await play.open("u", "chat1");
+    await play.act("u", "chat1", "talk:mara");
+    expect(talks).toEqual([]);
+  });
+
+  describe("what a talk leaves behind", () => {
+    const end = (kind: string, money = true, about = false) => ({
+      scenario: { npc: { name: "Mara" }, card: { castId: "mara", ...(about ? { aboutThread: true } : {}) }, contest: { stake: "a place on the night boat", unit: "crowns", money } } as never,
+      state: { chatId: "chat1", exchanges: [{ read: { tactic: "logic" }, text: "Well?", reply: "Fine.", bluff: null }], end: kind === "deal" ? { kind, value: 20 } : { kind } } as never,
+    });
+    const record = (files: Map<string, unknown>) => files.get("play/chat1.json") as { scene: { coin: number }; revealed?: string[]; thread?: unknown; memory: { items: { name: string; from: string }[] } };
+
+    test("a deal is paid for, and what was at stake is yours", async () => {
+      const { play, files, last } = setup();
+      await play.open("u", "chat1");
+      const coin = record(files).scene.coin;
+      const e = end("deal");
+      await play.onParleyEnd("u", e.scenario, e.state);
+      expect(record(files).scene.coin).toBe(coin - 20);
+      expect(record(files).memory.items).toMatchObject([{ name: "a place on the night boat", from: "Mara" }]);
+      expect(last().story.at(-1)?.found).toBe("Yours now: a place on the night boat.");
+    });
+
+    test("a price that isn't money costs no money", async () => {
+      const { play, files } = setup();
+      await play.open("u", "chat1");
+      const coin = record(files).scene.coin;
+      const e = end("deal", false);
+      await play.onParleyEnd("u", e.scenario, e.state);
+      expect(record(files).scene.coin).toBe(coin);
+    });
+
+    test("walking away gets you nothing", async () => {
+      const { play, files, last } = setup();
+      await play.open("u", "chat1");
+      const coin = record(files).scene.coin;
+      const e = end("walked");
+      await play.onParleyEnd("u", e.scenario, e.state);
+      expect(record(files).scene.coin).toBe(coin);
+      expect(record(files).memory?.items ?? []).toEqual([]);
+      expect(last().story.at(-1)?.found).toBeUndefined();
+    });
+
+    test("the next talk starts from what the last one left", async () => {
+      const { play } = setup();
+      await play.open("u", "chat1");
+      const e = end("refused");
+      await play.onParleyEnd("u", e.scenario, e.state);
+      const s = await play.standing("u", "chat1", "mara");
+      expect(s?.history.remembers.join(" ")).toContain("refused");
+      expect(s?.history.remembers.join(" ")).toContain("it ended");
+    });
   });
 
   test("naming someone who isn't here brings them into the scene", async () => {
@@ -282,7 +338,7 @@ describe("play on a card", () => {
     const { play, last, sent } = setup();
     await play.open("u", "chat1");
     const before = sent.length;
-    await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" } } as never, { chatId: "chat1", end: { kind: "refused" }, exchanges: [{ text: "Give me the ledger.", reply: "Mara shuts the door in your face.", read: { tactic: "threat" } }] } as never);
+    await play.onParleyEnd("u", { card: { castId: "mara" }, npc: { name: "Mara" }, contest: { stake: "a favor" } } as never, { chatId: "chat1", end: { kind: "refused" }, exchanges: [{ text: "Give me the ledger.", reply: "Mara shuts the door in your face.", read: { tactic: "threat" } }] } as never);
     expect(sent.slice(before).some((m) => m.type === "scene.state")).toBe(true);
     expect(last().story.at(-1)).toMatchObject({ said: "", roll: "Talking with Mara: refused", reply: "Mara shuts the door in your face." });
   });

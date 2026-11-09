@@ -36,6 +36,37 @@ export function formatValue(scenario: ParleyScenario, v: number): string {
   return c.unit ? `${Math.round(v)} ${c.unit}` : `${Math.round(v)}`;
 }
 
+const STAKE_LEAD: Record<ParleyScenario["contest"]["kind"], string> = {
+  haggle: "Haggling over",
+  persuade: "Asking for",
+  intimidate: "Leaning on them for",
+  deceive: "Talking your way to",
+  seduce: "Winning",
+  interrogate: "Getting out of them:",
+};
+const FEEL_WORDS: Record<string, string> = { devoted: "devoted to you", warm: "warm toward you", wary: "wary of you", hostile: "hostile to you" };
+
+/** What's on the line, and how they stand with you: what the player needs to know before saying a word. */
+export function stakeLine(scenario: ParleyScenario): string {
+  const c = scenario.contest;
+  const h = scenario.history;
+  // Short: themes give this line little room, and it's plain who it means.
+  const how = [h ? FEEL_WORDS[h.feel] : undefined, h?.caughtLies ? "caught you lying" : undefined].filter(Boolean);
+  return [`${STAKE_LEAD[c.kind]} ${c.stake}`, ...how].join(" \u00b7 ");
+}
+
+/** What they carry into this talk, for whoever reads or voices them. Empty when they have nothing on you yet. */
+export function historyLines(scenario: ParleyScenario): string[] {
+  const h = scenario.history;
+  if (!h) return [];
+  const n = scenario.npc.name;
+  return [
+    ...(h.remembers.length ? [`What ${n} remembers of the player: ${h.remembers.join("; ")}.`] : []),
+    ...(h.feel !== "neutral" && (h.remembers.length || h.caughtLies) ? [`${n} feels ${h.feel} toward them.`] : []),
+    ...(h.caughtLies ? [`${n} has caught them lying before, and doesn't take their word for much.`] : []),
+  ];
+}
+
 /** Immersive mode: tells and a qualitative line, no numbers. */
 export function immersiveRead(scenario: ParleyScenario, ex: Exchange): string {
   const parts = [tellFor(scenario, ex.mood)];
@@ -160,6 +191,7 @@ export function sceneBlock(scenario: ParleyScenario, state: ParleyState): string
     `Respects: ${s.respects.join(", ")}. Despises: ${s.despises.join(", ")}.`,
     `Current ${scenario.contest.track}: ${formatValue(scenario, state.value)}. Patience ${state.patience}/${s.patience}.`,
     ...(npc.voice ? [`Voice: ${npc.voice}`] : []),
+    ...historyLines(scenario),
     ...REPLY_RULES(npc.name),
   ].join("\n");
 }

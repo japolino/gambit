@@ -10,7 +10,7 @@ import { createBattles } from "./backend/battles.js";
 import { createCards } from "./backend/cards.js";
 import { createFxAssets } from "./backend/fx-assets.js";
 import { createGate } from "./backend/gate.js";
-import { createInlayPictures } from "./backend/inlay-pictures.js";
+import { sharedInlayPictures } from "./backend/inlay-pictures.js";
 import { modelsFor } from "./backend/models.js";
 import { createParleys } from "./backend/parleys.js";
 import { createPlay } from "./backend/play.js";
@@ -26,7 +26,7 @@ const send = (msg: ToFrontend, userId?: string) => spindle.sendToFrontend(msg, u
 const art = registerArt(spindle, send, { gptConcurrency: 2 });
 let play: ReturnType<typeof createPlay> | null = null;
 // Cut-ins of fights in a chat are drawn by Inlay Illustrator when it is there (backend/inlay-pictures.ts).
-const cutinPictures = { inlay: createInlayPictures(spindle, (m) => spindle.log.info(`gambit ${m}`)), send: (msg: ToFrontend, userId: string) => send(msg, userId) };
+const cutinPictures = { inlay: sharedInlayPictures(spindle, (m) => spindle.log.info(`gambit ${m}`)), send: (msg: ToFrontend, userId: string) => send(msg, userId) };
 const battles = createBattles(
   spindle,
   send,
@@ -44,6 +44,7 @@ cards.setPlaceHook({
   settled: (u, c, now) => play!.settled(u, c, now),
   notice: (u, c, lines) => play!.notice(u, c, lines),
   extraCast: (u, c) => play!.extraCast(u, c),
+  standing: (u, c, id) => play!.standing(u, c, id),
 });
 // Memory (4.6): Parley outcomes become deeds; the narrator hears what people here remember.
 parleys.setEndHook((u, scenario, state) => void play!.onParleyEnd(u, scenario, state).catch((e) => spindle.log.error(`gambit deeds: ${String(e)}`)));

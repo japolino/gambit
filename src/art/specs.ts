@@ -198,6 +198,10 @@ function gptPaletteSentence(palette: string | undefined): string {
 /* Kind tables                                                          */
 /* ------------------------------------------------------------------ */
 
+/** Tags of a body that doesn't stand on two legs: "standing", "head to toe" and "arms at sides" would give it human ones. */
+const NOT_ON_TWO_LEGS = /\b(lamia|naga|snake|serpent|scylla|mermaid|merfolk|fish tail|centaur|taur|arachne|drider|spider|slime|ghost|no legs|legless)\b/i;
+export const standsOnTwoLegs = (tags: string): boolean => !NOT_ON_TWO_LEGS.test(tags);
+
 /** Cue sprite-prompt-v2 framing, with V5's transparent background (or white for older models / insets). */
 const FIGURE_FRAMING = "solo, standing, centered, front view, straight-on, facing viewer, looking at viewer, cowboy shot";
 const FIGURE_NEGATIVE = "scenery, shadow, drop shadow, gradient background, multiple people, multiple girls, multiple boys, 2girls, 2boys, multiple views, split screen, border, from below, from above, dutch angle, cropped, out of frame";
@@ -392,9 +396,10 @@ export function buildPrompt(spec: ArtSpec, look: LookPreset, opts: BuildOptions 
       const c = spec.character;
       // Library tags (Inlay: the character tag, then head, eyes, body, outfit) say who they are.
       const charCaption = join(c.sex ?? "other", c.booru || c.tags.slice(0, 260), "light smile");
-      const prompt = join(countTag(c.sex), style, "solo, full body, standing, centered, front view, straight-on, facing viewer, looking at viewer, arms at sides", naiPaletteTags(c.palette), bg.pos);
+      const legs = standsOnTwoLegs(`${c.booru ?? ""} ${c.tags}`);
+      const prompt = join(countTag(c.sex), style, legs ? "solo, full body, standing, centered, front view, straight-on, facing viewer, looking at viewer, arms at sides" : "solo, full body, centered, front view, facing viewer, looking at viewer", naiPaletteTags(c.palette), bg.pos);
       const negative = baseNeg(join(FIGURE_NEGATIVE.replace(", cropped, out of frame", ""), "cropped, out of frame, cowboy shot, upper body, portrait, close-up"));
-      const subject = `A full-body standing figure from head to toe, facing the viewer, arms relaxed: ${c.description}`;
+      const subject = legs ? `A full-body standing figure from head to toe, facing the viewer, arms relaxed: ${c.description}` : `The whole of this character's body in view, facing the viewer: ${c.description}`;
       return out(prompt, negative, [charCaption], sentences(subject, gptPaletteSentence(c.palette), gptTail));
     }
     case "cg": {
