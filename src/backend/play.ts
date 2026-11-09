@@ -92,6 +92,7 @@ export interface CardsPort {
 
 export interface BattlesPort {
   startState(userId: string, state: BattleState): Promise<void>;
+  reshow?(userId: string, battleId: string): Promise<BattleState | null>;
 }
 
 const path = (chatId: string) => `play/${chatId}.json`;
@@ -864,6 +865,24 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     await battles.startState(userId, state);
   }
 
+  /**
+   * The record says a fight is running, and the scene is locked until it ends. A reload or a closed
+   * overlay leaves that fight saved but off the screen, so bring it back. One that finished unnoticed
+   * is settled now, and one that's gone no longer holds anything up.
+   */
+  async function rejoinFight(userId: string, chatId: string, r: PlayRecord): Promise<void> {
+    if (!r.battleId || !battles.reshow) return;
+    const state = await battles.reshow(userId, r.battleId);
+    if (state?.outcome === "ongoing") return;
+    if (state) return onBattleEnd(state, userId);
+    log(`fight ${r.battleId} is gone; carrying on without it`);
+    r.battleId = undefined;
+    if (r.board?.fight) r.board = winFight(r.board).board;
+    await save(userId, chatId, r);
+    const sheet = await cards.sheetFor(userId, chatId);
+    if (sheet) await show(userId, chatId, sheet, r);
+  }
+
   /** A card battle ended: carry vigor, pay out, clear the room, and tell the chat. */
   async function onBattleEnd(state: BattleState, userId: string): Promise<void> {
     const chatId = state.meta?.chatId;
@@ -1353,7 +1372,8 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
   /** One action on the board: a move, a depth for a lore tile, camp, skip, or turning back. */
   async function boardAct(userId: string, chatId: string, op: BoardOp, cell?: string, tier?: number): Promise<void> {
     const ctx = await context(userId, chatId);
-    if (!ctx?.r.board || ctx.r.battleId) return;
+    if (!ctx?.r.board) return;
+    if (ctx.r.battleId) return rejoinFight(userId, chatId, ctx.r);
     const { sheet, r } = ctx;
     const b = r.board!;
     r.boardStory = undefined;
@@ -1599,7 +1619,8 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
 
     async hexStep(userId: string, chatId: string, q: number, rr: number) {
       const ctx = await context(userId, chatId);
-      if (!ctx?.r.hex || ctx.r.delve || ctx.r.battleId) return;
+      if (ctx?.r.battleId) return rejoinFight(userId, chatId, ctx.r);
+      if (!ctx?.r.hex || ctx.r.delve) return;
       const { sheet, r } = ctx;
       try {
         const arrived = hexMove(r, { q, r: rr });
@@ -1621,7 +1642,9 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
 
     async open(userId: string, chatId: string) {
       const ctx = await context(userId, chatId);
-      if (ctx) await show(userId, chatId, ctx.sheet, ctx.r);
+      if (!ctx) return;
+      await show(userId, chatId, ctx.sheet, ctx.r);
+      await rejoinFight(userId, chatId, ctx.r);
     },
 
     async setTheme(userId: string, chatId: string, theme: ThemeId) {

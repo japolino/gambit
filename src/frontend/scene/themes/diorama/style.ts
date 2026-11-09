@@ -227,6 +227,18 @@ export const CSS = `
   background: var(--tex-walnut, #2c180b) center / 600px auto, #2c180b; clip-path: polygon(6% 0, 94% 0, 100% 50%, 94% 100%, 6% 100%, 0 50%); filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
 .dr .say .new { width: calc(var(--u) * 3.2); display: block; rotate: -10deg; }
 .dr .say .new svg { width: 100%; display: block; }
+.dr .say-in { display: contents; }
+.dr .say.writing .txt { max-height: 40cqh; overflow-y: auto; justify-content: flex-start; scrollbar-width: thin; scrollbar-color: #8a6a2c transparent; }
+.dr .say .beat { margin-top: .55em; }
+.dr .say .beat p { margin: 0 0 .25em; }
+.dr .say .said { padding-left: .6em; border-left: 2px solid #e2b763; font: italic 400 max(17px, calc(var(--u) * 1.06))/1.34 "Gambit Fell", Georgia, serif; color: #ffe9b8; }
+.dr .say .roll { font: 800 max(12px, calc(var(--u) * .76))/1.3 "Gambit Cinzel", serif; letter-spacing: .08em; color: #f5d36c; }
+.dr .say .found { padding-left: .6em; border-left: 2px solid #8fbf7a; font: 600 max(17px, calc(var(--u) * 1.04))/1.34 "Gambit Garamond", Georgia, serif; color: #d6ebc4; }
+.dr .say .told { font: 500 max(18px, calc(var(--u) * 1.12))/1.38 "Gambit Garamond", Georgia, serif; color: #f4efe6; }
+/* The typewriter: the till's green and brass. Its page stands above it, and its front runs off the bottom of the panel. */
+.dr .dr-tw { --tw-a: #1f4a3c; --tw-b: #0c241d; --tw-trim: #d9b35e; --tw-ribbon: #a3341f; --tw-cap: #10231c; --tw-legend: #f5e6b8; position: relative; z-index: 1; flex: none; align-self: center; box-sizing: border-box; width: min(100%, 620px); padding-top: 42px; margin-top: .3em; margin-bottom: min(-34px, -3.6cqh); }
+.dr .dr-tw .tw-m > button { border-color: #2a1808; background: linear-gradient(180deg, #e7c47a, #b78a3a 55%, #8a6426); box-shadow: inset 0 1px 0 rgba(255,244,205,.8), 0 3px 6px rgba(0,0,0,.7); color: #2a1808; }
+.dr .dr-tw .tw-m > button:hover:not(:disabled), .dr .dr-tw .tw-m > button:focus-visible { background: linear-gradient(180deg, #fbe3a6, #d0a556 55%, #a27a30); color: #1c0f04; }
 .dr .say .txt { position: relative; overflow: hidden; max-height: 26cqh; display: flex; flex-direction: column; justify-content: flex-end; }
 .dr .say.open .txt { max-height: 62cqh; overflow-y: auto; justify-content: flex-start; }
 .dr .say .desc { margin: 0 0 .35em; font: 500 max(19px, calc(var(--u) * 1.18))/1.38 "Gambit Garamond", Georgia, serif; color: #f4efe6; }

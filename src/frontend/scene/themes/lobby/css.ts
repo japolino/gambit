@@ -265,6 +265,27 @@ button.lb-talk:hover > .art { filter: drop-shadow(0 0 ${U(16)} rgba(230,185,90,.
 .lb-log p { margin: 0; font: italic 400 ${U(16)}/1.3 ${FELL}; color: #d8c39e; text-shadow: 0 1px 2px #000; }
 .lb-log p:nth-last-child(2) { opacity: .7; } .lb-log p:nth-last-child(3) { opacity: .5; } .lb-log p:nth-last-child(n+4) { opacity: .38; }
 .lb-feed.open .lb-log { max-height: ${U(420)}; overflow: auto; }
+/* Writing: the story in a smoked-glass drawer like the log's, wider for reading, and the slot under it. */
+.lb-feed.writing { width: ${U(780)}; }
+.lb:not(.phone).writing .lb-talk { bottom: ${U(650)}; }
+.lb-feed.writing:not(.open) .lb-log { display: none; }
+.lb-story { display: none; position: relative; max-height: ${U(290)}; overflow-y: auto; margin: 0 0 ${U(8)} ${U(14)}; padding: ${U(14)} ${U(22)} ${U(10)} ${U(26)}; background: linear-gradient(90deg, rgba(10,8,6,.95) 0%, rgba(10,8,6,.9) 85%, rgba(10,8,6,.55) 100%); border-left: 1px solid #c8aa6e; scrollbar-width: thin; scrollbar-color: #8c6d3b transparent; }
+.lb-feed.writing .lb-story { display: block; }
+.lb-story .beat { margin: 0 0 ${U(12)}; }
+.lb-story .beat:last-child { margin-bottom: 0; }
+.lb-story p { margin: 0 0 ${U(5)}; }
+.lb-story .said { padding-left: ${U(10)}; border-left: ${U(2)} solid #e0b866; font: italic 400 max(14px, ${U(20)})/1.34 ${FELL}; color: #e6c687; }
+.lb-story .roll { font: 800 max(11px, ${U(13)})/1.3 ${CAPS}; letter-spacing: .08em; color: #E0B866; }
+.lb-story .found { padding-left: ${U(10)}; border-left: ${U(2)} solid #8fd18a; font: 600 max(14px, ${U(19)})/1.34 ${SERIF}; color: #cfe6c0; }
+.lb-story .told { font: 500 max(15px, ${U(21)})/1.4 ${SERIF}; color: #F3E8D2; }
+.lb-say { display: flex; gap: ${U(8)}; align-items: stretch; margin: 0 0 ${U(10)}; }
+.lb-say[hidden] { display: none; }
+.lb-say textarea { flex: 1; min-width: 0; min-height: max(36px, ${U(52)}); box-sizing: border-box; resize: none; padding: max(7px, ${U(13)}) ${U(16)}; border: 1px solid #8c6d3b; border-radius: ${U(4)}; outline: 0; background: linear-gradient(180deg, rgba(8,6,4,.96), rgba(26,19,10,.92)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.8), inset 0 ${U(3)} ${U(10)} rgba(0,0,0,.8); color: #F3E8D2; font: italic 400 max(15px, ${U(21)})/1.3 ${FELL}; }
+.lb-say textarea::placeholder { color: #a69272; opacity: 1; }
+.lb-say textarea:focus { border-color: #e6c687; box-shadow: inset 0 0 0 1px rgba(0,0,0,.8), 0 0 ${U(10)} rgba(230,198,135,.45); }
+.lb-say button { flex: none; min-width: max(64px, ${U(112)}); padding: 0 ${U(14)}; border: 1px solid #1c1308; border-radius: ${U(4)}; background: linear-gradient(180deg, #e6c687 0%, #b68d40 48%, #8c6224 100%); box-shadow: inset 0 1px 0 rgba(255,242,194,.8), 0 ${U(2)} ${U(6)} rgba(0,0,0,.7); color: #1c1308; font: 800 max(12px, ${U(16)})/1 ${CAPS}; letter-spacing: .12em; cursor: pointer; }
+.lb-say button:hover:not(:disabled), .lb-say button:focus-visible { background: linear-gradient(180deg, #fff2c2 0%, #d4b475 48%, #a0752c 100%); outline: 0; }
+.lb-say button:disabled, .lb-say textarea:disabled { opacity: .55; cursor: default; }
 .lb-feed.open .lb-log p { opacity: .95; }
 .lb-ticker { position: relative; display: flex; align-items: center; gap: ${U(10)}; height: ${U(44)}; padding: 0 ${U(34)} 0 ${U(62)}; margin-bottom: ${U(12)}; width: 100%; text-align: left; }
 .lb-ticker > .art { position: absolute; inset: 0; z-index: -1; }
@@ -442,6 +463,14 @@ button.lb-talk:hover { transform: none; }
 .lb.phone .lb-log { display: none; }
 .lb.phone .lb-feed.open .lb-log:not(.none) { display: flex; order: 1; max-height: 40cqh; margin: 0; padding: 8px 12px; gap: 6px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; background: rgba(10,8,6,.92); }
 .lb.phone .lb-log .lc, .lb.phone .lb-log::after { display: none; }
+/* Read down: the place, the story, the slot, then the news. */
+.lb.phone .lb-banner { order: -3; }
+.lb.phone .lb-story { order: -2; max-height: none; overflow: visible; margin: 0; padding: 10px 12px; background: rgba(10,8,6,.94); border-left: 0; }
+.lb.phone .lb-say { order: -1; margin: 0; padding: 8px; background: rgba(10,8,6,.94); }
+.lb.phone .lb-say textarea { font-size: 16px; min-height: 44px; padding: 10px 12px; }
+.lb.phone .lb-say button { min-width: 64px; font-size: 13px; }
+.lb.phone .lb-story .said { font-size: 16px; } .lb.phone .lb-story .found { font-size: 16px; } .lb.phone .lb-story .told { font-size: 17px; }
+.lb.phone .lb-story .roll { font-size: 12px; }
 .lb.phone .lb-log p, .lb.phone .lb-feed.open .lb-log p { font-size: 15px; line-height: 1.3; opacity: 1; text-shadow: none; }
 
 /* The actions: instruments in two columns, everything else in full-width rows. Tall enough for a thumb, text in text. */
@@ -493,6 +522,7 @@ button.lb-talk:hover { transform: none; }
 .lb.phone.land .lb-dock { grid-column: 2; grid-row: 3; }
 .lb.phone.land .lb-badge .rib b, .lb.phone.land .lb-badge .rib span { max-width: calc(50cqw - 80px); }
 .lb.phone.land .lb-feed:has(> .lb-banner) { align-self: start; }
+.lb.phone.land .lb-story { max-height: 56cqh; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
 
 /* The journal: one page, one scroll, the close ribbon clear of the text. */
 .lb.phone .lb-journal { place-items: stretch; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }

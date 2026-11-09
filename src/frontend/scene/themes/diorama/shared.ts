@@ -4,6 +4,8 @@
  * awning, and the textures they use.
  */
 import { esc, type SceneView, type ThemeCtx } from "../contract.js";
+import { beatsHtml, isWriting } from "../write.js";
+import { typewriterHtml } from "../typewriter.js";
 import { AWNING } from "./art.js";
 import { leather, paper, texUrl } from "./textures.js";
 
@@ -21,10 +23,23 @@ export const tex = {
   leather: () => texUrl("leather", () => leather(31, 600, 420)),
 };
 
+/** The form lives next to the narration (`.say-in` is replaced whenever the words change, and the form must not be). */
+export const sayHtml = (): string => `<div class="say-in"></div>${typewriterHtml("dr-tw")}`;
+
+/** The story, once there is one, is what the narration opens on. */
+export function followStory(say: HTMLElement, v: SceneView, changed: boolean): void {
+  const writing = isWriting(v);
+  say.classList.toggle("writing", writing);
+  if (changed && writing) {
+    const txt = say.querySelector<HTMLElement>(".txt");
+    if (txt) txt.scrollTop = txt.scrollHeight;
+  }
+}
+
 /** The narration under its pitched awning: description, then the log (newest last); the busy quill. */
-export function narrationHtml(box: ReturnType<ThemeCtx["box"]>, logOpen: boolean): string {
+export function narrationHtml(box: ReturnType<ThemeCtx["box"]>, logOpen: boolean, story: SceneView["story"] = []): string {
   return `${AWNING}
-<div class="txt"><p class="desc">${esc(box.desc)}</p>${box.log.length ? `<ol class="log">${box.log.map((l) => `<li>${esc(l)}</li>`).join("")}</ol>` : ""}${box.busy ? `<div class="busyl">${QUILL}<span>${esc(box.busy)}</span><i>.</i><i>.</i><i>.</i></div>` : ""}</div>
+<div class="txt"><p class="desc">${esc(box.desc)}</p>${box.log.length ? `<ol class="log">${box.log.map((l) => `<li>${esc(l)}</li>`).join("")}</ol>` : ""}${beatsHtml(story)}${box.busy ? `<div class="busyl">${QUILL}<span>${esc(box.busy)}</span><i>.</i><i>.</i><i>.</i></div>` : ""}</div>
 ${box.log.length > 2 ? `<button class="more" data-act="log" aria-expanded="${logOpen}" aria-label="${logOpen ? "Fold the log away" : "Read the whole log"}">${TRIANGLE}</button>` : ""}`;
 }
 

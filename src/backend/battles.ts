@@ -59,6 +59,16 @@ export function createBattles(spindle: SpindleAPI, send: Send, onShown?: (state:
       }
     },
 
+    /** One particular fight, shown again if it's still going. Whatever its state, says how it stands (null: it's gone). */
+    async reshow(userId: string, battleId: string): Promise<BattleState | null> {
+      const state = await load(userId, battleId);
+      if (state?.outcome === "ongoing") {
+        send({ type: "battle.state", state, events: [] }, userId);
+        onShown?.(state, userId);
+      }
+      return state;
+    },
+
     async act(userId: string, battleId: string, action: Action) {
       const state = await load(userId, battleId);
       if (!state) return send({ type: "battle.error", error: "That battle is gone." }, userId);

@@ -285,9 +285,24 @@ export function tableCss(tex: { felt: string; paper: string; page: string; leath
 .tb .tag3.who3 { background: none; box-shadow: none; opacity: 0; min-width: 12cqh; height: 5cqh; margin-top: -2.5cqh; }
 .tb .tag3.who3:focus-visible { opacity: 1; color: transparent; text-shadow: none; }
 .tb.zoomed .tag3 { opacity: 0 !important; pointer-events: none; }
-.tb.zoomed .plaque { opacity: 0; pointer-events: none; }
+.tb.zoomed .plaque, .tb.zoomed .tw { opacity: 0; pointer-events: none; }
+/* The typewriter: black enamel and a gold line, behind your cards; up in front of them while you're at it. */
+.tb .tb-tw { position: absolute; transition: opacity .3s; }
+.tb .tb-tw:focus-within { z-index: 71; }
+.tb.row .tw-page textarea { font-size: 16px; }
+/* The story, on the stone. */
+.tb .plaque.story .ptx { overflow-y: auto; justify-content: flex-start; scrollbar-width: thin; scrollbar-color: #4a4d55 transparent; }
+.tb .plaque.story .ptx > * { flex: none; }
+.tb .plaque .beat { margin-top: .5em; }
+.tb .plaque .beat p { margin: 0 0 .22em; }
+.tb .plaque .said { padding-left: .6em; border-left: 2px solid ${RED}; font-style: italic; color: #e2d3b4; }
+.tb .plaque .roll { font: 800 .74em/1.3 "Gambit Cinzel", serif; letter-spacing: .08em; color: #ffcf6a; }
+.tb .plaque .found { padding-left: .6em; border-left: 2px solid #16b877; color: #bfe8cf; }
+.tb .plaque .told { color: #f4efe6; }
+.tb:not(.row) .plaque:not(.open):not(.story) .ptx { top: 20%; bottom: 5%; line-height: 1.3; }
+.tb:not(.row) .plaque:not(.open):not(.story) .rib { font-size: max(11px, 1.4cqh); }
 /* The narration lies on the mat: tilted back into the table's perspective, pinned with two brass tacks. */
-.tb.x3:not(.port):not(.row) .plaque:not(.open) { transform: perspective(1100px) rotateX(24deg); transform-origin: 50% 100%; filter: drop-shadow(0 14px 12px rgba(0,0,0,.9)); }
+.tb.x3:not(.port):not(.row) .plaque:not(.open):not(.story) { transform: perspective(1100px) rotateX(14deg); transform-origin: 50% 100%; filter: drop-shadow(0 14px 12px rgba(0,0,0,.9)); }
 .tb.x3 .plaque .ptx { color: #ece6d8; }
 .tb.x3:not(.port):not(.row) .plaque .ptx { font-size: max(15px, 2.1cqh); }
 .tb.x3 .plaque::before, .tb.x3 .plaque::after { content: ""; position: absolute; z-index: 2; top: 5.5%; width: max(9px, 1.1cqh); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff2c0, #d8a040 45%, #5a3608 80%); box-shadow: 0 2px 3px rgba(0,0,0,.8); }

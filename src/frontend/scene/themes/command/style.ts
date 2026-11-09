@@ -180,6 +180,21 @@ export function commandCss(): string {
 .cmd .tx .cu { display: inline-block; width: var(--c); height: var(--c); vertical-align: top; background: url("${glyph("full", "#fff")}") 0 0 / 100% 100%; image-rendering: pixelated; animation: cmdBlink 1s steps(1) infinite; }
 .cmd .tx .busyt { color: ${YEL}; }
 .cmd .tx .echo { color: ${CYAN}; }
+.cmd .tx .beat { padding-top: var(--c); }
+.cmd .tx .beat p { margin: 0; overflow-wrap: anywhere; }
+.cmd .tx .said { color: ${CYAN}; }
+.cmd .tx .roll { color: ${YEL}; }
+.cmd .tx .found { color: #000; background: ${YEL}; }
+.cmd .tx .told { color: #fff; }
+.cmd .term .wr { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; align-items: flex-start; padding-left: var(--c); background: #000; }
+.cmd .term .wr[hidden] { display: none; }
+.cmd .term .wr::before { content: ""; position: absolute; left: 0; top: 0; width: var(--c); height: var(--c); background: ${chev("#fff")} 0 0 / 100% 100%; image-rendering: pixelated; }
+.cmd .term .wr textarea { flex: 1; min-width: 0; display: block; box-sizing: content-box; height: var(--c); margin: 0; padding: 0; border: 0; border-radius: 0; outline: 0; resize: none; overflow: hidden; background: #000; color: ${CYAN}; font: inherit; line-height: var(--c); caret-color: #fff; }
+.cmd .term .wr textarea::placeholder { color: ${GREY}; opacity: 1; }
+.cmd .term .wr button { flex: none; width: calc(var(--c) * 2); height: var(--c); margin: 0; padding: 0; border: 0; border-radius: 0; background: ${BLUE}; color: #fff; font: inherit; line-height: var(--c); cursor: var(--cur, pointer); }
+.cmd .term .wr button:hover:not(:disabled), .cmd .term .wr button:focus-visible { background: #fff; color: ${BLUE}; outline: none; }
+.cmd .term .wr button:disabled { background: #000; color: ${DARK}; }
+.cmd .term .wr textarea:disabled { color: ${DARK}; }
 .cmd .tx .spin { display: inline-block; width: var(--c); color: ${YEL}; }
 .cmd .scrollmark { position: absolute; right: 0; width: var(--c); height: var(--c); z-index: 6; color: ${YEL}; background: #000; text-align: center; pointer-events: none; }
 
@@ -191,6 +206,10 @@ export function commandCss(): string {
 .cmd.phone .vp { background: #000; }
 .cmd.phone .st { background: ${BLUE}; }
 .cmd.phone .term { background: #000; }
+.cmd.phone .term .wr { padding: 2px 4px 2px calc(var(--c) + 6px); border-top: 2px solid ${BLUE}; }
+.cmd.phone .term .wr::before { left: 2px; top: 16px; }
+.cmd.phone .term .wr textarea { min-height: 40px; padding: 10px 0; font-size: 16px; line-height: 20px; }
+.cmd.phone .term .wr button { align-self: stretch; width: auto; height: auto; min-height: 44px; padding: 0 14px; line-height: 44px; }
 .cmd.phone .vp > .notch { background: #000; color: #fff; }
 .cmd.phone .vp .art { left: 0; right: 0; top: var(--c); bottom: 0; }
 .cmd.phone .vp { z-index: 20; }

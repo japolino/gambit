@@ -18,6 +18,7 @@
  */
 import { BOARD_SKINS } from "../board-skins.js";
 import { esc, seedOf, type DelveView, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
+import { beatsHtml, isWriting, wireWrite, writeFormHtml } from "./write.js";
 import * as A from "./lobby/art.js";
 import { lobbyCss } from "./lobby/css.js";
 import { chartGround, chartSketch, hatch, leather, moteSprite, parchment } from "./lobby/tex.js";
@@ -59,7 +60,7 @@ export const lobby: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     </div>
     <section class="lb-cluster" aria-label="Actions"><div class="lb-instr"></div><div class="lb-cards"></div></section>
     <div class="lb-dock"></div>
-    <div class="lb-feed"><div class="lb-log" aria-live="polite"></div><button class="lb-ticker" data-a="log"></button><div class="lb-banner"></div></div>
+    <div class="lb-feed"><div class="lb-log" aria-live="polite"></div><div class="lb-story" aria-live="polite"></div>${writeFormHtml("lb-say")}<button class="lb-ticker" data-a="log"></button><div class="lb-banner"></div></div>
   </div>
   <div class="lb-journal" role="dialog" aria-label="Journal"></div>
 </div>`;
@@ -89,7 +90,9 @@ export const lobby: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     ticker: $(".lb-ticker"),
     banner: $(".lb-banner"),
     journal: $(".lb-journal"),
+    story: $(".lb-story"),
   };
+  const write = wireWrite(ctx, $<HTMLFormElement>(".lb-say"), { maxRows: 4 });
   const dust = $<HTMLCanvasElement>(".lb-dust");
 
   /** Pieces that live across section rebuilds: the honeycomb (drawHex wires its own listeners) and the delve chart. */
@@ -707,6 +710,19 @@ ${fight ? `<span class="gauge">VIGOR</span><span class="gauge2">${vig}%</span>` 
     el.feed.classList.toggle("open", logOpen);
     el.log.classList.toggle("none", !older.length);
     put(el.log, older.length ? `<svg class="lc l" viewBox="0 0 20 20" aria-hidden="true"><path d="M1 19 V1 H19" fill="none" stroke="url(#lb-brass)" stroke-width="2"/><circle cx="1.5" cy="1.5" r="1.5" fill="#e6c687"/></svg>${older.map((l) => `<p>${esc(l)}</p>`).join("")}` : "");
+    write.sync(v, ctx.journal.open);
+    const writing = isWriting(v);
+    el.feed.classList.toggle("writing", writing);
+    lb.classList.toggle("writing", writing);
+    if (put(el.story, writing ? beatsHtml(v.story) : "") && writing) {
+      el.story.scrollTop = el.story.scrollHeight;
+      // On a phone the page is what scrolls: bring the newest beat up to read.
+      if (phone)
+        requestAnimationFrame(() => {
+          if (lb.classList.contains("land")) $(".lb-say").scrollIntoView({ block: "end" });
+          else el.story.lastElementChild?.scrollIntoView({ block: "start" });
+        });
+    }
     el.ticker.classList.toggle("busy", !!b.busy);
     el.ticker.setAttribute("aria-expanded", String(logOpen));
     el.ticker.setAttribute("aria-label", logOpen ? "Hide the log" : "Show the whole log");

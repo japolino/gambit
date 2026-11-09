@@ -15,6 +15,7 @@
  * Parallax: painting, cast (two depths) and the frame move with the pointer.
  */
 import { BOARD_SKINS } from "../board-skins.js";
+import { beatsHtml, isWriting, wireWrite, writeFormHtml } from "./write.js";
 import { esc, seedOf, rng, type MenuItem, type PersonView, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import {
   BRASS_CORNER, COIN, DEFS, DIVIDER, DIVIDER_KNOT, DLG_PAD, IRONKEY, NIB, PLATE_BAND, QUILL, ROSE, SATCHEL, SCROLL_BAND, SCROLL_END, SPOOL, TAB,
@@ -93,7 +94,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         <div class="frame back"></div><div class="vellum"></div><div class="frame front"></div>
         <div class="plate"><span class="cap">${plateCap(false)}</span><span class="band">${PLATE_BAND}<span class="nm"></span></span><span class="cap">${plateCap(true)}</span><span class="seal" hidden></span></div>
         <div class="page" aria-live="polite"><div class="sb-goal" hidden></div><div class="txt"></div></div>
-        <form class="sb-say"><textarea rows="1" aria-label="What do you do?" placeholder="What do you do?" enterkeyhint="send"></textarea><button type="submit">Write</button></form>
+        ${writeFormHtml("sb-say")}
         <div class="nib">${NIB}</div>
       </section>
     </div>
@@ -122,9 +123,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const pageEl = $<HTMLDivElement>(".sb-dlg .page");
   const txt = $<HTMLDivElement>(".sb-dlg .txt");
   const fol = $<HTMLDivElement>(".sb-folio");
-  const sayForm = $<HTMLFormElement>(".sb-say");
-  const sayBox = $<HTMLTextAreaElement>(".sb-say textarea");
-  const sayBtn = $<HTMLButtonElement>(".sb-say button");
+  const write = wireWrite(ctx, $<HTMLFormElement>(".sb-say"));
   const skirtEl = $<HTMLDivElement>(".sb-skirt");
   const tags = $<HTMLDivElement>(".sb-tags");
   const apFrame = $<HTMLDivElement>(".sb-ap .fr");
@@ -139,25 +138,6 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   let jr: HTMLDivElement | null = null;
   const seen = { head: "", marks: "", plate: "", txt: "", choices: "", cast: "", folio: "", jr: "" };
   let lastLog: string[] = [];
-
-  /* --------------------------- Writing into the story --------------------------- */
-  function sendLine(): void {
-    const text = sayBox.value.trim();
-    if (!text || sayBtn.disabled) return;
-    ctx.say(text);
-    sayBox.value = "";
-  }
-  sayForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    sendLine();
-  });
-  sayBox.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendLine();
-    }
-  });
 
   /* --------------------------- Events (delegated) --------------------------- */
   function onClick(e: MouseEvent): void {
@@ -396,9 +376,8 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function renderText(v: SceneView): void {
     const b = ctx.box(v);
     const key = JSON.stringify([b.desc, b.log, b.busy, v.story]);
-    sayBox.disabled = sayBtn.disabled = !!b.busy;
-    sayForm.hidden = !!(v.delve || v.board);
-    sb.classList.toggle("writing", v.story.length > 0 && !v.delve && !v.board);
+    write.sync(v);
+    sb.classList.toggle("writing", isWriting(v));
     if (key === seen.txt) return;
     seen.txt = key;
     sb.classList.toggle("busy", !!b.busy);
@@ -415,14 +394,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const now = last >= 0 ? `<p class="now${last >= firstNew ? " fresh" : ""}">${esc(b.log[last]!)}</p>` : "";
     const earlier = b.log.slice(0, Math.max(0, last)).map((l, i) => `<li class="${i >= firstNew ? "fresh" : ""}">${esc(l)}</li>`).join("");
     const busy = b.busy ? `<div class="busy" role="status">${QUILL}<span>${esc(b.busy)}</span><span class="dots"><i></i><i></i><i></i></span></div>` : "";
-    const beats = v.story
-      .map((x) => {
-        const roll = x.roll ? `<p class="roll">${esc(x.roll)}</p>` : "";
-        const told = x.reply.split(/\n+/).filter(Boolean).map((p) => `<p class="told">${esc(p)}</p>`).join("");
-        // A line you wrote rolls first; a talk or a fight that's over ends on how it came out.
-        return `<div class="beat">${x.said ? `<p class="said">${esc(x.said)}</p>${roll}` : ""}${x.found ? `<p class="found">${esc(x.found)}</p>` : ""}${told}${x.said ? "" : roll}</div>`;
-      })
-      .join("");
+    const beats = beatsHtml(v.story);
     txt.classList.toggle("two", !!earlier);
     txt.innerHTML = `<div class="main">${descHtml}${now}${beats}${busy}</div>${earlier ? `<aside class="margin" aria-label="Earlier">${DIVIDER}${DIVIDER_KNOT}<div class="mh">Earlier</div><ol class="log">${earlier}</ol></aside>` : ""}`;
     requestAnimationFrame(() => {

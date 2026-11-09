@@ -51,11 +51,24 @@ function setup() {
     talk: async (_u: string, _c: string, castId: string, kind?: string, _chip?: string, line?: string) => void talks.push({ castId, kind, line }),
     markKnown: async (_u: string, _c: string, id: string) => void known.push(id),
   };
-  const battles = { startState: async (_u: string, s: BattleState) => void started.push(s) };
+  /** What the battles session has, by id: reshow answers from this, as it would from storage. */
+  const fights = new Map<string, BattleState>();
+  const reshown: string[] = [];
+  const battles = {
+    startState: async (_u: string, s: BattleState) => {
+      started.push(s);
+      fights.set(s.id, s);
+    },
+    reshow: async (_u: string, id: string) => {
+      const s = fights.get(id) ?? null;
+      if (s?.outcome === "ongoing") reshown.push(id);
+      return s;
+    },
+  };
   const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, battles);
   const views = () => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : []));
   const last = (): SceneView => views()[views().length - 1]!;
-  return { play, files, posted, sent, started, known, talks, last };
+  return { play, files, posted, sent, started, known, talks, last, fights, reshown };
 }
 
 /** End a started battle the way the engine would, with the given outcome. */
@@ -66,6 +79,48 @@ function ended(s: BattleState, outcome: "victory" | "defeat"): BattleState {
     combatants: s.combatants.map((c) => (c.side === "enemy" ? { ...c, alive: outcome !== "victory", hp: outcome === "victory" ? 0 : c.hp } : { ...c, hp: outcome === "victory" ? Math.round(c.maxHp / 2) : 0, alive: outcome === "victory" })),
   };
 }
+
+describe("a fight nobody can see", () => {
+  const record = (files: Map<string, unknown>) => files.get("play/chat1.json") as { battleId?: string; board?: { fight?: unknown; foes: { id: string }[] } };
+
+  test("opening the scene brings a running fight back, after the scene", async () => {
+    const { play, started, reshown, sent } = setup();
+    await play.open("u", "chat1");
+    await play.fight("u", "chat1");
+    expect(reshown).toEqual([]);
+    await play.open("u", "chat1");
+    expect(reshown).toEqual([started[0]!.id]);
+    expect(sent.at(-1)?.type).toBe("scene.state");
+  });
+
+  test("a click on the board during the fight brings it back instead of doing nothing", async () => {
+    const { play, files, started, reshown } = setup();
+    await play.open("u", "chat1");
+    await play.fight("u", "chat1");
+    const r = record(files);
+    files.set("play/chat1.json", { ...r, board: { foes: [], party: [], cells: {} } });
+    await play.boardAct("u", "chat1", "move", "0,0");
+    expect(reshown).toEqual([started[0]!.id]);
+  });
+
+  test("a fight that finished unnoticed is settled when the scene opens", async () => {
+    const { play, files, started, fights } = setup();
+    await play.open("u", "chat1");
+    await play.fight("u", "chat1");
+    fights.set(started[0]!.id, ended(started[0]!, "victory"));
+    await play.open("u", "chat1");
+    expect(record(files).battleId).toBeUndefined();
+  });
+
+  test("a fight that's gone no longer locks the scene", async () => {
+    const { play, files, fights } = setup();
+    await play.open("u", "chat1");
+    await play.fight("u", "chat1");
+    fights.clear();
+    await play.open("u", "chat1");
+    expect(record(files).battleId).toBeUndefined();
+  });
+});
 
 describe("play on a card", () => {
   test("a risky line in the scene rolls, keeps the player's words, and lands in the story and the chat", async () => {

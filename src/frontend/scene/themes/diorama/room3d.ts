@@ -42,7 +42,9 @@ import { Casters, battlePose, footlights, proscenium, measureBand, parleyPose, p
 import type { Stage3D } from "../../layer3d.js";
 import * as M from "./models.js";
 import { cleanCutout } from "./chart.js";
-import { journalHtml, narrationHtml, pickerHtml } from "./shared.js";
+import { followStory, journalHtml, narrationHtml, pickerHtml, sayHtml } from "./shared.js";
+import { isWriting } from "../write.js";
+import { wireTypewriter } from "../typewriter.js";
 import { WEDGE } from "./props3d.js";
 import { phoneActsHtml } from "./phone.js";
 import type { Mode } from "./flat.js";
@@ -79,7 +81,7 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   <div class="vig3 np"></div>
   <div class="labels np"></div>
   <div class="panel" hidden></div>
-  <div class="say" aria-live="polite"></div>
+  <div class="say">${sayHtml()}</div>
   <div class="phacts" role="group" aria-label="What you can do here"></div>
   <div class="ovl"></div>
   <div class="lb plate encplate" hidden>${WEDGE}<b></b><small></small></div>
@@ -89,6 +91,8 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
   const labelsEl = host.querySelector(".labels") as HTMLDivElement;
   const panelEl = host.querySelector(".panel") as HTMLDivElement;
   const say = host.querySelector(".say") as HTMLDivElement;
+  const sayIn = host.querySelector(".say-in") as HTMLDivElement;
+  const write = wireTypewriter(ctx, host.querySelector(".dr-tw") as HTMLFormElement);
   const phacts = host.querySelector(".phacts") as HTMLDivElement;
   const ovl = host.querySelector(".ovl") as HTMLDivElement;
   const encPlate = host.querySelector(".encplate") as HTMLDivElement;
@@ -1309,11 +1313,14 @@ export function room3d(ctx: ThemeCtx, host: HTMLElement): Mode {
     // Status the shop's walls carry, as small plaques tied to them.
     statusLabels(s.day, s.time, th ? { found, total, goal: th.goal } : null);
 
-    const sh = narrationHtml(box, logOpen);
-    if (say.dataset.h !== sh) {
-      say.dataset.h = sh;
-      say.innerHTML = sh;
+    const sh = narrationHtml(box, logOpen, isWriting(v) ? v.story : []);
+    const saidMore = sayIn.dataset.h !== sh;
+    if (saidMore) {
+      sayIn.dataset.h = sh;
+      sayIn.innerHTML = sh;
     }
+    write.sync(v, ctx.journal.open);
+    followStory(say, v, saidMore);
     say.classList.toggle("open", logOpen);
     const actsHtml = phoneActsHtml(ctx, v, acts, v.hex && exits.length ? "i:cards" : null);
     if (phacts.dataset.h !== actsHtml) {

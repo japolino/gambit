@@ -44,6 +44,9 @@ const COMMON = `
   .dr .say, .dr.d3 .say { position: relative; left: auto; right: auto; top: auto; bottom: auto; width: auto; height: auto; min-height: 0; translate: none; margin: 0; padding: 8px 14px; display: flex; flex-direction: column;
     background: #120e0b; border-top: 2px solid #e2b763; z-index: 6; overflow: hidden; }
   .dr .say .aw-bg { display: none; }
+  .dr .dr-tw { width: 100%; padding-top: 46px; margin: 2px 0 -30px; }
+  .dr .dr-tw .tw-page textarea { font-size: 16px; }
+  .dr .say.writing .txt, .dr.d3 .say.writing .txt { max-height: none; }
   .dr .say .txt, .dr.d3 .say .txt { flex: 1 1 auto; min-height: 0; max-height: none; padding: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; justify-content: flex-start; }
   .dr .say:has(.more) .txt { padding-right: 38px; }
   .dr .say .desc, .dr.d3 .say .desc { flex: none; font-size: 17px; line-height: 1.36; margin-bottom: .3em; }
@@ -114,7 +117,7 @@ export const CSS_PHONE = `
   .dr:not(.d3) .phacts { max-height: 44cqh; }
   /* In a delve the chart is worth seeing: up out from under the list, clear of the corridor's middle. */
   .dr.delving .p-easel { --x: .8; --y: .44; --w: 19; }
-  .dr .say.open, .dr.d3 .say.open { max-height: 52cqh; }
+  .dr .say.open, .dr.d3 .say.open, .dr .say.writing, .dr.d3 .say.writing { max-height: 52cqh; }
 }
 @container (min-aspect-ratio: 1/1) and ((max-width: 760px) or (max-height: 480px)) {
   ${COMMON}
@@ -122,7 +125,7 @@ export const CSS_PHONE = `
   .dr.d3:not(.enc) .stage3, .dr.d3:not(.enc) .vig3, .dr.d3:not(.enc) .labels { inset: 0 auto auto 0; width: 57cqw; height: 52cqh; }
   .dr.d3.enc[data-enc="parley"] .stage3, .dr.d3.enc[data-enc="parley"] .vig3 { inset: 0 0 auto 0; height: 30cqh; }
   .dr .say, .dr.d3 .say { grid-column: 1; grid-row: 2; }
-  .dr .say.open, .dr.d3 .say.open { grid-row: 1 / 3; }
+  .dr .say.open, .dr.d3 .say.open, .dr .say.writing, .dr.d3 .say.writing { grid-row: 1 / 3; }
   .dr .phacts { grid-column: 2; grid-row: 1 / 3; border-top: 0; border-left: 2px solid #e2b763; }
   .dr .ovl { grid-column: 1; grid-row: 3; }
   .dr.d3 .panel, .dr.d3 .panel.pl, .dr.d3 .panel.pr { right: auto; width: min(420px, calc(100cqw - 16px)); max-height: calc(100cqh - 16px); bottom: 8px; }

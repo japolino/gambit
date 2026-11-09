@@ -107,6 +107,8 @@ const CSS = `
 .gs .world.void { visibility: hidden; }
 .gs .world > .delve2d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 .gs .gone { display: none !important; }
+/* The scene itself, under a fight or a talk. Hidden, not unlaid: its 3D layers keep their size for when it comes back, and nothing in it (a board at z-index 30) can sit over the encounter. */
+.gs.gone { visibility: hidden; }
 /* Meanwhile… (themes restyle it). What's written sits inside .mw-text, so it takes each theme's face and colour. */
 .gs > .mw { position: absolute; inset: 0; z-index: 50; container-type: size; overflow: hidden; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,16,12,.86), rgba(5,4,3,.97)); cursor: pointer; animation: mwIn .6s ease; }
 .gs .mw-in { display: grid; justify-items: center; gap: 14px; width: min(880px, 92%); max-height: 100%; }
@@ -134,6 +136,9 @@ const CSS = `
 .gs .album img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: zoom-in; }
 .gs .album img:focus, .gs .album img:hover { outline: 2px solid currentColor; outline-offset: 2px; }
 .gs .album figcaption { font-size: .78em; opacity: .8; line-height: 1.3; }
+.gs > .zoom { position: absolute; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; box-sizing: border-box; background: rgba(6,5,8,.92); cursor: zoom-out; }
+.gs > .zoom img { flex: 1 1 auto; min-height: 0; width: 100%; object-fit: contain; }
+.gs > .zoom p { flex: none; margin: 0; max-width: 72ch; max-height: 22%; overflow: auto; text-align: center; color: #ece3cf; font-size: 15px; line-height: 1.35; }
 .gs .mw-dots { display: flex; gap: 8px; justify-content: center; margin-top: 2px; } .gs .mw-dots i { width: 8px; height: 8px; transform: rotate(45deg); background: rgba(233,212,173,.3); } .gs .mw-dots i.on { background: #e9d4ad; }
 .gs .mw-hint { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
 /* Short screens keep the picture and the words. */
@@ -338,7 +343,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       (() => {
         const shots = j.album.map((a) => ({ a, url: urlOf(a.key) })).filter((x) => x.url);
         return shots.length
-          ? `<div class="album">${shots.map(({ a, url }) => `<figure><img src="${esc(url!)}" alt="${esc(a.caption)}" loading="lazy"><figcaption>Day ${a.day}: ${esc(a.caption)}</figcaption></figure>`).join("")}</div>`
+          ? `<div class="album">${shots.map(({ a, url }) => `<figure><img src="${esc(url!)}" alt="${esc(a.caption)}" loading="lazy" tabindex="0" role="button"><figcaption>Day ${a.day}: ${esc(a.caption)}</figcaption></figure>`).join("")}</div>`
           : `<div class="muted">${j.album.length ? "Being drawn…" : "Key moments will be drawn here."}</div>`;
       })(),
     ].join("");
@@ -640,9 +645,19 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
   }
 
   function onKey(e: KeyboardEvent): void {
-    const t = e.target as HTMLElement | null;
+    // Seen from the window, anything inside a shadow root is the host: ask for what really has the key.
+    const t = e.composedPath()[0] as HTMLElement | null;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     if (el.classList.contains("gone") || view.busy || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "/" && !journalOpen) {
+      // Every theme's keys are its commands, so typing takes a key of its own to start.
+      const field = [...el.querySelectorAll<HTMLElement>("[data-write]")].find((f) => f.offsetParent);
+      if (field) {
+        e.preventDefault();
+        field.focus();
+        return;
+      }
+    }
     if (view.board) {
       if (board.key(e)) e.preventDefault();
       return;
@@ -659,6 +674,52 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     a.step(move);
   }
   window.addEventListener("keydown", onKey);
+
+  /* ---------------------- A picture from the album, large ---------------------- */
+  // Here and not in the themes: every theme shows the album, and the journal stays open under it.
+  let zoom: HTMLDivElement | null = null;
+  function closeZoom(): void {
+    zoom?.remove();
+    zoom = null;
+    window.removeEventListener("keydown", onZoomKey, true);
+  }
+  function onZoomKey(e: KeyboardEvent): void {
+    // Ahead of the overlay and the theme, whose Esc would close more than the picture.
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    if (e.key === "Escape" || e.key === "Enter" || e.key === " ") closeZoom();
+  }
+  function openZoom(thumb: HTMLImageElement): void {
+    closeZoom();
+    zoom = document.createElement("div");
+    zoom.className = "zoom";
+    const big = document.createElement("img");
+    big.src = thumb.src;
+    big.alt = thumb.alt;
+    const caption = document.createElement("p");
+    caption.textContent = thumb.closest("figure")?.querySelector("figcaption")?.textContent ?? thumb.alt;
+    zoom.append(big, caption);
+    el.append(zoom);
+    window.addEventListener("keydown", onZoomKey, true);
+  }
+  const albumShot = (t: EventTarget | null) => (t instanceof HTMLImageElement && t.closest(".album") ? t : null);
+  // In the capture phase, so a theme's own click handling doesn't see it: a click here is about the picture.
+  function onZoomClick(e: MouseEvent): void {
+    const shot = albumShot(e.target);
+    if (!zoom && !shot) return;
+    e.stopPropagation();
+    if (zoom) closeZoom();
+    else openZoom(shot!);
+  }
+  function onShotKey(e: KeyboardEvent): void {
+    const shot = albumShot(e.target);
+    if (!shot || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openZoom(shot);
+  }
+  el.addEventListener("click", onZoomClick, true);
+  el.addEventListener("keydown", onShotKey);
 
   renderTheme();
 
@@ -800,6 +861,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       }
     },
     hide() {
+      closeZoom();
       hidden = true;
       el.classList.add("gone");
     },
@@ -813,6 +875,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     destroy() {
       destroyed = true;
       closeMeanwhile();
+      closeZoom();
       window.removeEventListener("keydown", onKey);
       el.removeEventListener("pointermove", onMove);
       if (raf) cancelAnimationFrame(raf);

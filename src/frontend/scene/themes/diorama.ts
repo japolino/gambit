@@ -17,6 +17,7 @@
  */
 import { BOARD_SKINS } from "../board-skins.js";
 import type { EncounterView, SceneView, ThemeCtx, ThemeFactory, ThemeRenderer } from "./contract.js";
+import { TYPEWRITER_CSS } from "./typewriter.js";
 import * as A from "./diorama/art.js";
 import { flatDiorama, type Mode } from "./diorama/flat.js";
 import { room3d } from "./diorama/room3d.js";
@@ -27,7 +28,7 @@ import { CSS_PHONE } from "./diorama/phone.js";
 
 export const diorama: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const r = ctx.root;
-  r.innerHTML = `<style>${CSS}${CSS2}${JOURNAL_CSS}${CSS3D}${CSS_PHONE}</style><style class="dr-tex"></style>${A.DEFS}<div class="h2" hidden></div><div class="h3" hidden></div>`;
+  r.innerHTML = `<style>${TYPEWRITER_CSS}${CSS}${CSS2}${JOURNAL_CSS}${CSS3D}${CSS_PHONE}</style><style class="dr-tex"></style>${A.DEFS}<div class="h2" hidden></div><div class="h3" hidden></div>`;
   const texStyle = r.querySelector(".dr-tex") as HTMLStyleElement;
   texStyle.textContent = `.gs.diorama .mw-art { --dr-frame: ${MW_FRAME}; }
 .gs.diorama > .fg { --dr-leather: url("${tex.leather()}"); --dr-paper: url("${tex.paperTile()}"); }`;

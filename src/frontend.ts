@@ -270,6 +270,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
       });
       pushArt();
     } else scene.setView(view);
+    // A fight in this chat is still going (a reload, a closed overlay): back into it, not a scene it has locked.
+    if (!stage && current?.outcome === "ongoing" && current.meta?.chatId === view.chatId) {
+      void showStage(current, []);
+      return;
+    }
     if (stage && !staged) scene.hide();
     else scene.show();
     sceneMusic();
@@ -491,6 +496,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
           void stage.update(msg.state, msg.events).then(() => {
             if (msg.state.meta?.chatId && msg.state.outcome !== "ongoing") backToScene();
           });
+        } else if (msg.state.outcome === "ongoing" && msg.state.meta?.chatId && scene?.chatId === msg.state.meta.chatId) {
+          // The fight this scene is waiting on, with no stage up: show it.
+          void showStage(msg.state, msg.events);
         }
         break;
       }

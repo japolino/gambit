@@ -22,7 +22,8 @@
  */
 import { BOARD_SKINS } from "../board-skins.js";
 import { esc, type MenuItem, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
-import { loadFont, wrap, type BitFont } from "./onebit/font.js";
+import { loadFont, plain, wrap, type BitFont } from "./onebit/font.js";
+import { beatsHtml, canWrite, isWriting, wireWrite, writeFormHtml } from "./write.js";
 import { BAYER8, Frame, INK, PAPER, type Bits, type Rect } from "./onebit/fb.js";
 import { bustBits, personBits, placeField, textureField } from "./onebit/art.js";
 import { Corridor } from "./onebit/corridor.js";
@@ -45,6 +46,12 @@ const CSS = `
 .ob-stage { position: relative; }
 .ob-cv { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 .ob-hits { position: absolute; inset: 0; }
+/* Nothing here is drawn at native resolution, the words you type included: the field is there for the keyboard and the
+   caret, and the frame buffer paints what's in it. 16px, or a phone zooms in on it. */
+.ob-say { position: absolute; z-index: 3; margin: 0; }
+.ob-say[hidden] { display: none; }
+.ob-say textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden; opacity: 0; font-size: 16px; cursor: text; }
+.ob-say button { display: none; }
 .ob-hits > * { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; color: transparent; font-size: 0; cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
 .ob-hits > .wheel { cursor: default; }
 .ob-world { position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
@@ -147,7 +154,7 @@ const pad = (r: Rect, n: number): Rect => ({ x: r.x + n, y: r.y + n, w: r.w - 2 
 
 export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const root = ctx.root;
-  root.innerHTML = `<style>${CSS}</style><div class="ob"><div class="ob-scroll"><div class="ob-stage"><canvas class="ob-cv" aria-hidden="true"></canvas><div class="ob-hits"></div></div></div><div class="ob-world"></div><svg class="ob-hexsrc" aria-hidden="true"></svg><div class="ob-sr" role="region" aria-label="Scene"></div></div>`;
+  root.innerHTML = `<style>${CSS}</style><div class="ob"><div class="ob-scroll"><div class="ob-stage"><canvas class="ob-cv" aria-hidden="true"></canvas><div class="ob-hits"></div>${writeFormHtml("ob-say")}</div></div><div class="ob-world"></div><svg class="ob-hexsrc" aria-hidden="true"></svg><div class="ob-sr" role="region" aria-label="Scene"></div></div>`;
   const ob = root.querySelector(".ob") as HTMLDivElement;
   const scroller = root.querySelector(".ob-scroll") as HTMLDivElement;
   // A phone's page is taller than the screen, and its scrollbar is hidden: say so, and offer a thumb's way down.
@@ -177,6 +184,24 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const stage = root.querySelector(".ob-stage") as HTMLDivElement;
   const cv = root.querySelector(".ob-cv") as HTMLCanvasElement;
   const hitLayer = root.querySelector(".ob-hits") as HTMLDivElement;
+  const sayForm = root.querySelector(".ob-say") as HTMLFormElement;
+  const write = wireWrite(ctx, sayForm, { onChange: () => paint() });
+  // The field's letters aren't where the painted ones are: put the caret under the painted one that was clicked.
+  write.field.addEventListener("click", (e) => {
+    const f = write.field;
+    if (f.selectionStart !== f.selectionEnd) return;
+    const at = (Math.floor(e.offsetY / u / 10) + promptFirst) * promptCols + Math.round(e.offsetX / u / 8);
+    f.setSelectionRange(Math.min(at, f.value.length), Math.min(at, f.value.length));
+    paint();
+  });
+  let promptCols = 40;
+  let promptFirst = 0;
+  /** Lines of the story scrolled back from its end; where the newest beat starts, to show a phone. */
+  let chronBack = 0;
+  let chronMax = 0;
+  let newestBeatY = 0;
+  let toNewestBeat = false;
+  let seenStory = "";
   const hexSrc = root.querySelector(".ob-hexsrc") as SVGSVGElement;
   const sr = root.querySelector(".ob-sr") as HTMLDivElement;
   (root.querySelector(".ob-world") as HTMLDivElement).append(ctx.world);
@@ -291,6 +316,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const mode: Layout["mode"] = W < 330 || land ? "tall" : W / H >= 2.15 ? "wide" : "std";
     const statH = statusHeight(v);
     const none = { x: -999, y: -999, w: 0, h: 0 };
+    const story = isWriting(v);
     if (mode === "wide") {
       const m = 6, g = 6;
       const keys = { x: m, y: H - m - 11, w: W - 2 * m, h: 11 };
@@ -301,7 +327,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const aw = W - 2 * m - 2 * g - colB - colC;
       const xB = m + aw + g, xC = xB + colB + g;
       // Middle column: the chronicle (over the automap / honeycomb outside town).
-      const hD = aux === "map" ? Math.round(ch * 0.68) : aux === "hex" ? Math.round(ch * 0.58) : 0;
+      const hD = aux === "map" ? Math.round(ch * 0.68) : aux === "hex" ? Math.round(ch * (story ? 0.36 : 0.58)) : 0;
       const hB = aux ? ch - hD - g : ch;
       return {
         mode, W, H, keys,
@@ -320,7 +346,8 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const ch = keys.y - g - m;
       const lw = Math.round((W - 2 * m - g) * 0.62);
       // With a map, the status sits under the viewport: leave it its full height.
-      const ah = aux ? Math.min(Math.round(ch * 0.68), ch - statH - g) : Math.round(ch * 0.68);
+      // A story needs the room to be read in, and the picture gives it up.
+      const ah = aux ? Math.min(Math.round(ch * (story ? 0.5 : 0.68)), ch - statH - g) : Math.round(ch * (story ? 0.42 : canWrite(v) ? 0.62 : 0.68));
       const x = m + lw + g, rw = W - x - m;
       const by = m + ah + g, bh = ch - ah - g;
       if (!aux) {
@@ -372,8 +399,11 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const viewR = takeL(v.delve ? (land ? Math.min(wantView, H - 2 * m) : wantView) : Math.min(wantView, Math.round(screenRows * (land ? 0.55 : 0.3))));
     const chars = Math.floor((lw - 8) / 8);
     const b = ctx.box(v);
-    const need = Math.min(30, wrap(b.desc, chars).length + 1 + b.log.slice(-4).reduce((n, l) => n + wrap(l, chars - 2).length, 0) + (b.busy ? 1 : 0));
-    const textR = takeL(17 + Math.max(4, need) * 10 + 2);
+    const need = Math.min(story ? 120 : 30, wrap(b.desc, chars).length + 1 + b.log.slice(-4).reduce((n, l) => n + wrap(l, chars - 2).length, 0) + (b.busy ? 1 : 0) + (story ? storyLines(v, chars).length : 0));
+    const prompt = canWrite(v) ? promptHeight(chars) : 0;
+    // On its side the commands stand beside the words: a long story scrolls in its window, rather than run on alone below them.
+    const lines = land ? Math.min(need, Math.max(8, Math.floor((screenRows - 19 - prompt) / 10))) : need;
+    const textR = takeL(17 + Math.max(4, lines) * 10 + 2 + prompt);
     const items = ctx.menu(v);
     const rm = rowMin();
     const groups = items.filter((it, i) => i > 0 && items[i - 1]!.group !== it.group).length;
@@ -755,8 +785,12 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function paintText(v: SceneView, r: Rect): void {
     const f = font!;
     win(r, "Chronicle");
-    const cr = inner(r);
-    const chars = Math.floor(cr.w / 8);
+    const whole = inner(r);
+    const chars = Math.floor(whole.w / 8);
+    const pH = canWrite(v) ? promptHeight(chars) : 0;
+    const cr = { ...whole, h: whole.h - pH };
+    if (pH) paintPrompt(v, { ...whole, y: whole.y + whole.h - pH, h: pH }, chars);
+    if (isWriting(v)) return paintStory(v, cr, chars);
     const avail = Math.floor((cr.h + 2) / 10);
     const b = ctx.box(v);
     const desc = wrap(b.desc, chars);
@@ -792,6 +826,126 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       fb.text(f, cr.x + 16, y, t, INK);
       if (Math.floor(time * 2) % 2 === 0) fb.fill({ x: cr.x + 16 + t.length * 8 + 1, y, w: 7, h: 8 }, INK);
     }
+  }
+
+  /** The story as lines of type. The one thing a line needs to be told apart: what kind of line it is. */
+  function storyLines(v: SceneView, chars: number): { t: string; k: "said" | "roll" | "found" | "told" | "gap"; first?: boolean }[] {
+    const out: ReturnType<typeof storyLines> = [];
+    const add = (text: string, k: "said" | "roll" | "found" | "told", cols: number) => {
+      for (const t of wrap(plain(text), cols)) out.push({ t, k });
+    };
+    for (const x of v.story) {
+      out.push({ t: "", k: "gap", first: true });
+      if (x.said) {
+        add(x.said, "said", chars - 1);
+        if (x.roll) add(x.roll, "roll", chars - 1);
+      }
+      if (x.found) add(x.found, "found", chars - 2);
+      for (const p of x.reply.split(/\n+/).filter(Boolean)) add(p, "told", chars);
+      if (!x.said && x.roll) add(x.roll, "roll", chars - 1);
+    }
+    return out;
+  }
+
+  function paintStory(v: SceneView, cr: Rect, chars: number): void {
+    const f = font!;
+    const b = ctx.box(v);
+    const lines: { t: string; k: string; first?: boolean }[] = wrap(plain(b.desc), chars).map((t) => ({ t, k: "told" }));
+    const newest = b.log[b.log.length - 1];
+    if (newest) for (const [i, t] of wrap(plain(newest), chars - 2).entries()) lines.push({ t, k: i ? "log" : "log0" });
+    lines.push(...storyLines(v, chars));
+    if (b.busy) lines.push({ t: clip(b.busy, chars - 3), k: "busy" });
+    const avail = Math.max(1, Math.floor((cr.h + 2) / 10));
+    chronMax = Math.max(0, lines.length - avail);
+    chronBack = Math.max(0, Math.min(chronMax, chronBack));
+    const start = chronMax - chronBack;
+    lines.forEach((l, i) => {
+      if (l.first) newestBeatY = cr.y + (i - start) * 10;
+    });
+    for (const [i, l] of lines.slice(start, start + avail).entries()) {
+      const y = cr.y + i * 10;
+      if (l.k === "said") {
+        fb.fill({ x: cr.x, y: y - 1, w: 2, h: 10 }, PAPER);
+        fb.text(f, cr.x + 6, y, l.t, PAPER);
+      } else if (l.k === "roll") {
+        fb.fill({ x: cr.x - 1, y: y - 1, w: l.t.length * 8 + 3, h: 10 }, PAPER);
+        fb.text(f, cr.x, y, l.t, INK);
+      } else if (l.k === "found") {
+        fb.text(f, cr.x, y, "*", PAPER);
+        fb.text(f, cr.x + 12, y, l.t, PAPER);
+      } else if (l.k === "log0" || l.k === "log") {
+        if (l.k === "log0") fb.text(f, cr.x, y, ">", PAPER);
+        fb.text(f, cr.x + 16, y, l.t, PAPER);
+      } else if (l.k === "busy") {
+        fb.fill({ x: cr.x - 1, y: y - 1, w: l.t.length * 8 + 26, h: 10 }, PAPER);
+        fb.text(f, cr.x, y, SPIN[Math.floor(time * 8) % 4]!, INK);
+        fb.text(f, cr.x + 16, y, l.t, INK);
+      } else if (l.t) fb.text(f, cr.x, y, l.t, PAPER);
+    }
+    if (chronMax) {
+      // There's more than the window holds: a thumb in the margin, and the wheel (or Page Up / Down) to move it.
+      const th = Math.max(6, Math.round((avail / lines.length) * cr.h));
+      const ty = cr.y + Math.round((start / chronMax) * (cr.h - th));
+      fb.fill({ x: cr.x + cr.w + 1, y: ty, w: 2, h: th }, PAPER);
+      hits.push({ key: "chron:body", r: cr, label: "The story so far", run: () => undefined, tab: false, wheel: true });
+    }
+  }
+
+  /** How many columns a typed line runs to: a "> " before it and the WRITE key after. */
+  const colsFor = (chars: number) => Math.max(8, chars - 2 - 7);
+  function promptHeight(chars: number): number {
+    const rows = Math.min(3, Math.floor(write.field.value.length / colsFor(chars)) + 1);
+    return Math.max(L?.mode === "tall" || isPhone() ? rowMin() : 0, rows * 10) + 5;
+  }
+
+  /** The line you're writing, painted: the field over it is invisible. */
+  function paintPrompt(v: SceneView, r: Rect, chars: number): void {
+    const f = font!;
+    const field = write.field;
+    const top = r.y + 4;
+    const rowsH = r.h - 5;
+    fb.hline(r.x - 1, r.y + 1, r.w + 2, PAPER);
+    fb.text(f, r.x, top + 1, ">", PAPER);
+    const textX = r.x + 11;
+    const cols = colsFor(chars);
+    const value = field.value;
+    const typing = (root.getRootNode() as Document | ShadowRoot).activeElement === field;
+    const rows = Math.max(1, Math.floor(rowsH / 10));
+    const caret = field.selectionEnd ?? value.length;
+    const first = Math.max(0, Math.floor(caret / cols) - rows + 1);
+    promptCols = cols;
+    promptFirst = first;
+    if (!value && !typing) fb.text(f, textX, top + 1, "WHAT DO YOU DO?", PAPER);
+    for (let row = 0; row < rows; row++) {
+      const from = (first + row) * cols;
+      if (from >= value.length && from !== 0) break;
+      const shown = value.slice(from, from + cols).replace(/\s/g, " ");
+      fb.text(f, textX, top + 1 + row * 10, [...shown].map((c) => plain(c)[0] ?? " ").join(""), PAPER);
+    }
+    if (typing) {
+      // Inverse video for the selection, or a blinking block for the caret.
+      const a = field.selectionStart ?? caret;
+      const on = a !== caret || ctx.reducedMotion || time % 1 < 0.65;
+      if (on) {
+        for (let i = a; i <= Math.max(a, caret - (a !== caret ? 1 : 0)); i++) {
+          const cy = Math.floor(i / cols) - first;
+          if (cy < 0 || cy >= rows) continue;
+          const cell = { x: textX + (i % cols) * 8 - 1, y: top + cy * 10, w: 9, h: 10 };
+          fb.fill(cell, PAPER);
+          const ch = value[i];
+          if (ch && ch.trim()) fb.text(f, cell.x + 1, cell.y + 1, plain(ch)[0] ?? " ", INK);
+        }
+      }
+    }
+    // The key to send it, inverse video once there's something to send.
+    const bw = 44;
+    const key = { x: r.x + r.w - bw, y: top, w: bw, h: Math.min(rowsH, 10 + (rowsH > 20 ? rowsH - 10 : 0)) };
+    if (value.trim() || lit("say:send")) fb.fill(key, PAPER);
+    else fb.box(key, PAPER);
+    fb.text(f, key.x + 2, key.y + Math.floor((key.h - 8) / 2), "WRITE", value.trim() || lit("say:send") ? INK : PAPER);
+    hits.push({ key: "say:send", r: key, label: "Write it", run: () => write.send() });
+    if (ctx.box(v).busy) fb.stipple({ x: r.x - 1, y: top, w: r.w + 2, h: rowsH });
+    Object.assign(sayForm.style, { left: `${textX * u}px`, top: `${top * u}px`, width: `${(key.x - textX - 2) * u}px`, height: `${rowsH * u}px` });
   }
 
   /* -------------------------------- Status -------------------------------- */
@@ -1280,6 +1434,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function paint(): void {
     if (dead || !view) return;
     const v = view;
+    write.sync(v, ctx.journal.open || ctx.classes.open || themeMenu);
     L = layout(v);
     if (fb.w !== L.W || fb.h !== L.H) {
       fb = new Frame(L.W, L.H);
@@ -1314,6 +1469,11 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     fb.present(g2, C_INK, C_PAPER);
     syncHits();
     lastPaint = time;
+    // A phone's page holds the whole story: take them to the newest beat. (Here, not on arrival: the first paints come before the font.)
+    if (toNewestBeat) {
+      toNewestBeat = false;
+      if (L.mode === "tall") scroller.scrollTop = Math.max(0, newestBeatY * u - 8);
+    }
   }
 
   /** The class panel is DOM: aim it at its window on the grid. */
@@ -1397,18 +1557,32 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   });
   // A finger on the journal's text scrolls it, a line at a time (it's painted, so the browser can't).
   let dragY: number | null = null;
+  let dragOn: string | null = null;
   hitLayer.addEventListener("touchstart", (e) => {
-    dragY = keyOf(e) === "journal:body" ? e.touches[0]!.clientY : null;
+    dragOn = keyOf(e);
+    dragY = dragOn === "journal:body" || dragOn === "chron:body" ? e.touches[0]!.clientY : null;
   }, { passive: true });
   hitLayer.addEventListener("touchmove", (e) => {
     if (dragY === null) return;
     e.preventDefault();
     const dy = dragY - e.touches[0]!.clientY;
     const lines = Math.trunc(dy / (10 * u));
-    if (lines) { dragY -= lines * 10 * u; scrollJournal(lines); }
+    if (!lines) return;
+    dragY -= lines * 10 * u;
+    if (dragOn === "chron:body") {
+      chronBack = Math.max(0, Math.min(chronMax, chronBack - lines));
+      paint();
+    } else scrollJournal(lines);
   }, { passive: false });
   hitLayer.addEventListener("wheel", (e) => {
-    if (keyOf(e) !== "journal:body") return;
+    const on = keyOf(e);
+    if (on === "chron:body") {
+      e.preventDefault();
+      chronBack = Math.max(0, Math.min(chronMax, chronBack + (e.deltaY > 0 ? -3 : 3)));
+      paint();
+      return;
+    }
+    if (on !== "journal:body") return;
     e.preventDefault();
     scrollJournal(e.deltaY > 0 ? 3 : -3);
   }, { passive: false });
@@ -1464,7 +1638,7 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function updateReader(v: SceneView): void {
     const b = ctx.box(v);
     const st = ctx.status(v);
-    sr.innerHTML = `<p>${esc(st.where)}. Day ${st.day}, ${esc(st.time)}. ${st.coin} ${esc(st.currency)}. Vigor ${Math.round(st.vigor * 100)}%.${st.thread ? ` Thread ${st.thread.found.length} of ${st.thread.total}: ${esc(st.thread.goal)}.` : ""}${st.supplies ? ` Supplies ${st.supplies.now} of ${st.supplies.max}.` : ""}</p><p>${esc(b.desc)}</p><p aria-live="polite">${esc(b.log[b.log.length - 1] ?? "")}${b.busy ? ` ${esc(b.busy)}` : ""}</p>${ctx.journal.open ? `<div role="dialog" aria-label="Journal">${ctx.journal.html(v)}</div>` : ""}`;
+    sr.innerHTML = `<p>${esc(st.where)}. Day ${st.day}, ${esc(st.time)}. ${st.coin} ${esc(st.currency)}. Vigor ${Math.round(st.vigor * 100)}%.${st.thread ? ` Thread ${st.thread.found.length} of ${st.thread.total}: ${esc(st.thread.goal)}.` : ""}${st.supplies ? ` Supplies ${st.supplies.now} of ${st.supplies.max}.` : ""}</p><p>${esc(b.desc)}</p><p aria-live="polite">${esc(b.log[b.log.length - 1] ?? "")}${b.busy ? ` ${esc(b.busy)}` : ""}</p>${isWriting(v) ? `<div aria-live="polite">${beatsHtml(v.story)}</div>` : ""}${ctx.journal.open ? `<div role="dialog" aria-label="Journal">${ctx.journal.html(v)}</div>` : ""}`;
   }
 
   return {
@@ -1479,6 +1653,13 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       if (!prevJ && ctx.journal.open) jScroll = 0;
       if (ctx.journal.open && L?.mode === "tall") scroller.scrollTop = 0;
       updateReader(v);
+      const told = isWriting(v) ? JSON.stringify(v.story) : "";
+      const moved = told !== seenStory;
+      seenStory = told;
+      if (moved) {
+        chronBack = 0;
+        toNewestBeat = !!told;
+      }
       paint();
     },
     key(e, v) {
@@ -1503,6 +1684,11 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         return true;
       }
       if (k === "Escape" && ctx.classes.open) { ctx.classes.toggle(); return true; }
+      if (chronMax && isWriting(v) && (k === "PageUp" || k === "PageDown")) {
+        chronBack = Math.max(0, Math.min(chronMax, chronBack + (k === "PageUp" ? 8 : -8)));
+        paint();
+        return true;
+      }
       const items = ctx.menu(v);
       if (/^[0-9]$/.test(k)) {
         const i = k === "0" ? 9 : Number(k) - 1;

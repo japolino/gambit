@@ -15,6 +15,8 @@ import { BOARD_SKINS } from "../board-skins.js";
 import { esc, rng, seedOf, type MenuItem, type SceneView, type ThemeCtx, type ThemeFactory, type ThemeRenderer } from "./contract.js";
 import { ARCH_PATH, actionCard, bell, chair, coins, deckCase, factCard, gavel, handBack, handFront, ironTag, ledger, mapSheet, motifFor, openBook, plaque, scoreboard, shadowbox, skullCandle, tentCard, type BoardData } from "./table/art.js";
 import { tableCss } from "./table/css.js";
+import { beatsHtml, canWrite, isWriting } from "./write.js";
+import { TYPEWRITER_CSS, typewriterHtml, wireTypewriter } from "./typewriter.js";
 import { Table3D, type PickId } from "./table/three.js";
 import { duel } from "./table/duel.js";
 import { feltUrl, leatherUrl, MAT, pageUrl, paintTable, paperUrl, project, SIGILS, slateUrl, stoneUrl, type TableGeom } from "./table/tex.js";
@@ -115,7 +117,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const tex = { felt: feltUrl(), paper, page: pageUrl(), leather: leatherUrl() };
   const slate = slateUrl();
   const stone = stoneUrl();
-  root.innerHTML = `<style>${tableCss(tex)}</style>
+  root.innerHTML = `<style>${tableCss(tex)}${TYPEWRITER_CSS}</style>
   <div class="tb">
     <div class="L wl"></div>
     <div class="st bl"><div class="map" hidden><div class="sheet"></div><svg class="hex" role="group" aria-label="The overland map"></svg></div><div class="board"><div class="sb"></div><canvas class="amap" hidden></canvas><div class="thr" tabindex="0" role="note"></div></div></div>
@@ -135,7 +137,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       <button class="prop deck" aria-label="Classes (the deck case)">${deckCase()}</button>
       <button class="prop gavel" aria-label="Change the table (theme)" aria-haspopup="true">${gavel()}<span class="lab">Theme</span></button>
     </div>
-    <div class="st hl"><div class="fan"><div class="rail"></div></div><div class="more" aria-hidden="true">›</div>
+    <div class="st hl">${typewriterHtml("tb-tw")}<div class="fan"><div class="rail"></div></div><div class="more" aria-hidden="true">›</div>
       <div class="plaque" aria-live="polite">${plaque(stone, 11)}<div class="rib"></div><div class="ptx"></div><button class="tab" aria-expanded="false" aria-label="Show the whole log">LOG</button></div>
     </div>
     <div class="st fl"><div class="fgh">${handBack()}<div class="facts"></div>${handFront()}<div class="empty"></div></div></div>
@@ -172,6 +174,8 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const rib = $(".rib");
   const ptx = $(".ptx");
   const logTab = $<HTMLButtonElement>(".tab");
+  const machineEl = $(".tb-tw");
+  const write = wireTypewriter(ctx, $<HTMLFormElement>(".tb-tw"));
   const fgh = $(".fgh");
   const factsEl = $(".facts");
   const emptySlip = $(".empty");
@@ -307,11 +311,18 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     if (!L) return;
     let box: { x: number; y: number; w: number; h: number };
     const cardsTop = L.H * 0.69;
+    // The typewriter stands just behind your cards; the plaque moves up to make it room, and more for a story.
+    const slip = view && canWrite(view) ? (L.row ? 84 : Math.max(60, L.H * 0.076)) : 0;
+    const story = !!view && isWriting(view);
+    let slipBottom: number;
     if (L.row) {
       // Right above the cards, with room for four lines; the whole log opens upward from there.
-      const top = L.H - rowCardH(L) - 14;
-      const w = L.port ? L.W * 0.96 : Math.min(L.SW * 0.92, 600);
-      const h = L.port ? Math.max(L.H * 0.2, 118) : Math.max(L.H * 0.28, 96);
+      slipBottom = L.H - rowCardH(L) - 14;
+      const top = slipBottom - slip;
+      // On its side the room's labels stand either side of the plaque: a story, tall on the screen, stays between them.
+      const w = L.port ? L.W * 0.96 : story ? Math.min(L.SW * 0.56, 460) : Math.min(L.SW * 0.92, 600);
+      const closed = L.port ? Math.max(L.H * (story ? 0.3 : 0.2), 118) : Math.max(L.H * (story ? 0.42 : 0.28), 96);
+      const h = Math.min(closed, top - 4);
       const y = logOpen ? Math.round(L.H * (L.port ? 0.08 : 0.03)) : top - h;
       box = { x: (L.SW - w) / 2, y, w, h: logOpen ? top - y : h };
     } else {
@@ -331,13 +342,18 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       const cx = (x0 + x1) / 2;
       // Never under the fact cards held up on the right.
       const w = Math.min(x1 - x0, L.H * 1.05, 2 * (L.SW - L.H * 0.5 - cx) - 16);
-      const y = logOpen ? L.H * 0.26 : Math.max(L.H * 0.565, y0);
-      box = { x: cx - w / 2, y, w, h: Math.max(L.H * 0.11, cardsTop - y) };
+      slipBottom = cardsTop - 2;
+      // Not all the way: up by the slip's height, the plaque would be in the way of the name cards on the table's far side.
+      const y = logOpen ? L.H * 0.26 : story ? L.H * 0.3 : Math.max(L.H * 0.565, y0) - slip * 0.55;
+      box = { x: cx - w / 2, y, w, h: Math.max(L.H * (slip ? 0.085 : 0.11), cardsTop - slip - y) };
     }
-    const key = [box.x, box.y, box.w, box.h].map((n) => Math.round(n)).join();
+    const key = [box.x, box.y, box.w, box.h, slipBottom, slip].map((n) => Math.round(n)).join();
     if (key === plqKey) return;
     plqKey = key;
     Object.assign(plq.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` });
+    // Its page takes the top of that room; the machine runs on down behind the cards.
+    const mw = box.w * (L.row ? 1 : 0.96);
+    Object.assign(machineEl.style, { left: `${box.x + (box.w - mw) / 2}px`, top: `${slipBottom - slip + (L.row ? 46 : 38)}px`, width: `${mw}px` });
   }
 
   /** How tall the action cards are on a phone: their labels are real px, so the card must hold them. */
@@ -384,7 +400,8 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     }
     more.classList.remove("on");
     for (const c of all) c.el.style.removeProperty("--cw");
-    Object.assign(fan.style, { top: "0px", height: "100%", left: "0px", width: "100%" });
+    // The hand drops a little, off the bottom of the screen, to show the typewriter behind it.
+    Object.assign(fan.style, { top: `${view && canWrite(view) ? Math.round(L.H * 0.05) : 0}px`, height: "100%", left: "0px", width: "100%" });
     rail.style.width = "100%";
     const ch = L.H * 0.3;
     const cw = ch * 0.68;
@@ -704,17 +721,21 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   function renderPlaque(v: SceneView): void {
     const b = ctx.box(v);
-    const key = JSON.stringify([b, logOpen]);
+    const story = isWriting(v) ? v.story : [];
+    const key = JSON.stringify([b, logOpen, story]);
     paintRibbon(v);
+    write.sync(v, ctx.journal.open || ctx.classes.open);
+    placePlaque();
     if (key === sig.plaque) return;
     sig.plaque = key;
     const n = b.log.length;
     // Newest last; folded, only the latest two show under the description.
-    ptx.innerHTML = `${b.desc ? `<p class="desc">${esc(b.desc)}</p>` : ""}<ol class="log">${b.log.map((l, i) => `<li class="${i === n - 1 ? "now" : i < n - 2 ? "old" : ""}">${esc(l)}</li>`).join("")}</ol>${b.busy ? `<p class="busy">${esc(b.busy)}</p>` : ""}`;
+    ptx.innerHTML = `${b.desc ? `<p class="desc">${esc(b.desc)}</p>` : ""}<ol class="log">${b.log.map((l, i) => `<li class="${i === n - 1 ? "now" : i < n - 2 ? "old" : ""}">${esc(l)}</li>`).join("")}</ol>${beatsHtml(story)}${b.busy ? `<p class="busy">${esc(b.busy)}</p>` : ""}`;
     plq.classList.toggle("open", logOpen);
+    plq.classList.toggle("story", story.length > 0);
     logTab.setAttribute("aria-expanded", String(logOpen));
     logTab.hidden = n <= 2 && !logOpen;
-    if (logOpen) ptx.scrollTop = ptx.scrollHeight;
+    if (logOpen || story.length) ptx.scrollTop = ptx.scrollHeight;
   }
 
   function renderMap(v: SceneView): void {
@@ -1065,7 +1086,7 @@ export const table: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   }
 
   // Pointing and clicking in the room: anything not on a DOM control is a 3D pick.
-  const CONTROLS = "button, a, input, textarea, select, .card, .plaque, .book, .tags, .peek, .map, .fgh, [role=button], [tabindex]";
+  const CONTROLS = "button, a, input, textarea, select, .card, .plaque, .tw, .book, .tags, .peek, .map, .fgh, [role=button], [tabindex]";
   let lastPick = 0;
   root.addEventListener("pointermove", (e) => {
     if (!x3 || !t3 || !view || enc) return;

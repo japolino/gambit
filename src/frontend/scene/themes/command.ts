@@ -28,6 +28,7 @@ import { drawCorridor } from "./command/corridor.js";
 import { canvas, coverDraw, cursorUrl, ditherToPalette, frameSvg, loadImage, PALETTE_LABEL, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "./command/pixels.js";
 import { diskBoxSvg, driveSvg, drawRoom, floppySvg, lampSvg, monitorSvg, refCardSvg } from "./command/props.js";
 import { commandCss } from "./command/style.js";
+import { beatsHtml, canWrite, isWriting, wireWrite, writeFormHtml } from "./write.js";
 
 /* --------------------------------- Grid --------------------------------- */
 
@@ -243,11 +244,20 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   jclose.dataset.a = "jr";
   jclose.setAttribute("aria-label", "Close the journal");
   vp.el.append(jclose);
-  term.body.innerHTML = `<div class="tx" role="log" aria-live="polite"><div class="in"></div></div><div class="scrollmark up" style="top:0">^</div><div class="scrollmark dn" style="bottom:0">v</div>`;
+  term.body.innerHTML = `<div class="tx" role="log" aria-live="polite"><div class="in"></div></div><div class="scrollmark up" style="top:0">^</div><div class="scrollmark dn" style="bottom:0">v</div>${writeFormHtml("wr", "Go")}`;
   const tx = $(".tx", term.body);
   const txIn = $(".in", tx);
   const upMark = $(".scrollmark.up", term.body);
   const dnMark = $(".scrollmark.dn", term.body);
+  // The commands are its letters and digits, so the line you write is a row of its own, always in sight under the scroll.
+  const write = wireWrite(ctx, $<HTMLFormElement>("form.wr", term.body), {
+    maxRows: 4,
+    onGrow: (px) => {
+      tx.style.bottom = `${px}px`;
+      dnMark.style.bottom = `${px}px`;
+    },
+  });
+  let seenStory = "";
   map.body.innerHTML = `<canvas class="auto"></canvas><svg class="hex" role="group" aria-label="Overland map"></svg>`;
   const autoCv = $<HTMLCanvasElement>("canvas.auto", map.body);
   const hexSvg = $<SVGSVGElement>("svg.hex", map.body);
@@ -668,7 +678,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const cw = Math.round(dvw * 0.62);
     const chh = Math.round(cw * 1.02);
     Object.assign(card.style, { left: `${dvx + Math.round(dvw * 0.22)}px`, top: `${dvy - chh + Math.round(dvh * 0.2)}px`, transform: "perspective(900px) rotateX(16deg) rotateZ(2deg)" });
-    card.innerHTML = refCardSvg(cw, chh, [["1-0", "commands"], ["J", "journal"], ["C", "classes"], ["T", "change disk"], ["M", "colour"], ["ARROWS", "walk"], ["ESC", "close"]]);
+    card.innerHTML = refCardSvg(cw, chh, [["1-0", "commands"], ["J", "journal"], ["C", "classes"], ["T", "change disk"], ["/", "write"], ["M", "colour"], ["ARROWS", "walk"], ["ESC", "close"]]);
     // The lamp stands behind the disk box, leaning in, cropped by the window.
     const lw = Math.round(Math.min(c * 13, Math.max(c * 7, bx + bw * 0.5)));
     const lh = Math.round(lw * 1.9);
@@ -989,6 +999,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     } else {
       b.log.forEach((l, i) => lines.push(`<div class="l log ch${i === b.log.length - 1 ? " last" : ""}">${esc(l)}</div>`));
       if (b.desc) lines.push(`<div class="l desc">${b.isNew ? `<span class="new">NEW</span> ` : ""}${esc(b.desc)}</div>`);
+      if (isWriting(v)) lines.push(beatsHtml(v.story));
       lines.push(`<div class="l hd"></div>`);
       items.forEach((m, i) => {
         const k = keyOf(i);
@@ -996,9 +1007,19 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         lines.push(`<button class="l ch cmdi g-${m.group}" data-a="cmd" data-i="${i}"${person} aria-label="${esc(m.label)}${k ? ` (${k})` : ""}"><span class="n">${k}</span>${esc(m.label)}</button>`);
       });
     }
-    lines.push(b.busy ? `<div class="l pr ch" aria-busy="true"><span class="busyt">${esc(b.busy)}</span> <span class="spin">|</span></div>` : `<div class="l pr ch"><span class="echo"></span><span class="cu"></span></div>`);
+    // With the box up, the prompt is the box.
+    if (b.busy) lines.push(`<div class="l pr ch" aria-busy="true"><span class="busyt">${esc(b.busy)}</span> <span class="spin">|</span></div>`);
+    else if (diskMenu || !canWrite(v)) lines.push(`<div class="l pr ch"><span class="echo"></span><span class="cu"></span></div>`);
+    write.sync(v, diskMenu);
     const changed = setHtml(txIn, lines.join(""));
-    if (geo.phone) {
+    const story = isWriting(v) && !diskMenu ? JSON.stringify(v.story) : "";
+    const newBeat = changed && story && story !== seenStory ? [...txIn.querySelectorAll<HTMLElement>(".beat")].at(-1) : null;
+    seenStory = story;
+    if (newBeat) {
+      // The newest beat is what they came for, from its first line: there may be more of it than the window shows.
+      tx.scrollTop = geo.phone ? Math.max(0, newBeat.offsetTop - txIn.offsetTop - 4) : Math.round((newBeat.offsetTop - txIn.offsetTop) / geo.c) * geo.c;
+      followTerm = false;
+    } else if (geo.phone) {
       // Open at what just happened, to be read down from; a render with nothing new leaves the finger's place alone.
       if (changed) {
         const from = txIn.querySelector<HTMLElement>(".log.last") ?? txIn.querySelector<HTMLElement>(".desc");
