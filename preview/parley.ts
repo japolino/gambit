@@ -92,6 +92,8 @@ const scenario: ParleyScenario = {
       fears: ["the river wardens", "the Fenwick brothers talking"],
       respects: ["plain dealing", "people who know the river"],
       despises: ["haste", "threats on his own boat"],
+      // &yields=pressure|goodwill: the bent everyone built from a card has, to see what a line shows of it.
+      ...(q.get("yields") === "pressure" || q.get("yields") === "goodwill" ? { yields: q.get("yields") as "pressure" | "goodwill" } : {}),
       likesTactics: ["interest", "empathy"],
       hatesTactics: ["threat"],
       insight: 3,

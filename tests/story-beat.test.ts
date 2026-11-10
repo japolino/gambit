@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { beatWorked, CLOCK_STEP, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, threadEnd, type BeatRead } from "../src/engine/story/beat.js";
-import { fallbackReply, foeByWords, foeFromAnswers, foeQuestions, narratorPrompt, parseRead, readFromAnswers, rulesRead, saysAttack, stands, type StoryContext } from "../src/meaning/story.js";
+import { fallbackReply, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead, saysAttack, stands, type StoryContext } from "../src/meaning/story.js";
 
 const social = { presence: 2, menace: 1, guile: 3 } as const;
 const read: BeatRead = { route: "risk", attempt: "Sneaking past", stat: "guile", difficulty: 1, target: "orla", to: null };
@@ -164,6 +164,46 @@ describe("what the playtest turned up", () => {
     expect(readFromAnswers({ route: said("flavor"), to: said("docks", 0.3) }, [], ["docks"])).toMatchObject({ route: "flavor" });
     expect(readFromAnswers({ route: said("flavor"), to: said("staying") }, [], ["docks"])).toMatchObject({ route: "flavor", to: null });
     expect(parseRead(`{"route":"flavor","to":"new"}`, [], [])?.route).toBe("travel");
+  });
+
+  describe("asking someone for what they keep back", () => {
+    const orla = { id: "orla", name: "Orla", role: "prince" };
+    const holding: StoryContext = { ...ctx, people: [orla], goal: "Find the warden", holds: [{ id: "orla", name: "Orla" }] };
+    const yes = (p: number) => ({ type: "noul", noul: p }) as never;
+
+    test("the reader is only asked when someone here holds a piece, and is told who and about what", () => {
+      expect(routeQuestions(ctx).asks).toBeUndefined();
+      expect(routeQuestions({ ...ctx, people: [orla] }).asks).toBeUndefined();
+      const q = routeQuestions(holding).asks!;
+      expect(q.type).toBe("noul");
+      expect(q.instructions).toMatch(/ask Orla for what they know/);
+      expect(q.instructions).toMatch(/Find the warden/);
+      expect(q.instructions).toMatch(/However politely/);
+      expect(routeState(holding, "x")).toMatchObject({ the_player_is_after: "Find the warden", keeping_it_back: ["Orla"] });
+      expect(routeState(ctx, "x").keeping_it_back).toBeUndefined();
+      expect(judgePrompt(holding, "x").system).toMatch(/"asks": true\|false/);
+      expect(judgePrompt(holding, "x").system).toMatch(/asks: true when the line asks Orla for what they know/);
+      expect(judgePrompt(ctx, "x").system).not.toMatch(/asks/);
+    });
+
+    test("a gentle question is still an ask: the read says so without calling it pressing", () => {
+      const r = readFromAnswers({ route: said("flavor"), target: said("orla"), asks: yes(0.8) }, ["orla"], []);
+      expect(r).toMatchObject({ route: "flavor", target: "orla", asks: true });
+      expect(readFromAnswers({ route: said("flavor"), target: said("orla"), asks: yes(0.4) }, ["orla"], [])?.asks).toBeUndefined();
+      expect(readFromAnswers({ route: said("flavor"), target: said("orla") }, ["orla"], [])?.asks).toBeUndefined();
+      expect(parseRead(`{"route":"flavor","target":"orla","asks":true}`, ["orla"])?.asks).toBe(true);
+      expect(parseRead(`{"route":"flavor","target":"orla","asks":"yes"}`, ["orla"])?.asks).toBeUndefined();
+    });
+
+    test("without a model: a question about knowing, put to someone who holds a piece", () => {
+      const people = [orla, { id: "tam", name: "Tam", role: "guard" }];
+      expect(rulesRead("To Orla: You mind answering me about it? About whatever is going on, I guess", people, [], ["orla"])).toMatchObject({ route: "flavor", target: "orla", asks: true });
+      // Not a question, not about knowing, or put to someone who holds nothing: only a line.
+      expect(rulesRead("To Orla: I tell you about the road north.", people, [], ["orla"]).asks).toBeUndefined();
+      expect(rulesRead("To Orla: Is the tea still warm?", people, [], ["orla"]).asks).toBeUndefined();
+      expect(rulesRead("To Tam: What is going on here?", people, [], ["orla"]).asks).toBeUndefined();
+      expect(rulesRead("To Orla: What is going on here?", people).asks).toBeUndefined();
+    });
   });
 
   test("saying in so many words that you attack is an attack, and only then", () => {

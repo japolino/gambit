@@ -29,6 +29,8 @@ export interface BeatRead {
   target: string | null;
   /** Travel: a known place's id, or "new" for somewhere the world doesn't have yet. */
   to: string | null;
+  /** The line asks someone here for what they are keeping back about the player's goal, however gently. */
+  asks?: boolean;
 }
 
 /** What this card and scene can actually do with a line. A line whose system isn't there is a risk, or just flavor. */

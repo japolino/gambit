@@ -3,7 +3,8 @@
  * become stats, and a framed contest becomes a full Parley scenario with
  * start, floor, DC, and patience from tables. Pure and deterministic.
  */
-import type { ContestDef, ContestKind, Fact, Mood, NpcDef, ParleyScenario, Speaker } from "../parley/types.js";
+import { type ContestDef, type ContestKind, type Fact, type Lean, type Mood, type NpcDef, type ParleyScenario, type Speaker } from "../parley/types.js";
+import { seededRng } from "../dice.js";
 import { freshNames } from "./naming.js";
 import { ownSecret, type CardSheet, type CastMember, type ContestFrame, type SheetFact, type Tier } from "./types.js";
 
@@ -93,6 +94,21 @@ export function speakerFrom(sheet: CardSheet): Speaker {
   return { name: p.name || "you", ...(p.concept ? { who: p.concept } : {}), ...(p.person ? { person: p.person } : {}), stats: { presence: socialOf(p.social.presence), menace: socialOf(p.social.menace), guile: socialOf(p.social.guile) } };
 }
 
+/**
+ * What someone gives way to, from what the card already says of them. What it says of threats settles it; otherwise
+ * the fearful fold under pressure and the proud harden; level, the warm open to goodwill and the cold only to pressure.
+ * Someone the card says nothing of gets one or the other for good, by who they are: it is theirs, and there to be found out.
+ */
+export function yieldsOf(c: Pick<CastMember, "id" | "temperament" | "likesTactics" | "hatesTactics">): Lean {
+  const folds = c.likesTactics.includes("threat");
+  const hardens = c.hatesTactics.includes("threat");
+  if (folds !== hardens) return folds ? "pressure" : "goodwill";
+  const { fear, pride, warmth } = c.temperament;
+  if (fear !== pride) return fear > pride ? "pressure" : "goodwill";
+  if (warmth !== 2) return warmth > 2 ? "goodwill" : "pressure";
+  return seededRng(`yields:${c.id}`)() < 0.5 ? "pressure" : "goodwill";
+}
+
 export function npcFrom(sheet: CardSheet, c: CastMember): NpcDef {
   const tells: Partial<Record<Mood, string>> = { ...GENERIC_TELLS, ...c.tells };
   return {
@@ -108,6 +124,7 @@ export function npcFrom(sheet: CardSheet, c: CastMember): NpcDef {
       fears: c.fears,
       respects: c.respects,
       despises: c.despises,
+      yields: yieldsOf(c),
       likesTactics: c.likesTactics,
       hatesTactics: c.hatesTactics,
       insight: insightOf(c.insight),

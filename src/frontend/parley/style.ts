@@ -153,6 +153,7 @@ canvas.face:not([hidden]) { display: block; }
 .trn { display: grid; gap: 4px; font: 12px/1.45 var(--p-ui); color: var(--p-soft); }
 .tier { justify-self: start; padding: 1px 8px; border-radius: var(--p-pill); border: 1px solid #5a4a36; font-size: 11px; letter-spacing: .04em; }
 .tier.t0 { border-color: #c4544a; color: #e0604c; } .tier.t1 { color: #d9a46a; } .tier.t3 { color: #8fd18a; } .tier.t4 { border-color: #ffd27a; color: #ffd27a; }
+.lean { font-size: 13px; color: var(--p-em); } .lean.up { color: #8fd18a; } .lean.down { color: #d9a46a; }
 .why summary { cursor: pointer; color: var(--p-accent); width: max-content; }
 .why pre { white-space: pre-wrap; margin: 4px 0 0; font: inherit; color: var(--p-dim); }
 .pl[data-mode="immersive"] .trn { display: none; }

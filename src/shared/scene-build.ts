@@ -76,6 +76,8 @@ export interface PlayRecord {
   threadTold?: boolean;
   /** Who was asked about the thread, and on which day: one try a day each (cast id -> day). */
   asked?: Record<string, number>;
+  /** How far someone was worn down in a talk about their piece of the thread that did not win it: the next talk starts there (cast id -> piece id and track value). */
+  ground?: Record<string, { piece: string; value: number }>;
   /** Threads that ended before the one running now, oldest first: the game always has a goal (meaning/thread-next.ts). */
   threadsDone?: { goal: string; ended: ThreadEnd; found: number; total: number; day: number }[];
   /** What was said in recent Parleys and how they ended: the night and the next day's narrator hold to it. */
@@ -147,7 +149,7 @@ export function afterglowLabel(a: Afterglow): string {
   return a.won ? `Claim ${a.name}` : `Give in to ${a.name}`;
 }
 
-const INDOOR = /(inn|tavern|shop|store|room|rooms|bar|cafe|café|parlou?r|hall|kitchen|library|office|apartment|bedroom|chamber|study|salon|lounge|club|pub|smithy|forge|bakery|apothecary|mess|quarters|house|home|manor|mansion|palace|castle)/i;
+const INDOOR = /\b(inn|tavern|shop|store|room|rooms|bar|cafe|café|parlou?r|hall|kitchen|library|office|apartment|bedroom|chamber|study|salon|lounge|club|pub|smithy|forge|bakery|apothecary|mess|quarters|house|home|manor|mansion|palace|castle)\b/i;
 export const WILD_TEXT: Record<Terrain, string> = {
   plain: "Open country under a wide sky, the road a faint line through the grass",
   wood: "Close trees and deep shade, the path half lost",

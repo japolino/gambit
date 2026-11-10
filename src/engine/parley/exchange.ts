@@ -15,6 +15,7 @@ import type {
   Exchange,
   ExchangeRoll,
   Fact,
+  Lean,
   Mood,
   ParleyEnd,
   ParleyScenario,
@@ -24,7 +25,7 @@ import type {
   SocialStat,
   Tactic,
 } from "./types.js";
-import { TIER_DICE } from "./types.js";
+import { GOODWILL, TIER_DICE } from "./types.js";
 
 /** Meta text aimed at the judge, not the person: always read as nonsense (4.1.5). */
 export const META_TEXT =
@@ -71,10 +72,23 @@ export function parseOffer(text: string, scenario: ParleyScenario): number | nul
   return nums.length ? nums[nums.length - 1]! : null;
 }
 
-/** Caught lies count against a talk from its first word, up to here: a hard listener, never an unwinnable one. */
+/**
+ * Lies caught in earlier talks come along, up to here. They make this person quicker to catch the next one; they do
+ * not make an honest argument harder. How they feel about you after the lie already does that (rapport), and counting
+ * it twice made one bad line a wall for the rest of the story.
+ */
 const MAX_CAUGHT_CARRIED = 2;
 const startRapport = (scenario: ParleyScenario): number => scenario.history?.rapport ?? 0;
 const startCaught = (scenario: ParleyScenario): number => Math.min(MAX_CAUGHT_CARRIED, scenario.history?.caughtLies ?? 0);
+
+/** Where the track starts: at the top, or where an earlier talk about the same thing left it. Never so low that nothing is left to win. */
+export function startValue(scenario: ParleyScenario): number {
+  const c = scenario.contest;
+  const ground = scenario.history?.ground;
+  if (ground === undefined || c.winAt === undefined) return c.start;
+  const least = Math.max(c.floor, c.winAt + (c.start - c.hardFloor) * 0.1);
+  return Math.min(c.start, Math.max(least, ground));
+}
 
 /** Whether the player has the money for this price. Anything not priced in their money is always payable. */
 export function canPay(scenario: ParleyScenario, value: number): boolean {
@@ -88,7 +102,7 @@ export function createParley(scenario: ParleyScenario, seed: string, chatId: str
     scenarioId: scenario.id,
     seed,
     chatId,
-    value: c.start,
+    value: startValue(scenario),
     floor: c.floor,
     patience: scenario.npc.stance.patience,
     rapport: startRapport(scenario),
@@ -114,7 +128,8 @@ function useFaces(faces: [number, number, number], tier: ArgumentTier): { used: 
 
 function dcFor(scenario: ParleyScenario, state: ParleyState, offer: number | null): number {
   const c = scenario.contest;
-  let dc = c.dc - state.rapport + 2 * state.caughtBluffs;
+  // Lies caught in this talk count against every line after them. Ones carried in from before only sharpen the listener's eye.
+  let dc = c.dc - state.rapport + 2 * Math.max(0, state.caughtBluffs - startCaught(scenario));
   if (offer !== null) {
     const range = Math.max(1, c.start - c.hardFloor);
     if (offer >= state.value) dc -= 6;
@@ -137,6 +152,27 @@ function moodFor(result: ResultTier, tactic: Tactic, nonsense: boolean, caught: 
 }
 
 const factById = (scenario: ParleyScenario, id: string): Fact | undefined => scenario.facts.find((f) => f.id === id);
+
+/** Real pressure on the listener (it can move their floor): said to them, it is held over them. */
+const presses = (f: Fact | undefined): boolean => !!f?.floorShift;
+
+/**
+ * How a line leans on the listener. A threat is pressure, and so is arguing from something you have on them. Warmth and
+ * honesty are goodwill, even with what you know in hand: how you use it is the choice.
+ */
+export function leanOf(tactic: Tactic, holdsOver: boolean): Lean | null {
+  if (tactic === "threat") return "pressure";
+  if (GOODWILL.includes(tactic)) return "goodwill";
+  if (tactic === "insult" || tactic === "nonsense") return null;
+  return holdsOver ? "pressure" : null;
+}
+
+/** What leaning that way does with this person: pressure folds some and hardens the rest, who open to goodwill instead. */
+export function yieldStep(yields: Lean | undefined, lean: Lean | null): -1 | 0 | 1 {
+  if (!yields || !lean) return 0;
+  if (lean === yields) return 1;
+  return lean === "pressure" ? -1 : 0;
+}
 
 /**
  * Judge one argument and apply it. Returns the new state (the input is not
@@ -161,8 +197,9 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
   const baseTier = nonsense ? 0 : tierFromQuality(readQuality(read));
   let tier: number = baseTier;
   if (!nonsense) {
-    if (stance.hatesTactics?.includes(tactic)) tier -= 1;
-    if (stance.likesTactics?.includes(tactic)) tier += 1;
+    // Someone with a known bent is judged by it alone (below, once it is clear what the line holds over them).
+    if (!stance.yields && stance.hatesTactics?.includes(tactic)) tier -= 1;
+    if (!stance.yields && stance.likesTactics?.includes(tactic)) tier += 1;
     if (tactic === "insult" && !stance.likesTactics?.includes("insult")) tier = Math.min(tier, 1);
     tier = clampTier(tier);
   }
@@ -213,6 +250,11 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
     }
   }
   leverage = Math.min(LEVERAGE_CAP, leverage);
+  // 2b. Pressure or goodwill, and what this person does with it.
+  const holdsOver = leverageFacts.some((id) => presses(factById(scenario, id))) || (!!bluff && !bluff.caught && !!bluff.fact && presses(factById(scenario, bluff.fact)));
+  const lean = nonsense ? null : leanOf(tactic, holdsOver);
+  const bent = yieldStep(stance.yields, lean);
+  tier += bent;
   const finalTier = clampTier(tier);
 
   // 3. Leverage moves the floor, once per fact (4.1.3).
@@ -279,6 +321,8 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
     read: { ...read, tactic },
     baseTier,
     tier: finalTier,
+    lean,
+    yieldStep: bent,
     repetition: rep,
     nonsense,
     leverageFacts,
@@ -303,7 +347,7 @@ export function closeParley(scenario: ParleyScenario, prev: ParleyState, how: "d
 
 /** Rebuild a Parley from its words and reads (after a message is deleted or edited). */
 export function replayParley(scenario: ParleyScenario, start: ParleyState, inputs: readonly { text: string; read: RefereeRead; messageId?: string; reply?: string }[]): ParleyState {
-  let state: ParleyState = { ...start, value: scenario.contest.start, floor: scenario.contest.floor, patience: scenario.npc.stance.patience, rapport: startRapport(scenario), usedFacts: [], caughtBluffs: startCaught(scenario), exchanges: [], end: null };
+  let state: ParleyState = { ...start, value: startValue(scenario), floor: scenario.contest.floor, patience: scenario.npc.stance.patience, rapport: startRapport(scenario), usedFacts: [], caughtBluffs: startCaught(scenario), exchanges: [], end: null };
   for (const input of inputs) {
     if (state.end) break;
     const r = applyExchange(scenario, state, input.text, input.read);

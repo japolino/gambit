@@ -10,7 +10,7 @@
  */
 import { FACTS } from "../../engine/content/parleys.js";
 import { canPay } from "../../engine/parley/exchange.js";
-import { formatValue, effectLine, immersiveRead, rollLine, stakeLine, whyText } from "../../engine/parley/narrate.js";
+import { formatValue, effectLine, immersiveRead, leanLine, rollLine, stakeLine, whyText } from "../../engine/parley/narrate.js";
 import type { Exchange, Mood, ParleyScenario, ParleyState } from "../../engine/parley/types.js";
 import { TIER_NAMES } from "../../engine/parley/types.js";
 import { expressionArtKey, isExpressionArtKey, momentIndexOf, npcArtKey, placeArtKey } from "../../shared/art-keys.js";
@@ -468,7 +468,9 @@ export function mountParley(
     const roll = el("div", "roll", rollLine(ex));
     const why = el("details", "why");
     why.append(el("summary", undefined, "Why?"), el("pre", undefined, whyText(scenario, ex)));
-    trn.append(chip, roll, why);
+    // What the line showed of them is worth more than the numbers: it stands in the open, not behind "Why?".
+    const lean = ex.nonsense ? "" : leanLine(scenario, ex);
+    trn.append(chip, roll, ...(lean ? [el("div", `lean ${(ex.yieldStep ?? 0) > 0 ? "up" : "down"}`, lean)] : []), why);
     box.append(imm, trn);
     // The roll plays for about a second; the faces were fixed before it started.
     let t = 0;

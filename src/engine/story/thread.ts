@@ -174,4 +174,4 @@ export function threadNext(
 export const threadDays = (pieces: number): number => Math.max(3, pieces + 1);
 
 /** How a piece is found, for the player. One line, the same in every theme. */
-export const THREAD_HOW = "What someone knows, you win from them: ask, and make your case. They give way sooner if they like you, or if you have found something on them; beaten in a fight they give it up too, and remember it. One try a day each. A piece that belongs to a place is found by searching it.";
+export const THREAD_HOW = "What someone knows, you win from them: ask, with the button or in your own words, and make your case. Some give way under pressure (a threat, or what you have found on them); others harden, and open to goodwill instead. Leaning on someone is quick, and they remember it; goodwill is slower, and they like you better for it. Beaten in a fight they give it up too, and remember it. One try a day each. A piece that belongs to a place is found by searching it.";

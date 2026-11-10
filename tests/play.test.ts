@@ -319,6 +319,28 @@ describe("play on a card", () => {
       expect(s?.history.remembers.join(" ")).toContain("it ended");
     });
 
+    test("leaning on someone says its price, and they carry it into the next talk", async () => {
+      const { play, last } = setup();
+      await play.open("u", "chat1");
+      const e = end("won");
+      const leaned = { ...e, state: { chatId: "chat1", exchanges: [{ read: { tactic: "logic" }, text: "I know what you take at the docks.", reply: "She goes still.", bluff: null, lean: "pressure", yieldStep: 1 }], end: { kind: "won" } } as never };
+      await play.onParleyEnd("u", leaned.scenario, leaned.state);
+      expect(last().log.join(" ")).toContain("Mara will remember being leaned on.");
+      const s = await play.standing("u", "chat1", "mara");
+      expect(s?.history.remembers.join(" ")).toContain("held what they knew over them");
+    });
+
+    test("a talk won kindly says nothing of a price, and they like you better for it", async () => {
+      const { play, last } = setup();
+      await play.open("u", "chat1");
+      const e = end("won");
+      const kind = { ...e, state: { chatId: "chat1", exchanges: [{ read: { tactic: "empathy" }, text: "That must be hard.", reply: "She nods.", bluff: null, lean: "goodwill", yieldStep: 1 }], end: { kind: "won" } } as never };
+      await play.onParleyEnd("u", kind.scenario, kind.state);
+      expect(last().log.join(" ")).not.toContain("leaned on");
+      const s = await play.standing("u", "chat1", "mara");
+      expect(s?.history.remembers.join(" ")).toContain("was kind to them");
+    });
+
     test("a talk can ask which theme its chat is played in, scene on screen or not", async () => {
       const { play } = setup();
       await play.open("u", "chat1");
@@ -557,6 +579,59 @@ describe("play on a card", () => {
     expect(last().thread!.leads.map((l) => l.text)).toEqual(["Smugglers' Caves", "Mara, at The Docks"]);
     // What has come out goes into the next talk, with anyone, as something the player knows.
     expect((await play.standing("u", "chat1", "mara"))?.found).toEqual([{ id: "piece:b", text: "Mara was paid to look away" }]);
+  });
+
+  test("asking in your own words is the ask: a written question opens the same talk, once a day", async () => {
+    const { play, last, files, talks } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const thread = { goal: "Find the warden", revelations: [{ id: "a", text: "A boat left from the Smugglers' Caves" }, { id: "b", text: "Mara was paid to look away" }], by: "fallback" };
+    files.set(key, { ...(files.get(key) as object), thread });
+    await play.open("u", "chat1");
+    expect(last().thread!.next).toEqual({ text: "Ask Mara what she knows", act: "ask:mara" });
+    // Small talk with her is only a line: nothing is spent.
+    await play.say("u", "chat1", "To Mara: Cold morning for it.");
+    expect(talks).toEqual([]);
+    expect(last().menu.some((h) => h.id === "ask:mara")).toBe(true);
+    // A polite question about what is going on is the ask. Her piece is at stake, and the line is the first thing said.
+    const line = "To Mara: You mind answering me about it? About whatever is going on, I guess";
+    await play.say("u", "chat1", line);
+    expect(talks).toEqual([{ castId: "mara", kind: "persuade", line, ask: { goal: "Find the warden", piece: "Mara was paid to look away" } }]);
+    expect(last().log.at(-1)).toMatch(/You ask Mara what she knows/);
+    expect(last().story.at(-1)!.said).toBe(line);
+    expect(last().busy).toBeUndefined();
+    // That was today's try, the same as the button: it is gone from the menu, and the next step is elsewhere.
+    expect(last().menu.some((h) => h.id === "ask:mara")).toBe(false);
+    expect(last().thread!.next!.text).toMatch(/Smugglers' Caves/);
+    // Asked again the same day, it is only a line, and the page says why.
+    await play.say("u", "chat1", "To Mara: Please, what do you know about it?");
+    expect(talks).toHaveLength(1);
+    expect(last().log.some((l) => /Mara has said all they will today\. Ask again tomorrow\./.test(l))).toBe(true);
+  });
+
+  test("what you wore down stays worn down: the next talk about their piece starts where the last one ended", async () => {
+    const { play, last, files } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const thread = { goal: "Find the warden", revelations: [{ id: "a", text: "A boat left from the Smugglers' Caves" }, { id: "b", text: "Mara was paid to look away" }], by: "fallback" };
+    files.set(key, { ...(files.get(key) as object), thread });
+    await play.open("u", "chat1");
+    const scenario = { id: "s", npc: { name: "Mara" }, contest: { kind: "persuade", stake: "her word", start: 100, floor: 0, hardFloor: 0, winAt: 0, dc: 14 }, card: { cardKey: "card-0001", castId: "mara", journalKey: "chat/chat1" } } as never;
+    expect((await play.standing("u", "chat1", "mara"))?.history.ground).toBeUndefined();
+    // Out of patience half way there: she keeps it, and the page says the half is not lost.
+    await play.onParleyEnd("u", scenario, { chatId: "chat1", end: { kind: "refused" }, exchanges: [], value: 50 } as never);
+    expect(last().log.at(-1)).toMatch(/Mara gives nothing away today\. Try again tomorrow: .+ What you wore down stays worn down: you start from there\./);
+    expect((await play.standing("u", "chat1", "mara"))?.history.ground).toBe(50);
+    // A talk that got nowhere says nothing of the kind, and a harder one than the start is only the start again.
+    await play.onParleyEnd("u", scenario, { chatId: "chat1", end: { kind: "walked" }, exchanges: [], value: 110 } as never);
+    expect(last().log.at(-1)).not.toMatch(/wore down/);
+    expect((await play.standing("u", "chat1", "mara"))?.history.ground).toBe(100);
+    // Won, the piece is out and there is nothing left to pick up.
+    await play.onParleyEnd("u", scenario, { chatId: "chat1", end: { kind: "refused" }, exchanges: [], value: 25 } as never);
+    await play.onParleyEnd("u", scenario, { chatId: "chat1", end: { kind: "won" }, exchanges: [], value: 0 } as never);
+    expect(last().thread!.found).toEqual(["Mara was paid to look away"]);
+    expect((await play.standing("u", "chat1", "mara"))?.history.ground).toBeUndefined();
+    expect((files.get(key) as { ground?: Record<string, unknown> }).ground?.mara).toBeUndefined();
   });
 
   test("the day can always be ended in one step, and solving a thread pays", async () => {

@@ -33,6 +33,7 @@ export type DeedKind =
   | "lied_to" // and got away with it: only the player knows
   | "caught_lying" // n: how many times, in one talk
   | "threatened"
+  | "pressed" // held something they knew over them
   | "charmed"
   | "bribed"
   | "caught" // seen doing something they wrote, on a failed roll
@@ -129,7 +130,7 @@ export function deedsFromBattle(state: BattleState, day: number, place: string, 
 }
 
 /** Deeds from a finished Parley with someone on the card: the outcome, and how you spoke. */
-export function deedsFromParley(castId: string, name: string, end: string, tactics: readonly string[], bluffed: boolean, day: number, place?: string, caughtLies = 0): Deed[] {
+export function deedsFromParley(castId: string, name: string, end: string, tactics: readonly string[], bluffed: boolean, day: number, place?: string, caughtLies = 0, pressed = false): Deed[] {
   const out: Deed[] = [];
   const at = place ? { place } : {};
   const kind: DeedKind | null = end === "won" ? "won_over" : end === "deal" ? "deal" : end === "walked" ? "walked" : end === "refused" ? "refused" : null;
@@ -137,7 +138,9 @@ export function deedsFromParley(castId: string, name: string, end: string, tacti
   // Only a claim the game rolled as a bluff is a lie: how a line was read doesn't make it one (a true fact pressed hard is still true).
   if (caughtLies) out.push({ day, kind: "caught_lying", target: castId, name, n: caughtLies, ...at });
   else if (bluffed) out.push({ day, kind: "lied_to", target: castId, name, ...at });
-  if (tactics.filter((t) => t === "threat").length) out.push({ day, kind: "threatened", target: castId, name, ...at });
+  // Leaning on someone is remembered, whether or not it worked: a threat, or what you knew of them held over their head.
+  if (tactics.includes("threat")) out.push({ day, kind: "threatened", target: castId, name, ...at });
+  else if (pressed) out.push({ day, kind: "pressed", target: castId, name, ...at });
   if (tactics.some((t) => t === "flattery" || t === "empathy" || t === "humor")) out.push({ day, kind: "charmed", target: castId, name, ...at });
   if (tactics.includes("bribe")) out.push({ day, kind: "bribed", target: castId, name, ...at });
   return out;
@@ -242,6 +245,7 @@ const TONE: Partial<Record<DeedKind, { tone: -1 | 0 | 1; delta: number; text: (d
   // A lie that worked isn't here: nobody remembers what they never noticed.
   caught_lying: { tone: -1, delta: -2, text: (d, p) => `caught ${p} lying on day ${d.day}` },
   threatened: { tone: -1, delta: -1.5, text: (d, p) => `${p} threatened them on day ${d.day}` },
+  pressed: { tone: -1, delta: -1.5, text: (d, p) => `${p} held what they knew over them on day ${d.day}` },
   charmed: { tone: 1, delta: 0.75, text: (d, p) => `${p} was kind to them on day ${d.day}` },
   caught: { tone: -1, delta: -1, text: (d, p) => `caught ${p} at it on day ${d.day}: ${d.method ?? "something they tried"}` },
   bribed: { tone: 0, delta: 0.25, text: (d, p) => `${p} paid them off on day ${d.day}` },

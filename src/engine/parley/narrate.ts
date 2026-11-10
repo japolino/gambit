@@ -69,7 +69,29 @@ export function historyLines(scenario: ParleyScenario): string[] {
     ...(h.remembers.length ? [`What ${n} remembers of the player: ${h.remembers.join("; ")}.`] : []),
     ...(h.feel !== "neutral" && (h.remembers.length || h.caughtLies) ? [`${n} feels ${h.feel} toward them.`] : []),
     ...(h.caughtLies ? [`${n} has caught them lying before, and doesn't take their word for much.`] : []),
+    ...(h.ground !== undefined && h.ground < scenario.contest.start ? [`This is not the first time they have talked about this: ${n} was already part of the way to giving in, and the talk picks up from there.`] : []),
   ];
+}
+
+/**
+ * What a line showed of the person: whether they give way to pressure or to goodwill. Empty when it showed nothing.
+ * It is the one thing to learn about someone, so both views say it in the same words.
+ */
+export function leanLine(scenario: ParleyScenario, ex: Pick<Exchange, "lean" | "yieldStep">): string {
+  const n = scenario.npc.name;
+  if (!ex.yieldStep || !ex.lean) return "";
+  if (ex.lean === "goodwill") return `Goodwill gets through to ${n}.`;
+  return ex.yieldStep > 0 ? `${n} gives way under pressure.` : `Pressure only hardens ${n}.`;
+}
+
+/** What someone's bent is, for whoever voices them. Empty for a hand-written scene that has none. */
+function bentLine(scenario: ParleyScenario): string {
+  const n = scenario.npc.name;
+  const y = scenario.npc.stance.yields;
+  if (!y) return "";
+  return y === "pressure"
+    ? `By nature ${n} gives way under pressure (a threat, or something known about them held over them) sooner than to kindness. It shows in ${n}'s manner from the first line, and is never said outright.`
+    : `By nature ${n} opens to goodwill (warmth, honesty) and hardens when leaned on. It shows in ${n}'s manner from the first line, and is never said outright.`;
 }
 
 /** Immersive mode: tells and a qualitative line, no numbers. */
@@ -84,6 +106,8 @@ export function immersiveRead(scenario: ParleyScenario, ex: Exchange): string {
   } else if (ex.repetition >= 0.5) parts.push(`${pr}'s heard this already.`);
   else if (ex.tier >= 3 && !ex.roll.result.endsWith("fail")) parts.push("That reached them.".replace("them", scenario.npc.pronoun === "she" ? "her" : scenario.npc.pronoun === "he" ? "him" : "them"));
   else if (ex.tier === 0) parts.push("That did not sit well.");
+  const lean = ex.nonsense ? "" : leanLine(scenario, ex);
+  if (lean) parts.push(lean);
   return parts.join(" ");
 }
 
@@ -102,8 +126,10 @@ export function whyText(scenario: ParleyScenario, ex: Exchange): string {
   ];
   const stance = scenario.npc.stance;
   if (ex.nonsense) lines.push("Talking to the judge instead of the person reads as nonsense.");
-  if (stance.hatesTactics?.includes(r.tactic)) lines.push(`${scenario.npc.name} despises ${r.tactic}: one tier down.`);
-  if (stance.likesTactics?.includes(r.tactic)) lines.push(`${scenario.npc.name} respects ${r.tactic}: one tier up.`);
+  if (!stance.yields && stance.hatesTactics?.includes(r.tactic)) lines.push(`${scenario.npc.name} despises ${r.tactic}: one tier down.`);
+  if (!stance.yields && stance.likesTactics?.includes(r.tactic)) lines.push(`${scenario.npc.name} respects ${r.tactic}: one tier up.`);
+  const lean = leanLine(scenario, ex);
+  if (lean) lines.push(`${lean.slice(0, -1)}: one tier ${(ex.yieldStep ?? 0) > 0 ? "up" : "down"}.`);
   if (ex.repetition >= 0.5) lines.push(`Repeats an earlier argument (${pct(ex.repetition)} overlap): ${ex.repetition >= 0.8 ? "two tiers" : "one tier"} down.`);
   for (const id of ex.leverageFacts) {
     const f = scenario.facts.find((x) => x.id === id);
@@ -176,6 +202,8 @@ export function outcomeBlock(scenario: ParleyScenario, state: ParleyState, ex: E
       if (f) lines.push(`It worked because the player knows: ${f.text}`);
     }
   }
+  // Who they are showed in how this landed: the reply lets the player see it.
+  if (leanLine(scenario, ex)) lines.push(`${leanLine(scenario, ex)} Let that be plain in how ${npc.name} takes it.`);
   if (ex.bluff?.caught) lines.push(`${npc.name} sees through the player's claim and will remember the lie.`);
   else if (ex.bluff) lines.push(`${npc.name} believes the player's claim.`);
   if (ex.nonsense) lines.push(`The player's words make no sense to ${npc.name}; ${npc.pronoun} is confused, not offended.`);
@@ -205,8 +233,10 @@ export function sceneBlock(scenario: ParleyScenario, state: ParleyState): string
   const s = npc.stance;
   return [
     `[Gambit · Parley in progress with ${npc.name}, ${npc.role}. ${scenario.setting}]`,
-    `What ${npc.pronoun} wants: ${s.wants.join("; ")}. What ${npc.pronoun} fears: ${s.fears.join("; ")}.`,
-    `Respects: ${s.respects.join(", ")}. Despises: ${s.despises.join(", ")}.`,
+    // Someone the card says little of has no such lines: an empty one reads as "wants nothing".
+    ...(s.wants.length || s.fears.length ? [[s.wants.length ? `What ${npc.pronoun} wants: ${s.wants.join("; ")}.` : "", s.fears.length ? `What ${npc.pronoun} fears: ${s.fears.join("; ")}.` : ""].filter(Boolean).join(" ")] : []),
+    ...(s.respects.length || s.despises.length ? [[s.respects.length ? `Respects: ${s.respects.join(", ")}.` : "", s.despises.length ? `Despises: ${s.despises.join(", ")}.` : ""].filter(Boolean).join(" ")] : []),
+    ...(bentLine(scenario) ? [bentLine(scenario)] : []),
     `Current ${scenario.contest.track}: ${formatValue(scenario, state.value)}. Patience ${state.patience}/${s.patience}.`,
     ...(npc.voice ? [`Voice: ${npc.voice}`] : []),
     ...historyLines(scenario),

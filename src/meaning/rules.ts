@@ -50,7 +50,9 @@ export function rulesRead(scenario: ParleyScenario, text: string): RefereeRead {
   for (const f of scenario.facts) asserts[f.id] = factMentioned(text, f.keywords) ? 0.8 : 0;
   const n = words(text).length;
   const touched = overlap(text, [...s.wants, ...s.fears]) + Object.values(asserts).filter((p) => p >= 0.5).length;
-  const fit = Math.min(3, touched >= 3 ? 3 : touched === 2 ? 2.4 : touched === 1 ? 1.8 : 0.8);
+  // Nothing written of what they want or fear: there is nothing to miss, so a line is neither on target nor off it.
+  const unwritten = !s.wants.length && !s.fears.length;
+  const fit = Math.min(3, touched >= 3 ? 3 : touched === 2 ? 2.4 : touched === 1 ? 1.8 : unwritten ? 1.5 : 0.8);
   const specific = /\d/.test(text) ? 0.5 : 0;
   const credibility = Math.min(3, (n < 4 ? 0.5 : n < 10 ? 1.3 : n < 40 ? 2 : 2.2) + specific);
   let temperament = 2;

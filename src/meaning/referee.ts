@@ -65,6 +65,9 @@ export function refereeState(scenario: ParleyScenario, state: ParleyState, text:
 
 export function refereeQuestions(scenario: ParleyScenario): Questions {
   const name = scenario.npc.name;
+  const s = scenario.npc.stance;
+  // Nothing written of what they want or fear: judged by who they are and what is at stake, or every line "ignores" wants that were never there.
+  const unwritten = !s.wants.length && !s.fears.length;
   const q: Questions = {
     tactic: {
       type: "choice",
@@ -73,8 +76,12 @@ export function refereeQuestions(scenario: ParleyScenario): Questions {
     },
     fit: {
       type: "score",
-      instructions: `How directly does the speech touch what ${name} wants or fears, in general or right now in this scene?`,
-      criteria: ["Ignores their wants and fears", "Brushes against them", "Touches a real want or fear", "Goes straight at their deepest want or fear"],
+      instructions: unwritten
+        ? `Nothing is written down about what ${name} wants or fears. Judge from who ${name} is (${scenario.npc.role}) and what is at stake here (${scenario.contest.stake}): how directly does the speech touch what someone in ${name}'s place would want or fear right now?`
+        : `How directly does the speech touch what ${name} wants or fears, in general or right now in this scene?`,
+      criteria: unwritten
+        ? ["Has nothing to do with their position", "Brushes against it", "Touches something someone in their place would really want or fear", "Goes straight at what matters most to someone in their place"]
+        : ["Ignores their wants and fears", "Brushes against them", "Touches a real want or fear", "Goes straight at their deepest want or fear"],
     },
     credibility: {
       type: "score",

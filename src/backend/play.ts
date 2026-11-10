@@ -79,7 +79,7 @@ import { sharedInlayPictures } from "./inlay-pictures.js";
 import type { ParleyNarrator, ToFrontend } from "../shared/protocol.js";
 import { FEATURES, gateSheet } from "../shared/features.js";
 import { THEMES, type ThemeId } from "../shared/scene-view.js";
-import { afterglowHere, boardMapKey, buildSceneView, cardTag, feel, heldBy, menuFor, spotOf, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type Afterglow, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
+import { afterglowHere, askedToday, boardMapKey, buildSceneView, cardTag, feel, heldBy, menuFor, spotOf, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type Afterglow, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
 
@@ -760,7 +760,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const said = await models
       .quiet(userId, "helper", { messages: [{ role: "system", content: asked.system }, { role: "user", content: asked.user }], parameters: { temperature: 0.1 }, signal: AbortSignal.timeout(15_000) })
       .catch((err: unknown) => (log(`story judge: ${String(err).slice(0, 160)}`), ""));
-    return sure(parseRead(said, people, places, line) ?? storyRules(line, story.people, story.places));
+    return sure(parseRead(said, people, places, line) ?? storyRules(line, story.people, story.places, story.holds?.map((h) => h.id)));
   }
 
   /** The first piece of the thread not yet found, wherever it belongs. */
@@ -2018,6 +2018,8 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         history: {
           rapport: rapportFrom(n?.affinity ?? 0),
           caughtLies: caughtLies(r.memory?.deeds ?? [], castId),
+          // Ground won over the piece that is still theirs is kept: persistence gets somewhere.
+          ...(next && r.ground?.[castId]?.piece === next.id ? { ground: r.ground[castId]!.value } : {}),
           feel: feel(n?.affinity ?? 0),
           remembers: [...(n?.notes ?? []).slice(-4).map((x) => x.text), ...(last ? [`on day ${last.day} they talked, and it ended: ${last.ended}`] : [])],
         },
@@ -2040,7 +2042,9 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const tactics = state.exchanges.map((e) => e.read.tactic);
       const bluffed = state.exchanges.some((e) => e.bluff && !e.bluff.fact);
       const caught = state.exchanges.filter((e) => e.bluff?.caught && !e.bluff.fact).length;
-      record_(sheet, r, deedsFromParley(castId, name, state.end.kind, tactics, bluffed, r.scene.day, r.scene.placeId, caught));
+      // Leaning on them with what you know is remembered like a threat, however the talk ended.
+      const pressed = state.exchanges.some((e) => e.lean === "pressure");
+      record_(sheet, r, deedsFromParley(castId, name, state.end.kind, tactics, bluffed, r.scene.day, r.scene.placeId, caught, pressed));
       // What was on the line is yours now: a deal, or what the player offered for it, is paid for, and what they're owed is paid.
       const c = scenario.contest;
       const stake = c.stake;
@@ -2067,8 +2071,22 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const learned = piece ? foundPiece(r, piece) : null;
       // A talk that didn't get it says what that leaves: tomorrow, and the ways to make tomorrow go better.
       const keeps = !learned && !!r.thread && !r.threadEnd && !!pieceFrom(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), castId);
+      // What was worn down stays worn down, for as long as the piece is still theirs to give.
+      const held = keeps ? pieceFrom(r.thread!.revelations, r.revealed ?? [], threadWorld(sheet, r), castId) : undefined;
+      const worn = !!held && state.value < c.start;
+      if (held) {
+        if (c.winAt !== undefined) r.ground = { ...(r.ground ?? {}), [castId]: { piece: held.id, value: Math.min(c.start, state.value) } };
+      }
+      else if (r.ground?.[castId]) r.ground = Object.fromEntries(Object.entries(r.ground).filter(([id]) => id !== castId));
       if (learned) note(r, `${name} lets it out: ${learned}`);
-      else if (keeps) note(r, `${name} gives nothing away today. Try again tomorrow: they give way sooner if they like you, or if you have found something on them.`);
+      else if (keeps) {
+        // What the talk showed of them is the way in tomorrow; nothing shown, the general way stands.
+        const shown = state.exchanges.findLast((e) => e.yieldStep);
+        const way = !shown ? "they give way sooner if they like you, or if you have found something on them." : shown.lean === "goodwill" ? "goodwill gets through to them." : (shown.yieldStep ?? 0) > 0 ? "they give way under pressure." : "pressure only hardens them, so try goodwill.";
+        note(r, `${name} gives nothing away today. Try again tomorrow: ${way}${worn ? " What you wore down stays worn down: you start from there." : ""}`);
+      }
+      // The price of leaning on someone is no secret: it is why the choice is one.
+      if (pressed) note(r, `${name} will remember being leaned on.`);
       // How it ended, as a picture: the two of you at the talk's last beat.
       const how = PARLEY_END_SCENE[state.end.kind] ?? "the talk ends";
       // What was actually said stands: the night and the next day hold to it, not just to how it was labelled.
@@ -2325,7 +2343,23 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // Whoever the line names can be who it's aimed at: the player's words bring them into the scene.
       const asked = storyContext(sheet, r);
       const away = withPromoted(sheet, r).cast.filter((c) => !asked.people.some((p) => p.id === c.id) && named(c.name, [{ content: line }]));
-      const routed = routeBeat(await readLine(userId, { ...asked, people: [...asked.people, ...away.map((c) => ({ id: c.id, name: c.name, role: c.role }))] }, line), { parley: sheet.modules.parley, encounters: sheet.modules.encounters });
+      const there = [...asked.people, ...away.map((c) => ({ id: c.id, name: c.name, role: c.role }))];
+      // Who here is keeping back a piece of the thread: asking them for it is the ask, in whatever words it is put.
+      const pieceOf = (id: string) => (r.thread && !r.threadEnd && sheet.modules.parley ? pieceFrom(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), id) : undefined);
+      const holds = there.filter((p) => pieceOf(p.id)).map((p) => ({ id: p.id, name: p.name }));
+      const firstRead = routeBeat(await readLine(userId, { ...asked, people: there, ...(holds.length ? { holds } : {}) }, line), { parley: sheet.modules.parley, encounters: sheet.modules.encounters });
+      // The box may already be addressed to them ("To Mara: ..."): that is who a question in it is put to.
+      const addressed = /^To ([^:\n]{1,60}): /.exec(line)?.[1];
+      // Whoever the read says it is aimed at; a question the read is sure of but did not aim goes to whoever the box names, or to the only one here who holds anything.
+      const asksWhom = firstRead.asks || firstRead.route === "press" ? (holds.find((h) => h.id === firstRead.target) ?? (firstRead.asks ? (holds.find((h) => h.name === addressed) ?? (holds.length === 1 ? holds[0] : undefined)) : undefined)) : undefined;
+      // One try a day each, written or clicked: asked again the same day, it is only a line, and the page says why.
+      const spentToday = !!asksWhom && askedToday(r).has(asksWhom.id);
+      if (spentToday) {
+        note(r, `${asksWhom!.name} has said all they will today. Ask again tomorrow.`);
+        // The beat lands on the record as it is stored: the note has to be there first.
+        await save(userId, chatId, r);
+      }
+      const routed: BeatRead = spentToday && firstRead.route === "press" ? { ...firstRead, route: "flavor" } : firstRead;
       // Held by whoever claimed you: going somewhere is a way out that has to work.
       const held = heldBy(r);
       const read = held && routed.route === "travel" ? { ...routed, route: "risk" as const, difficulty: Math.max(2, routed.difficulty) as BeatRead["difficulty"] } : routed;
@@ -2356,6 +2390,17 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const wrote = () => {
         r.story = [...(r.story ?? []), { n: r.logN ?? 0, said: line, roll: null, reply: "", day: dayBefore, where: spotOf(r) }].slice(-40);
       };
+      if (asksWhom && !spentToday && read.route !== "fight" && read.route !== "travel") {
+        // The same talk the menu opens, on the player's own words: what this person knows is at stake, and the line is its first argument.
+        r.asked = { ...(r.asked ?? {}), [asksWhom.id]: r.scene.day };
+        const whom = withPromoted(sheet, r).cast.find((c) => c.id === asksWhom.id);
+        note(r, `You ask ${asksWhom.name} ${whatTheyKnow(whom?.pronoun)}.`);
+        wrote();
+        await save(userId, chatId, r);
+        await show(userId, chatId, sheet, r);
+        const kind: ContestKind = read.route !== "press" ? "persuade" : read.stat === "menace" ? "intimidate" : read.stat === "guile" ? "deceive" : "persuade";
+        return cards.talk(userId, chatId, asksWhom.id, kind, undefined, line, { goal: r.thread!.goal, piece: pieceOf(asksWhom.id)!.text });
+      }
       if (read.route === "press") {
         wrote();
         await save(userId, chatId, r);

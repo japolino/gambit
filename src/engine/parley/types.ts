@@ -21,6 +21,13 @@ export const TIER_DICE = ["3d20kl1", "2d20kl1", "1d20", "2d20kh1", "3d20kh1"] as
 
 export type ResultTier = "crit_success" | "success" | "partial" | "fail" | "crit_fail";
 
+/**
+ * How a line leans on the listener: pressure (a threat, or something held over them) or goodwill (warmth, honesty).
+ * A plain argument is neither.
+ */
+export type Lean = "pressure" | "goodwill";
+export const GOODWILL: readonly Tactic[] = ["empathy", "flattery", "humor", "candor"];
+
 export type Mood = "moved" | "tempted" | "considering" | "unmoved" | "irritated" | "suspicious" | "confused" | "afraid" | "amused";
 
 /** A true fact of the world. Knowing it (journal) turns a claim into Leverage. */
@@ -34,7 +41,7 @@ export interface Fact {
   leverage: number;
   /** Plain words that reveal it in speech (rules-only fallback). Any one group must match all its words. */
   keywords: string[][];
-  /** Using it lowers the contest floor by this share of the range, once. */
+  /** Real pressure on the listener: using it lowers the contest floor by this share of the range, once. Argued from, it is held over them. */
   floorShift?: number;
 }
 
@@ -44,7 +51,13 @@ export interface Stance {
   fears: string[];
   respects: string[];
   despises: string[];
-  /** Tactics this person respects or despises outright (code nudges the tier by one). */
+  /**
+   * What this person gives way to. Leaned on, someone who yields to pressure folds sooner; someone who yields to
+   * goodwill hardens, and opens to warmth instead. Set for everyone built from a card: it is the one thing to learn
+   * about them, and it stands in for the per-tactic lists below.
+   */
+  yields?: Lean;
+  /** Tactics this person respects or despises outright (code nudges the tier by one). Hand-written scenes only. */
   likesTactics?: Tactic[];
   hatesTactics?: Tactic[];
   insight: number;
@@ -131,6 +144,8 @@ export interface ParleyScenario {
     caughtLies: number;
     feel: string;
     remembers: string[];
+    /** Where the track starts, when an earlier talk about the same thing already wore it down: ground won is kept. */
+    ground?: number;
   };
   /** What the player can pay, when the talk began. */
   purse?: number;
@@ -201,9 +216,12 @@ export interface Exchange {
   index: number;
   text: string;
   read: RefereeRead;
-  /** Tier from the read alone, then after likes/hates, repetition, and a caught bluff. */
+  /** Tier from the read alone, then after what they yield to, repetition, and a caught bluff. */
   baseTier: ArgumentTier;
   tier: ArgumentTier;
+  /** How the line leaned on them, and what that did to the tier with this person (+1 gave way, -1 hardened). */
+  lean?: Lean | null;
+  yieldStep?: -1 | 0 | 1;
   repetition: number;
   nonsense: boolean;
   /** Known facts the speech used (verified in code). */
