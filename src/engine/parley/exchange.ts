@@ -153,7 +153,11 @@ export function applyExchange(scenario: ParleyScenario, prev: ParleyState, text:
 
   // 1. The read becomes a tier.
   const nonsense = isNonsense(text, read);
-  const tactic: Tactic = nonsense ? "nonsense" : read.tactic;
+  // A line taken for a bluff that only says what the player really knows is an argument from fact: it isn't guile.
+  const claimed = Object.entries(read.asserts).filter(([id, p]) => p >= 0.5 && factById(scenario, id)).map(([id]) => id);
+  const saysKnown = claimed.some((id) => prev.known.includes(id)) || prev.known.some((id) => echoesFact(text, factById(scenario, id)?.text ?? "", scenario.npc.name));
+  const honest = read.tactic === "bluff" && saysKnown && claimed.every((id) => prev.known.includes(id));
+  const tactic: Tactic = nonsense ? "nonsense" : honest ? "logic" : read.tactic;
   const baseTier = nonsense ? 0 : tierFromQuality(readQuality(read));
   let tier: number = baseTier;
   if (!nonsense) {

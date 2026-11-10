@@ -2,7 +2,8 @@
  * The Lobby battle's DOM layer over the Pixi canvas (inside the stage host): the hall's vignette and floating
  * dust, the encounter crest and title, the latest beat of the fight as a subtitle, the party cards, the skill
  * medallions and the turn-order lockets (their own classes, mounted here), an ornate nameplate under each enemy
- * (the stock plate is hidden), and astrolabe reticles over whatever can be targeted, which are buttons too. It
+ * (the stock plate is hidden), astrolabe reticles over whatever can be targeted, which are buttons too, and, while
+ * it is not the player's turn, a line where the skills will be that says whose turn it is. It
  * fades out while a cut-in plays (the cut-in is Pixi, under this layer). The acting member stands in Pixi
  * (./lead.ts).
  */
@@ -91,13 +92,17 @@ export function decorateLobby(stage: BattleStage): StageDecor {
 <div class="warm" aria-hidden="true"></div><canvas class="dust" aria-hidden="true"></canvas>
 <div class="ttl"><div class="cr">${crest()}</div><div class="rib"><b>${esc(title)}</b><svg viewBox="0 0 320 10" aria-hidden="true"><path d="M0 5 H140 M180 5 H320" stroke="#c8aa6e" stroke-width="1"/><path d="M160 0 L165 5 L160 10 L155 5Z" fill="#DFC183"/><circle cx="146" cy="5" r="1.6" fill="#DFC183"/><circle cx="174" cy="5" r="1.6" fill="#DFC183"/></svg><span class="tsub"></span></div></div>
 <div class="sub" aria-live="polite"><p></p></div>
-<div class="plates"></div><div class="marks"></div>`;
+<div class="plates"></div><div class="marks"></div><div class="bb-turn" aria-live="polite"></div>`;
   const $ = (s: string) => root.querySelector(s) as HTMLElement;
   const ttl = $(".ttl");
   const sub = $(".ttl .tsub");
   const subEl = $("div.sub");
   const subP = $("div.sub p");
   const platesEl = $(".plates");
+  const turnEl = $(".bb-turn");
+  let turnKey = "";
+  /** Who the fight being played back has reached (the state itself may already be a turn ahead of the animation). */
+  let acting: string | null = stage.state.active ?? null;
   const marksEl = $(".marks");
   const motes = dust(root.querySelector(".dust") as HTMLCanvasElement, reduced);
 
@@ -188,6 +193,8 @@ export function decorateLobby(stage: BattleStage): StageDecor {
     ttl.style.left = `${g.title.x}px`;
     ttl.style.top = `${g.title.y}px`;
     Object.assign(subEl.style, { left: `${g.sub.x}px`, top: `${g.sub.y}px`, width: `${g.sub.w}px`, height: `${g.sub.h}px` });
+    // Where the skills' own heading sits: under the enemies' plates, over the empty row.
+    Object.assign(turnEl.style, { left: `${g.menu.x}px`, top: `${Math.round(g.menu.y + (g.portrait ? 0 : 64 * g.u))}px`, width: `${g.menu.w}px` });
     motes.resize(g.w, g.h);
     lead.layout(g);
     shade.width = g.w;
@@ -203,10 +210,12 @@ export function decorateLobby(stage: BattleStage): StageDecor {
     event(ev: BattleEvent, _state: BattleState) {
       if (ev.kind === "turn") {
         turn = Math.max(turn, ev.turn);
+        acting = ev.actor;
         paintSub();
         if (stage.units.get(ev.actor)?.side === "party") lead.setActor(ev.actor);
       }
       if (ev.kind === "defeat" || ev.kind === "end") paintSub();
+      if (ev.kind === "use") acting = ev.actor;
       const line = logLine(stage, ev, lastSkill);
       if (line) pushLog(line.html, line.hurt);
     },
@@ -216,6 +225,14 @@ export function decorateLobby(stage: BattleStage): StageDecor {
       if (!stage.reduced || Math.floor(now * 4) !== Math.floor((now - dt) * 4)) motes.frame(now);
       lead.update(now, dt);
       const g = geom;
+      // While the skills are away because a foe is acting, their place says so (the player's own turn has the brass tag).
+      const actor = acting ? stage.units.get(acting) : undefined;
+      const waiting = menu?.el.dataset.mode === "wait" && !menu.el.querySelector(".wait b");
+      const tk = waiting && actor && actor.alive && actor.side === "enemy" && stage.state.outcome === "ongoing" ? actor.name : "";
+      if (tk !== turnKey) {
+        turnKey = tk;
+        turnEl.innerHTML = tk ? `<span class="yt foe">Enemy turn</span><b>${esc(tk)}</b>` : "";
+      }
       const px = stage.field.pivot.x;
       const seen = new Set<string>();
       let alive = 0;
@@ -241,7 +258,8 @@ export function decorateLobby(stage: BattleStage): StageDecor {
         const half = (pw / 2) * g.u * (g.portrait ? 0.62 : 1);
         const x = Math.max(half + 4, Math.min(g.enemyArea.x + g.enemyArea.w - half - 4, view.x - px));
         const y = view.y + view.plate.y - 4 * g.u;
-        p.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+        // Whole pixels, so the name on the plate stays sharp.
+        p.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
         const v = u.hp / Math.max(1, u.maxHp);
         if (v < p.shown) p.hold = now + 0.45;
         else p.ghostV = Math.max(p.ghostV, v);
@@ -272,7 +290,7 @@ export function decorateLobby(stage: BattleStage): StageDecor {
             // On the figure's centre line (stand-in art can put the face off-centre), over its chest below the face.
             const f = view.faceGlobal;
             const ry = f.y + (g.portrait ? 50 : 90) * g.u;
-            m.el.style.transform = `translate3d(${(view.x - px).toFixed(1)}px, ${ry.toFixed(1)}px, 0)`;
+            m.el.style.transform = `translate(${Math.round(view.x - px)}px, ${Math.round(ry)}px)`;
           }
         }
       }

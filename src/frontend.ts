@@ -18,7 +18,7 @@ import { createChips } from "./frontend/host/chips.js";
 import { mountParley, type ParleyView } from "./frontend/parley/view.js";
 import type { CardStatus, ParleyNarrator, ParleyViewMode } from "./shared/protocol.js";
 import { mountScene, type SceneHandle } from "./frontend/scene/view.js";
-import type { SceneView } from "./shared/scene-view.js";
+import type { SceneView, ThemeId } from "./shared/scene-view.js";
 import { createVoice, prefsFor, voiceChoice } from "./frontend/voice.js";
 import { createMusic } from "./frontend/music.js";
 
@@ -138,6 +138,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
   });
   /** The Scene on screen (6.1) and the last view the backend sent. */
   let scene: SceneHandle | null = null;
+  /** The theme of each talk's chat, as the backend last said it. */
+  const parleyThemes = new Map<string, ThemeId>();
   let sceneView: SceneView | null = null;
   /** The scene's theme is staging the current fight or talk in its own room (the scene stays visible). */
   let staged = false;
@@ -196,6 +198,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     },
     setParleyMode: (mode) => send({ type: "parley.view", mode }),
     setNarrator: (mode) => send({ type: "parley.narrator", mode }),
+    setStoryNarrator: (mode) => send({ type: "story.narrator", mode }),
     shown: () => refreshCard(true),
     card: {
       enable: (on) => withChat((chatId) => send({ type: "card.enable", chatId, on })),
@@ -429,7 +432,8 @@ export function setup(ctx: SpindleFrontendContext): () => void {
     }
     parley?.destroy();
     if (staged) scene?.encounter(null);
-    const talkTheme = sceneView && sceneView.chatId === state.chatId ? sceneView.theme : undefined;
+    // The scene's theme; with no scene on screen (the page was reloaded, the talk was opened from the drawer), the one the chat is played in.
+    const talkTheme = sceneView && sceneView.chatId === state.chatId ? sceneView.theme : (parleyThemes.get(state.id) ?? undefined);
     staged = !!talkTheme && !!scene && scene.chatId === state.chatId && scene.encounter({ kind: "parley", personId: scenario.npc.id, name: scenario.npc.name });
     if (!staged) scene?.hide();
     parley = mountParley(ov.content, scenario, state, journal, parleyMode, { chatBound: !!state.chatId, narrator: parleyNarrator, theme: talkTheme, inRoom: staged, voices: talkTheme ? sceneView?.voices : undefined }, {
@@ -444,6 +448,10 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         if (scene) {
           scene.show();
           sceneMusic();
+        } else if (talkTheme && state.chatId) {
+          // The talk was opened without its scene: what it changed is there, so that is where leaving goes.
+          want = { screen: "scene", chatId: state.chatId };
+          send({ type: "scene.open", chatId: state.chatId });
         } else ov.hide();
       },
     });
@@ -465,6 +473,11 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         fxLibrary.request(send);
         panel.setStatus("");
         panel.setLook(msg.styleLook);
+        if (msg.storyNarrator) panel.setStoryNarrator(msg.storyNarrator);
+        if (msg.parleyNarrator) {
+          parleyNarrator = msg.parleyNarrator;
+          panel.setNarrator(msg.parleyNarrator);
+        }
         lookUi = msg.ui;
         applyUiTokens(msg.ui);
         break;
@@ -605,6 +618,7 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         const asked = wants("parley", msg.state.chatId) && !msg.resumed;
         if (parley?.parleyId !== msg.state.id && !asked && !here(msg.state.chatId)) break;
         parleyState = { state: msg.state, scenario: msg.scenario, journal: msg.journal };
+        if (msg.theme) parleyThemes.set(msg.state.id, msg.theme);
         {
           // Speak each NPC reply once, when it is written.
           const ex = msg.state.exchanges;
@@ -647,6 +661,9 @@ export function setup(ctx: SpindleFrontendContext): () => void {
         parleyMode = msg.mode;
         parley?.setMode(msg.mode);
         panel.setParley(parleyState && !parleyState.state.end ? parleyState.scenario.name : null, msg.mode, parleyState?.journal.length ?? 0);
+        break;
+      case "story.narrator":
+        panel.setStoryNarrator(msg.mode);
         break;
       case "parley.narrator":
         parleyNarrator = msg.mode;

@@ -3,8 +3,7 @@
  * made-up haggle at a river ferry, with three exchanges already played, the
  * real engine for new lines (a canned Referee read) and painted stand-in art.
  * No Lumiverse needed. Query:
- *   ?theme=<id>        storybook | onebit | lobby | diorama | table | command (omit: the painted default)
- *   &table=1           the legacy Table flag (same as theme=table)
+ *   ?theme=<id>        storybook | onebit | lobby | command (omit: the painted default)
  *   &ex=<n>            exchanges already played (0-3, default 3)
  *   &mode=transparent  show the dice maths (default immersive)
  *   &end=deal|walk     the contest is over
@@ -381,7 +380,7 @@ let view: ParleyView;
 let replyTimer: ReturnType<typeof setInterval> | undefined;
 // &inroom=1: the scene behind this page stages the talk in its room (preview/scene.ts &encounter=parley).
 if (q.get("inroom") === "1") document.documentElement.style.background = document.body.style.background = "transparent";
-view = mountParley(root, scenario, state, journal, mode, { chatBound: q.get("chat") !== "0", narrator, theme, table: q.get("table") === "1", inRoom: q.get("inroom") === "1" }, {
+view = mountParley(root, scenario, state, journal, mode, { chatBound: q.get("chat") !== "0", narrator, theme, inRoom: q.get("inroom") === "1" }, {
   say(text) {
     view.judging(text);
     setTimeout(() => {

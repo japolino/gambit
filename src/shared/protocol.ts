@@ -178,6 +178,8 @@ export type ToBackend =
   | { type: "parley.close"; parleyId: string; how: "deal" | "walk" }
   | { type: "parley.view"; mode: ParleyViewMode }
   | { type: "parley.narrator"; mode: ParleyNarrator }
+  /** Who writes the scene's replies: the chat under its own preset, or Gambit's short narrator. */
+  | { type: "story.narrator"; mode: ParleyNarrator }
   | { type: "journal.reset"; chatId: string | null }
   // card
   /** What's on screen changed, and music is on: which track goes with it? */
@@ -247,7 +249,7 @@ export type ToBackend =
 /* ---------------------------- backend -> frontend ------------------ */
 
 export type ToFrontend =
-  | { type: "welcome"; version: string; styleLook: string | null; ui?: LookUi | null }
+  | { type: "welcome"; version: string; styleLook: string | null; ui?: LookUi | null; storyNarrator?: ParleyNarrator; parleyNarrator?: ParleyNarrator }
   /** Effects and sounds: the manifest (null when the install has none), then each file it uses, as base64 in parts under the 4 MB message cap. */
   | { type: "fx.manifest"; manifest: FxManifest | null }
   | { type: "fx.file"; file: string; mime: string; part: number; parts: number; data: string }
@@ -256,7 +258,7 @@ export type ToFrontend =
   /** battleId: the fight it is about; without one, a fight that could not start. */
   | { type: "battle.error"; error: string; battleId?: string }
   // parley
-  | { type: "parley.state"; state: ParleyState; scenario: ParleyScenario; journal: string[]; view: ParleyViewMode; narrator: ParleyNarrator; resumed?: boolean }
+  | { type: "parley.state"; state: ParleyState; scenario: ParleyScenario; journal: string[]; view: ParleyViewMode; narrator: ParleyNarrator; resumed?: boolean; /** The theme of the chat's scene, so a talk opened without the scene on screen (a reload, the drawer) wears it too. */ theme?: ThemeId }
   /** A decided exchange: play the read and the dice. */
   | { type: "parley.exchange"; parleyId: string; state: ParleyState; exchange: Exchange; narrated: boolean }
   /** The Referee is reading a line typed in the normal composer. */
@@ -267,6 +269,7 @@ export type ToFrontend =
   | ({ type: "parley.error"; error: string } & ({ parleyId: string } | { chatId: string | null }))
   | { type: "parley.view"; mode: ParleyViewMode }
   | { type: "parley.narrator"; mode: ParleyNarrator }
+  | { type: "story.narrator"; mode: ParleyNarrator }
   // card
   | { type: "card.status"; status: CardStatus }
   /** The roleplay just set up a contest: offer it under that reply. */

@@ -45,6 +45,11 @@ export interface MenuItem {
   target?: string;
   /** Painting of the place an exit goes to, when there is one. */
   art?: string | null;
+  /**
+   * This action follows a lead of the thread (the person a missing piece is about, the place it is in, the way
+   * there). A theme marks it so it stands out from the rest; within a group, leads come first.
+   */
+  lead?: boolean;
   run(): void;
 }
 
@@ -81,8 +86,13 @@ export interface StatusView {
   vigor: number;
   /** Frontier overland supplies. */
   supplies?: { now: number; max: number };
-  /** The central quest thread. */
-  thread?: { found: string[]; total: number; goal: string; daysLeft?: number; ended?: "solved" | "lost" };
+  /**
+   * The central quest thread. `leads[0]` is the one thing to do next about it, as an action in plain words ("Ask
+   * Mara what they know", "Go to Old Lighthouse and search it"): a theme shows it beside the thread as "Next: ...".
+   * The rest of `leads` say where the other missing pieces are ("Mara, at The Docks"), never what a piece says.
+   * Empty once the thread is over. `how`: one line on how a piece is found.
+   */
+  thread?: { found: string[]; total: number; goal: string; daysLeft?: number; ended?: "solved" | "lost"; leads: string[]; how: string };
 }
 
 export interface BoxView {
@@ -182,7 +192,8 @@ export interface ThemeCtx {
     /** The journal's contents as HTML (h3, ul/li, .muted, .done, .bond, .aff > i[.neg]); frame and style it. */
     html(v: SceneView): string;
   };
-  readonly classes: { readonly open: boolean; toggle(): void };
+  /** `available` false: the class panel is switched off. Show no button, key hint or menu entry for it; `toggle` does nothing. */
+  readonly classes: { readonly open: boolean; readonly available: boolean; toggle(): void };
   readonly themes: readonly { id: ThemeId; label: string }[];
   setTheme(id: ThemeId): void;
 

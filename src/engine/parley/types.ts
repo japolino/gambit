@@ -142,6 +142,8 @@ export interface ParleyScenario {
     castId: string;
     /** Winning this bears on the story's central thread, so its next piece comes out with it. */
     aboutThread?: boolean;
+    /** What they know and tell the player once won over. Until then the narrator keeps it back. */
+    gives?: string;
     /** The journal this scene reads and writes: one per chat. */
     journalKey: string;
     /** The card's avatar: the NPC's canonical face. */

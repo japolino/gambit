@@ -5,7 +5,7 @@
  *     what:   parley | battle | scene
  *     themes: comma list, or all (default)
  *     sizes:  comma list of the names below (default bars,small,keys)
- *     BASE=http://localhost:4174 picks the preview server; QA_WAIT=2 doubles the waits on a busy machine.
+ *     BASE=http://localhost:4174 picks the preview server; QA_QUERY=story=3 adds preview switches to a scene's address; QA_WAIT=2 doubles the waits on a busy machine.
  * Saves <outDir>/<theme>-<what>-<size>.jpg and one JSON line per shot in <outDir>/report.jsonl, prints what fails
  * the Parley minimums below, and exits 1 if anything did. Pixi screens can't be measured from the DOM: look at them.
  */
@@ -16,8 +16,9 @@ import { tmpdir } from "node:os";
 const [outDir, what = "parley", themesArg, sizesArg] = process.argv.slice(2);
 if (!outDir) throw new Error("usage");
 const BASE = process.env.BASE ?? "http://localhost:4174";
-const ALL = ["storybook", "diorama", "lobby", "table", "onebit", "command"];
-const THREE_D = new Set(["table", "diorama"]);
+const ALL = ["storybook", "lobby", "onebit", "command"];
+/** Themes that stage a talk in a 3D room of their own (none now). */
+const THREE_D = new Set<string>();
 const themes = themesArg && themesArg !== "all" ? themesArg.split(",") : ALL;
 const SIZES: Record<string, [number, number]> = {
   bars: [390, 664], // a 390x844 phone, minus the browser's bars
@@ -154,7 +155,7 @@ function problems(size: string, l: any): string[] {
 const urlFor = (t: string): string => {
   if (what === "parley") return THREE_D.has(t) ? `${BASE}/scene?theme=${t}&encounter=parley&snap=1` : `${BASE}/parley?theme=${t}&snap=1`;
   if (what === "battle") return `${BASE}/scene?theme=${t}&encounter=battle`;
-  return `${BASE}/scene?theme=${t}`;
+  return `${BASE}/scene?theme=${t}${process.env.QA_QUERY ? `&${process.env.QA_QUERY}` : ""}`;
 };
 
 for (const t of themes) {

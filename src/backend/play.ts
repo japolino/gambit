@@ -8,7 +8,7 @@ import type { SpindleAPI } from "lumiverse-spindle-types";
 import type { ArtApi } from "../art/controller.js";
 import { advance, createBattle } from "../engine/battle.js";
 import { chooseAction } from "../engine/ai.js";
-import { encounterFrom, foeFromCast, partyFromSheet, playerPerson, type SheetFoe } from "../engine/card/foes.js";
+import { encounterFrom, foeFromCast, linkFoes, partyFromSheet, playerPerson, type SheetFoe } from "../engine/card/foes.js";
 import { isChild } from "../engine/card/child.js";
 import { kitClass } from "../engine/card/kits.js";
 import { freshNames } from "../engine/card/naming.js";
@@ -23,12 +23,14 @@ import { addPlace, applyTraits, buildWorld, clockTo, moveScene, newScene, search
 import { createSenses } from "./senses.js";
 import { PLACE_TRAITS as PLACE_FLAGS, type CompanionLike } from "../meaning/senses.js";
 import { addHexPlace, buildHex, cellOf, hexKey, hexPath, newHex, reveal, stepHex, SUPPLY_MAX, TERRAIN_NAME } from "../engine/world/hex.js";
-import { chatPlaceNames, fallbackPlaceFromChat, named, parsePlaceFromChat, placeFromChatPrompt, type Bible } from "../meaning/bible.js";
+import { chatPlaceNames, fallbackPlaceFromChat, named, parsePlaceFromChat, placeFromChatPrompt, playerKnows, type Bible } from "../meaning/bible.js";
 import { modelsFor } from "./models.js";
-import { beatWorked, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, THREAD_DAYS, threadEnd, type BeatRead, type BeatRoute } from "../engine/story/beat.js";
+import { beatWorked, fightTarget, resolveBeat, rollLine, routeBeat, spendClock, threadEnd, type BeatRead, type BeatRoute } from "../engine/story/beat.js";
+import { holders, pieceAt, pieceFrom, pieceHere, threadDays, whatTheyKnow, type ThreadPiece, type ThreadWorld } from "../engine/story/thread.js";
+import { fallbackNextThread, nextThreadPrompt, parseNextThread, type NextThreadInput } from "../meaning/thread-next.js";
 import type { ContestKind } from "../engine/parley/types.js";
 import { writeWithRetry } from "./writing.js";
-import { beatTokens, beatWords, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
+import { beatTokens, beatWords, chatBeatNote, fallbackReply as storyFallback, saysAttack, foeByWords, foeFromAnswers, foeQuestions, judgePrompt, narratorPrompt as storyNarrator, parseRead, readFromAnswers, routeQuestions, routeState, rulesRead as storyRules, type StoryContext } from "../meaning/story.js";
 import { amount, cleanReply } from "../engine/parley/narrate.js";
 import { pictureMoments, pictureText, scenePages, withPictures } from "../meaning/afterglow.js";
 import { fillNote, noteText } from "../meaning/notes.js";
@@ -74,8 +76,9 @@ import { figureArtKey, npcArtKey } from "../shared/art-keys.js";
 import type { CharacterDNA } from "../art/specs.js";
 import { createFigurePrints } from "./figure-prints.js";
 import { sharedInlayPictures } from "./inlay-pictures.js";
-import type { ToFrontend } from "../shared/protocol.js";
-import type { ThemeId } from "../shared/scene-view.js";
+import type { ParleyNarrator, ToFrontend } from "../shared/protocol.js";
+import { FEATURES, gateSheet } from "../shared/features.js";
+import { THEMES, type ThemeId } from "../shared/scene-view.js";
 import { afterglowHere, boardMapKey, buildSceneView, cardTag, feel, heldBy, menuFor, spotOf, newMemory, placeArt, placeKey, wallKey, WILD_TEXT, wildCell, type Afterglow, type MemoryRecord, type PlayRecord } from "../shared/scene-build.js";
 
 type Send = (msg: ToFrontend, userId: string) => void;
@@ -84,7 +87,7 @@ type Send = (msg: ToFrontend, userId: string) => void;
 export interface CardsPort {
   sheetFor(userId: string, chatId: string): Promise<CardSheet | null>;
   armory(userId: string, chatId: string): Promise<CardSheet | null>;
-  talk(userId: string, chatId: string, castId: string, kind?: ContestKind, chipId?: string, firstLine?: string): Promise<void>;
+  talk(userId: string, chatId: string, castId: string, kind?: ContestKind, chipId?: string, firstLine?: string, ask?: { goal: string; piece?: string }): Promise<void>;
   followBeat?(userId: string, chatId: string, lines: { content: string }[]): Promise<void>;
   recent?(userId: string, chatId: string, n: number): Promise<{ name: string; content: string; isUser: boolean }[]>;
   /** The lorebook's text about a name, for promotions (meaning/lore-pick.ts loreAbout). */
@@ -145,6 +148,31 @@ const sceneOf = (meta: unknown): SceneMeta | null => {
   return s && typeof s.id === "string" && typeof s.partner === "string" ? s : null;
 };
 
+/** A story beat the chat writes under its own preset: its line carries the note, to add again on a swipe (`gambit.beat`). */
+interface BeatMeta {
+  id: string;
+  note: string;
+}
+
+const beatOf = (meta: unknown): BeatMeta | null => {
+  const b = (meta as { gambit?: { beat?: BeatMeta } } | null | undefined)?.gambit?.beat;
+  return b && typeof b.id === "string" && typeof b.note === "string" ? b : null;
+};
+
+/** What a search has to roll to turn up a piece of the thread. */
+const PIECE_ROLL = 8;
+/** What solving a thread pays, for each of its pieces. */
+const PIECE_PAY = 15;
+/** How much colder everyone else who holds a piece turns when one is beaten out of someone (2.5 is a step of starting rapport). */
+const FORCE_CHILL = 1.5;
+/** How well a night on the ground restores the party: less than a bed. */
+const ROUGH_VIGOR = 0.6;
+
+/** Where the drawer's choices are kept (backend/parleys.ts keeps the Parley's in the same file). */
+const SETTINGS = "settings.json";
+/** A reply under a long-form preset is still one beat of a game: this much of it is kept on the page. */
+const CHAT_BEAT_WORDS = 1200;
+
 const sceneTitle = (s: SceneMeta) => (s.won ? `Claiming ${s.partner}` : `Claimed by ${s.partner}`);
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 160);
@@ -163,7 +191,7 @@ export function italicLines(text: string): string {
     .join("\n");
 }
 
-export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: CardsPort, battles: BattlesPort, { retryMs = [1500, 4000], readMs = 12_000, montageMs = 90_000, hedgeMs = 30_000, pictures }: { retryMs?: number[]; readMs?: number; montageMs?: number; hedgeMs?: number; pictures?: InlayPictures } = {}) {
+export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: CardsPort, battles: BattlesPort, { retryMs = [1500, 4000], readMs = 12_000, montageMs = 90_000, hedgeMs = 30_000, chatMs = 240_000, pictures }: { retryMs?: number[]; readMs?: number; montageMs?: number; hedgeMs?: number; chatMs?: number; pictures?: InlayPictures } = {}) {
   const log = (m: string) => {
     try {
       spindle.log.info(`gambit play: ${m}`);
@@ -172,16 +200,29 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
   };
   const load = (userId: string, chatId: string) => spindle.userStorage.getJson<PlayRecord | null>(path(chatId), { fallback: null, userId });
+  /** The card's sheet as the game plays it (shared/features.ts): what is switched off isn't on it. */
+  const sheetOf = async (userId: string, chatId: string): Promise<CardSheet | null> => {
+    const s = await cards.sheetFor(userId, chatId);
+    return s ? gateSheet(s) : s;
+  };
+  const armoryOf = async (userId: string, chatId: string): Promise<CardSheet | null> => {
+    const s = await cards.armory(userId, chatId);
+    return s ? gateSheet(s) : s;
+  };
   const notes = createNotes(spindle);
   /** A thread runs against the clock, and every save settles how it stands. */
   function settleThread(r: PlayRecord): void {
     if (!r.thread) return;
-    if (r.deadline === undefined) r.deadline = r.scene.day + THREAD_DAYS - 1;
+    if (r.deadline === undefined) r.deadline = r.scene.day + threadDays(r.thread.revelations.length) - 1;
     if (r.threadEnd) return;
     const end = threadEnd(r.revealed?.length ?? 0, r.thread.revelations.length, r.scene.day, r.deadline);
     if (!end) return;
     r.threadEnd = end;
-    r.log = [...r.log, end === "solved" ? `You have it all: ${r.thread.goal}.` : `Time has run out: ${r.thread.goal}.`].slice(-40);
+    // Solving it pays, by its size: the one thing in the game that only the thread gives.
+    const pay = end === "solved" ? PIECE_PAY * r.thread.revelations.length : 0;
+    if (pay) r.scene = { ...r.scene, coin: r.scene.coin + pay };
+    r.logN = (r.logN ?? 0) + 1;
+    r.log = [...r.log, end === "solved" ? `You have it all: ${r.thread.goal}. It pays: +${pay} to your purse. Tomorrow brings what comes of it.` : `Time has run out: ${r.thread.goal}. What it warned of happens tonight.`].slice(-40);
   }
   const save = (userId: string, chatId: string, r: PlayRecord) => {
     settleThread(r);
@@ -207,7 +248,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
   }
 
-  const forge = createForge({ spindle, send, art, sheetFor: (u, c) => cards.sheetFor(u, c), ...(cards.compile ? { compile: cards.compile } : {}), load, save, aside, log });
+  const forge = createForge({ spindle, send, art, sheetFor: (u, c) => sheetOf(u, c), ...(cards.compile ? { compile: cards.compile } : {}), load, save, aside, log });
 
   /** Merge the World Bible's places and thread into a chat's world (4.5). True when anything changed. */
   function mergeBible(sheet: CardSheet, r: PlayRecord, b: Bible): boolean {
@@ -243,7 +284,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
       .bible(userId, chatId, 1)
       .then(async (b) => {
         if (!b) return;
-        const sheet = await cards.sheetFor(userId, chatId);
+        const sheet = await sheetOf(userId, chatId);
         const r = await load(userId, chatId);
         if (!sheet || !r || r.cardKey !== sheet.cardKey || !mergeBible(sheet, r, b)) return;
         ensureHex(r, chatId);
@@ -260,7 +301,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     let changed = false;
     if (!r || r.cardKey !== sheet.cardKey || r.v !== 1) {
       const world = buildWorld(sheet, `${sheet.cardKey}:${chatId}`);
-      r = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world, sheet.player.coin), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: [], sheetAt: sheet.readAt };
+      r = { v: 1, cardKey: sheet.cardKey, world, scene: newScene(world, sheet.player.coin), theme: sheet.shape === "delve" ? "onebit" : "storybook", log: ["New here? The journal says where to look next and how this works."], sheetAt: sheet.readAt };
       changed = true;
     } else if (r.sheetAt !== sheet.readAt) {
       // The card was read again: its people stand where the new read puts them.
@@ -336,6 +377,26 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return extra.length ? { ...sheet, cast: [...sheet.cast, ...extra] } : sheet;
   }
 
+  /** Who and where the thread's pieces can point at: the people of this chat's world, each where they are now. */
+  function threadWorld(sheet: CardSheet, r: PlayRecord): ThreadWorld {
+    const places = Object.values(r.world.places);
+    return {
+      cast: withPromoted(sheet, r).cast.map((c) => {
+        const at = places.find((p) => p.people.includes(c.id))?.id;
+        return { id: c.id, name: c.name, ...(at ? { at } : {}) };
+      }),
+      places: places.map((p) => ({ id: p.id, name: p.name })),
+    };
+  }
+
+  /** A piece of the thread is found: it counts, and the player is told how far that puts them. */
+  function foundPiece(r: PlayRecord, piece: ThreadPiece): string {
+    r.revealed = [...new Set([...(r.revealed ?? []), piece.id])];
+    const total = r.thread?.revelations.length ?? 0;
+    const found = r.thread?.revelations.filter((x) => r.revealed!.includes(x.id)).length ?? 0;
+    return `${piece.text} (piece ${found} of ${total})`;
+  }
+
   /** Add deeds to the ledger and let people remember them. `react: false` leaves companions to reactLater. */
   function record_(sheet: CardSheet, r: PlayRecord, deeds: Deed[], react = true): void {
     if (!deeds.length) return;
@@ -353,6 +414,16 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     m.interest[key] = Math.round(((m.interest[key] ?? 0) + n) * 10) / 10;
   }
 
+  /** Who is on the player's side now: recruited, won over, or fond of them. They don't turn up against the player in a fight nobody named. */
+  function friendsOf(r: PlayRecord): Set<string> {
+    const m = r.memory;
+    return new Set([
+      ...(m?.recruits ?? []).map((x) => x.id),
+      ...Object.entries(m?.npc ?? {}).flatMap(([id, n]) => (n.affinity >= 1 ? [id] : [])),
+      ...(m?.deeds ?? []).flatMap((d) => (d.kind === "won_over" || d.kind === "recruited" ? [d.target] : [])),
+    ]);
+  }
+
   /** The card person a fighter is (their def id ends in `cast_<id>`), if any. */
   const castIdOf = (sheet: CardSheet, defId: string): string | null => {
     const id = /cast_([a-z0-9_]+)$/i.exec(defId.replace(/~.*$/, "").replace(/_p2$/, ""))?.[1];
@@ -360,6 +431,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
   };
 
   const note = (r: PlayRecord, text: string) => {
+    // Counted even when the line is the last one again: it happened again, after whatever the story said since.
+    r.logN = (r.logN ?? 0) + 1;
     if (r.log[r.log.length - 1] === text) return;
     r.log = [...r.log, text].slice(-6);
   };
@@ -591,7 +664,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
   }
 
   async function context(userId: string, chatId: string): Promise<{ sheet: CardSheet; r: PlayRecord } | null> {
-    const sheet = await cards.sheetFor(userId, chatId);
+    const sheet = await sheetOf(userId, chatId);
     if (!sheet) {
       send({ type: "notice", level: "warn", text: "Gambit has not read this card yet. Turn it on for this chat first.", chatId }, userId);
       return null;
@@ -690,17 +763,72 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     return sure(parseRead(said, people, places, line) ?? storyRules(line, story.people, story.places));
   }
 
-  /** The next thing to come out of the thread, once found. */
-  function revealNext(r: PlayRecord): string | null {
-    const rev = r.thread?.revelations.find((x) => !r.revealed?.includes(x.id));
-    if (!rev) return null;
-    r.revealed = [...(r.revealed ?? []), rev.id];
-    return rev.text;
+  /** The first piece of the thread not yet found, wherever it belongs. */
+  const nextPiece = (r: PlayRecord): ThreadPiece | undefined => r.thread?.revelations.find((x) => !r.revealed?.includes(x.id));
+
+  /**
+   * Who writes a beat's reply: the chat itself, under the user's own preset (its model, jailbreak, length and prose), or
+   * Gambit's short narrator. The preset is the default: free roleplay is what a preset is for.
+   */
+  const storyMode = async (userId: string): Promise<ParleyNarrator> => ((await spindle.userStorage.getJson<{ storyNarrator?: ParleyNarrator }>(SETTINGS, { fallback: {}, userId })).storyNarrator === "gambit" ? "gambit" : "chat");
+
+  /** Chats whose running generation is a story beat's reply, and what has streamed of it. */
+  const beatsWriting = new Map<string, { userId: string; id: string; said: string; roll: string | null; text: string; timer: ReturnType<typeof setTimeout> | null; done(reply: string): void }>();
+
+  /** A reply as the page shows it: its prose, without what a preset adds around it (status blocks, menus, tags). */
+  const beatProse = (reply: string): string =>
+    cleanReply(
+      scenePages(reply)
+        .map((p) => p.text)
+        .join("\n\n"),
+      CHAT_BEAT_WORDS,
+    );
+
+  /**
+   * The chat writes this beat: the line is posted as the player's and the chat replies to it as it would to any line,
+   * with the beat's note at the prompt's end (intercept). `posted` false: the line never reached the chat. `text`
+   * empty: no reply came (an error, a refusal, a stop before a word, or nothing in time), and Gambit's narrator writes.
+   */
+  function writeInChat(userId: string, chatId: string, line: string, roll: string | null, note: string): Promise<{ posted: boolean; text: string }> {
+    const id = Date.now().toString(36);
+    return new Promise((resolve) => {
+      let over = false;
+      const finish = (posted: boolean, reply: string) => {
+        if (over) return;
+        over = true;
+        clearTimeout(deadline);
+        const b = beatsWriting.get(chatId);
+        if (b?.id === id) {
+          if (b.timer) clearTimeout(b.timer);
+          beatsWriting.delete(chatId);
+        }
+        resolve({ posted, text: beatProse(reply) });
+      };
+      const deadline = setTimeout(() => {
+        log("story: the chat wrote nothing in time");
+        finish(true, "");
+      }, chatMs);
+      beatsWriting.set(chatId, { userId, id, said: line, roll, text: "", timer: null, done: (reply) => finish(true, reply) });
+      const meta: BeatMeta = { id, note };
+      spindle.chat.appendMessage(chatId, { role: "user", content: line, metadata: { gambit: { story: true, beat: meta } } } as never, { triggerGeneration: true }).catch((err: unknown) => {
+        log(`story post: ${errText(err)}`);
+        finish(false, "");
+      });
+    });
+  }
+
+  /** The beat a generation is answering: the chat's latest line from the player, when it carries one. Read from the chat, as a scene's is. */
+  async function latestBeat(chatId: string): Promise<BeatMeta | null> {
+    const all = await spindle.chat
+      .getMessages(chatId, { tail: 4 })
+      .catch(() => spindle.chat.getMessages(chatId))
+      .catch(() => []);
+    return beatOf(all.filter((m) => m.role === "user" && !m.hidden).at(-1)?.metadata);
   }
 
   /** Both sides of a beat go in the chat's record, without starting a reply. A stand-in line isn't part of the story. */
-  async function postBeat(chatId: string, line: string, reply: string | null): Promise<void> {
-    for (const m of [{ role: "user", content: line }, ...(reply ? [{ role: "assistant", content: reply }] : [])]) {
+  async function postBeat(chatId: string, line: string | null, reply: string | null): Promise<void> {
+    for (const m of [...(line ? [{ role: "user", content: line }] : []), ...(reply ? [{ role: "assistant", content: reply }] : [])]) {
       await spindle.chat.appendMessage(chatId, { ...m, metadata: { gambit: { story: true } } } as never, { triggerGeneration: false }).catch((err: unknown) => log(`story post: ${String(err).slice(0, 160)}`));
     }
   }
@@ -753,10 +881,73 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     for (const s of scenes) if (s.effect?.kind === "marks") requestScarArt(userId, sheet, fresh, s.effect.scar.place);
     await aside(chatId, meanwhileText(shown, morning));
     await show(userId, chatId, sheet, fresh);
+    // An ending the night has now shown is followed by what comes of it: the morning has a goal again.
+    if (wantsThread(sheet, fresh)) void nextThread(userId, chatId, sheet).catch((err: unknown) => log(`thread: ${String(err).slice(0, 160)}`));
     // Promotions and bonds finish in their own time: the next day doesn't wait for them.
     void promote(userId, chatId, sheet, 3)
       .then(async () => show(userId, chatId, sheet, (await load(userId, chatId)) ?? fresh))
       .catch((err) => log(`night: ${err instanceof Error ? err.message : String(err)}`));
+  }
+
+/**
+   * A card played as one scene has no thread to follow; every other shape always has a goal. Not before the World
+   * Bible has landed: it may bring the first thread itself.
+   */
+  const wantsThread = (sheet: CardSheet, r: PlayRecord): boolean => r.bibleAt !== undefined && (sheet.shape !== "scene" || !!r.thread) && (!r.thread || (!!r.threadEnd && !!r.threadTold));
+  const threading = new Set<string>();
+
+  /**
+   * The game never runs out of a goal: once a thread has ended and the night has shown how, the next one starts
+   * from what came of it (and a world that never had one gets its first). A model writes it; a template stands in.
+   */
+  async function nextThread(userId: string, chatId: string, sheet: CardSheet): Promise<void> {
+    const key = `${userId}:${chatId}`;
+    if (threading.has(key)) return;
+    threading.add(key);
+    try {
+      const r0 = await load(userId, chatId);
+      if (!r0 || !wantsThread(sheet, r0)) return;
+      const places = Object.values(r0.world.places);
+      const done = r0.thread && r0.threadEnd ? r0.thread : null;
+      const input: NextThreadInput = {
+        cardName: sheet.cardName,
+        genre: sheet.skin.genre,
+        tone: sheet.tone,
+        premise: sheet.premise,
+        player: sheet.player.name,
+        people: withPromoted(sheet, r0).cast.map((c) => {
+          const at = places.find((p) => p.people.includes(c.id))?.name;
+          return { name: c.name, role: c.role, ...(at ? { at } : {}) };
+        }),
+        places: places.map((p) => p.name),
+        last: done ? { goal: done.goal, ended: r0.threadEnd!, found: done.revelations.filter((x) => r0.revealed?.includes(x.id)).map((x) => x.text), missed: done.revelations.filter((x) => !r0.revealed?.includes(x.id)).length } : null,
+        lately: [...(r0.memory?.nights?.at(-1)?.lines ?? []), ...(r0.story ?? []).slice(-6).map((b) => [b.said, b.roll, b.reply].filter(Boolean).join(" / "))],
+        knows: playerKnows(sheet, r0.scene.found),
+      };
+      const count = (r0.threadsDone?.length ?? 0) + 1;
+      const written = cards.compile ? (await cards.compile(userId, "thread", nextThreadPrompt(input), 700, (raw) => parseNextThread(raw, [...(input.knows ?? []), ...(input.last?.found ?? [])]), () => null, { tries: 1 }).catch(() => null))?.value : null;
+      const draft = written ?? fallbackNextThread(input, count + [...sheet.cardKey].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7));
+      if (!draft) return;
+      // The world may have moved on while it was written: it lands on the latest record, if that still wants one.
+      const r = (await load(userId, chatId)) ?? r0;
+      if (!wantsThread(sheet, r)) return;
+      if (r.thread && r.threadEnd) {
+        const found = r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).length;
+        r.threadsDone = [...(r.threadsDone ?? []), { goal: r.thread.goal, ended: r.threadEnd, found, total: r.thread.revelations.length, day: r.scene.day }].slice(-8);
+      }
+      r.thread = { goal: draft.goal, revelations: draft.revelations.map((text, i) => ({ id: `t${count}r${i + 1}`, text })), by: written ? "architect" : "fallback" };
+      r.revealed = [];
+      r.deadline = undefined;
+      r.threadEnd = undefined;
+      r.threadTold = undefined;
+      note(r, `A new thread: ${draft.goal}`);
+      log(`thread ${count} (${written ? "model" : "template"}): "${draft.goal}", ${draft.revelations.length} pieces`);
+      await save(userId, chatId, r);
+      await aside(chatId, `A new thread begins: ${draft.goal}`);
+      await show(userId, chatId, sheet, r);
+    } finally {
+      threading.delete(key);
+    }
   }
 
   function threadNow(r: PlayRecord): NightThread | null {
@@ -879,16 +1070,17 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     if (!ctx) return;
     let { sheet, r } = ctx;
     await show(userId, chatId, sheet, r, "Reading who you might fight on this card…");
-    sheet = (await cards.armory(userId, chatId)) ?? sheet;
+    sheet = (await armoryOf(userId, chatId)) ?? sheet;
     const adapt = r.memory?.adapt ?? {};
-    const foes = adaptFoes(sheet.foes ?? [], adapt);
+    // A foe the card lists by a cast member's name is that person: they fight when the story says so, not at random.
+    const foes = linkFoes(adaptFoes(sheet.foes ?? [], adapt), sheet.cast);
     const lead = opts.lead ? sheet.cast.find((c) => c.id === opts.lead) : undefined;
     if (lead) foes.unshift(foeFromCast(lead, sheet.skin.fight));
     const seed = `${chatId}:${r.scene.day}:${r.scene.time}:${Date.now().toString(36)}`;
     const partySize = Math.min(MAX_PARTY, partyFromSheet(sheet, { exclude: lead?.id }).length + (r.memory?.recruits?.length ?? 0));
     const named = opts.line && !lead ? await foeForLine(userId, opts.line, foes) : null;
     if (named) log(`fight: the line goes for ${named.name}`);
-    const enc = encounterFrom(foes, { seed, party: partySize, ...(opts.boss ? { boss: true } : {}), ...(lead ? { lead: `cast_${lead.id}`, kin: true } : {}), ...(named ? { lead: named.id, kin: true } : {}) });
+    const enc = encounterFrom(foes, { seed, party: partySize, friends: friendsOf(r), ...(opts.boss ? { boss: true } : {}), ...(lead ? { lead: `cast_${lead.id}`, kin: true } : {}), ...(named ? { lead: named.id, kin: true } : {}) });
     if (!enc) return send({ type: "notice", level: "warn", text: "This card has nobody to fight.", chatId }, userId);
     const t = tag(sheet.cardKey);
     const ns = (def: MonsterDef): MonsterDef => {
@@ -1023,7 +1215,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     r.battleId = undefined;
     if (r.board?.fight) r.board = winFight(r.board).board;
     await save(userId, chatId, r);
-    const sheet = await cards.sheetFor(userId, chatId);
+    const sheet = await sheetOf(userId, chatId);
     if (sheet) await show(userId, chatId, sheet, r);
   }
 
@@ -1031,7 +1223,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
   async function onBattleEnd(state: BattleState, userId: string): Promise<void> {
     const chatId = state.meta?.chatId;
     if (!chatId) return;
-    const sheet = await cards.sheetFor(userId, chatId);
+    const sheet = await sheetOf(userId, chatId);
     const r = await load(userId, chatId);
     if (!sheet || !r || r.battleId !== state.id) return;
     const party = state.combatants.filter((c) => c.side === "party");
@@ -1121,10 +1313,28 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const partner = !onPage ? null : state.outcome === "victory" ? (enemies.find(talks) ?? null) : claimer && talks(claimer) ? claimer : null;
     const offer: Afterglow | null = partner && (await cards.adultOn?.(userId, chatId)) ? { name: partner.name, castId: castIdOf(sheet, partner.defId), won: state.outcome === "victory", look: state.meta?.monsters?.[partner.defId]?.visual.brief ?? "", day: r.scene.day, placeId: spotOf(r) } : null;
     // Classes (M7): ranks from wins, catalysts from bosses, skills ready to awaken.
-    for (const l of forge.afterBattle(r, state, !!state.meta?.boss)) line += ` ${l}`;
+    for (const l of forge.afterBattle(r, state, !!state.meta?.boss, !FEATURES.forge)) line += ` ${l}`;
     // The deed ledger (4.6): who fell, who was spared or recruited, and how you fought.
     const where = r.delve?.placeId ?? (wildCell(r) ? `wild_${wildCell(r)}` : state.outcome === "victory" ? r.scene.placeId : (r.scene.visited[r.scene.visited.length - 1] ?? r.scene.placeId));
-    const deeds = deedsFromBattle(state, r.scene.day, where, foeIdOf, state.meta?.tally);
+    // Someone from the card who fell is beaten, not dead: by their own fighter id, or as the card's foe of their name.
+    const named = linkFoes(sheet.foes ?? [], sheet.cast);
+    const personOf = (defId: string) => castIdOf(sheet, defId) ?? named.find((f) => f.id === foeIdOf(defId))?.castId ?? null;
+    const deeds = deedsFromBattle(state, r.scene.day, where, foeIdOf, state.meta?.tally, personOf);
+    // Force is a way to what someone knows, too: beaten, they give it up, and they remember how you got it.
+    for (const d of deeds) {
+      const piece = d.kind === "beat" && r.thread && !r.threadEnd ? pieceFrom(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), d.target) : undefined;
+      if (!piece || !r.thread) continue;
+      line += ` ${d.name}, beaten, gives it up: ${foundPiece(r, piece)}.`;
+      // Force is quick, and it has a price the other ways don't: word gets round, and everyone else who knows
+      // something is warier of whoever beats it out of people. They start a talk colder for it.
+      const others = [...holders(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r))].filter((id) => id !== d.target);
+      for (const id of others) {
+        const n = (mem(r).npc[id] ??= { notes: [], affinity: 0 });
+        n.affinity = Math.max(-10, n.affinity - FORCE_CHILL);
+        n.notes = [...n.notes, { day: r.scene.day, text: `Heard that ${sheet.player.name || "you"} beat ${d.name} for what they knew`, tone: -1 as const }].slice(-8);
+      }
+      if (others.length) line += " Word of how you got it gets round: the others who know something will be harder to talk to.";
+    }
     const m = mem(r);
     if (state.meta?.tally) {
       const tt = state.meta.tally;
@@ -1146,7 +1356,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
     record_(sheet, r, deeds, false);
     note(r, line);
-    if (onPage) r.story = [...(r.story ?? []), { said: "", roll: line, reply: "", day: r.scene.day, where: spotOf(r) }].slice(-40);
+    if (onPage) r.story = [...(r.story ?? []), { n: r.logN ?? 0, said: "", roll: line, reply: "", day: r.scene.day, where: spotOf(r) }].slice(-40);
     await save(userId, chatId, r);
     // Companions' feelings about the fight: judged in the background (a Decision model, else their warmth).
     reactLater(userId, chatId, sheet, deeds);
@@ -1204,7 +1414,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         await spindle.chat.deleteMessage(chatId, m.id).catch((err: unknown) => log(`scene line: ${errText(err)}`));
       }
       const r = await load(userId, chatId);
-      const sheet = await cards.sheetFor(userId, chatId);
+      const sheet = await sheetOf(userId, chatId);
       if (r && sheet && !r.afterglow) {
         r.afterglow = offer;
         await save(userId, chatId, r);
@@ -1245,7 +1455,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const pages = error ? [] : scenePages(content);
     const title = sceneTitle(meta);
     if (!pages.length) return sceneFailed(userId, chatId, meta.id, s.offer, error ? error.slice(0, 160) : content.trim() ? "the reply had no story in it" : "");
-    const sheet = await cards.sheetFor(userId, chatId);
+    const sheet = await sheetOf(userId, chatId);
     const r = await load(userId, chatId);
     const h = [...`${messageId ?? ""}|${content.length}|${content.slice(-40)}`].reduce((x, ch) => Math.imul(x ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
     const moments = pictureMoments(pages).map((mo, i) => ({ ...mo, key: `scene:${sheet ? tag(sheet.cardKey) : "x"}.${h.toString(36)}.${i}` }));
@@ -1258,7 +1468,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
         n.notes = [...n.notes, { day: r.scene.day, text: meta.won ? "Was claimed by you after a fight" : "Claimed you after a fight", tone: 1 as const }].slice(-8);
         n.affinity = Math.min(10, n.affinity + 1);
       }
-      r.story = [...(r.story ?? []), { said: "", roll: title, reply: pages[pages.length - 1]!.text, day: r.scene.day, where: spotOf(r), scene: meta.id }].slice(-40);
+      r.story = [...(r.story ?? []), { n: r.logN ?? 0, said: "", roll: title, reply: pages[pages.length - 1]!.text, day: r.scene.day, where: spotOf(r), scene: meta.id }].slice(-40);
       await save(userId, chatId, r);
     }
     if (!pictures) return;
@@ -1331,7 +1541,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     await save(userId, chatId, r);
     await aside(chatId, `${sheet.player.name || "You"} venture${sheet.player.name ? "s" : ""} into ${p.name}.`);
     // Prepare the boss and the foes ahead of time (P1): the first fight then opens fast.
-    void cards.armory(userId, chatId).catch(() => {});
+    void armoryOf(userId, chatId).catch(() => {});
     await show(userId, chatId, sheet, r);
   }
 
@@ -1447,7 +1657,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
           const n = (m.npc[p.castId] ??= { notes: [], affinity: 0 });
           n.affinity = Math.min(10, n.affinity + 2);
         }
-        return `${step.text}: done. ${p.name}'s thread comes together, and you come away with ${p.item.name} and a Blank Crest.`;
+        return `${step.text}: done. ${p.name}'s thread comes together, and you come away with ${p.item.name}${FEATURES.forge ? " and a Blank Crest" : ""}.`;
       }
       return `${step.text}: done. (${p.name}, ${p.steps.filter((s) => s.done).length}/${p.steps.length})`;
     }
@@ -1630,7 +1840,8 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     const sources = (await cards.sourcesFor?.(userId, chatId).catch(() => null)) ?? null;
     const r = (await load(userId, chatId)) ?? r0;
     const met = new Set([...Object.keys(r.memory?.npc ?? {}), ...sheet.cast.filter((c) => c.main).map((c) => c.id)]);
-    const revelation = r.thread?.revelations.find((x) => !r.revealed?.includes(x.id)) ?? null;
+    // The way ahead holds the piece that belongs to this place, or to nobody: what someone knows stays theirs to give.
+    const revelation = (r.thread && !r.threadEnd ? pieceAt(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), r.scene.placeId, sheet.modules.parley === false) : null) ?? null;
     const party = partyFromSheet(sheet).slice(0, 3).map((s) => ({ id: s.id, name: s.id === "p_player" ? sheet.player.name || "You" : s.name }));
     const danger = wild ? wild !== "plain" : !!p?.danger;
     const lore = boardLore({ sheet, sources, met, spent: new Set(r.loreSpent ?? []), revelation, found: r.scene.found, room: 12 });
@@ -1640,7 +1851,7 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     note(r, `You set out across ${name}.`);
     await save(userId, chatId, r);
     await aside(chatId, `${sheet.player.name || "You"} set${sheet.player.name ? "s" : ""} out across ${name}.`);
-    if (sheet.modules.encounters) void cards.armory(userId, chatId).catch(() => {});
+    if (sheet.modules.encounters) void armoryOf(userId, chatId).catch(() => {});
     await show(userId, chatId, sheet, r);
   }
 
@@ -1679,7 +1890,9 @@ export function createPlay(spindle: SpindleAPI, send: Send, art: ArtApi, cards: 
     }
     if (card.kind === "thread") {
       r.revealed = [...new Set([...(r.revealed ?? []), card.ref])];
-      effects.push("A piece of the larger story falls into place.");
+      const total = r.thread?.revelations.length ?? 0;
+      const found = r.thread?.revelations.filter((x) => r.revealed!.includes(x.id)).length ?? 0;
+      effects.push(`A piece of the larger story falls into place${total ? ` (piece ${found} of ${total})` : ""}.`);
     }
     r.boardFx = [{ text: card.title, kind: "lore" }, ...effects.map((t) => ({ text: t, kind: "info" as const }))];
     note(r, `${card.title}${effects.length ? `: ${effects.join(" ")}` : ""}`);
@@ -1789,17 +2002,18 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
     onBattleEnd,
     boardAct,
     /** The class panel (M7). */
-    forgeAct: (userId: string, chatId: string, op: ForgeOp, arg?: string, arg2?: string, text?: string) => forge.act(userId, chatId, op, arg, arg2, text),
+    forgeAct: async (userId: string, chatId: string, op: ForgeOp, arg?: string, arg2?: string, text?: string) => (FEATURES.forge ? forge.act(userId, chatId, op, arg, arg2, text) : undefined),
 
     /** What someone already has with the player, as a talk with them begins. */
     async standing(userId: string, chatId: string, castId: string) {
-      const sheet = await cards.sheetFor(userId, chatId);
+      const sheet = await sheetOf(userId, chatId);
       const r = await load(userId, chatId);
       if (!sheet || !r) return null;
       const who = withPromoted(sheet, r).cast.find((c) => c.id === castId)?.name;
       const n = r.memory?.npc[castId];
       const last = (r.talks ?? []).findLast((t) => t.who === who);
-      const next = r.thread?.revelations.find((x) => !r.revealed?.includes(x.id));
+      // What this talk can bring out: the piece that is about them, else whichever comes next.
+      const next = r.thread ? (pieceFrom(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), castId) ?? nextPiece(r)) : undefined;
       return {
         history: {
           rapport: rapportFrom(n?.affinity ?? 0),
@@ -1809,6 +2023,8 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         },
         purse: r.scene.coin,
         ...(r.thread ? { thread: `${r.thread.goal}${next ? ` (still to come out: ${next.text})` : ""}` } : {}),
+        // The pieces already won are the player's to argue with: true, so never a bluff.
+        ...(r.thread && r.revealed?.length ? { found: r.thread.revelations.filter((x) => r.revealed!.includes(x.id)).map((x) => ({ id: `piece:${x.id}`, text: x.text })) } : {}),
       };
     },
 
@@ -1817,7 +2033,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       const chatId = state.chatId;
       const castId = scenario.card?.castId;
       if (!chatId || !castId || !state.end) return;
-      const sheet = await cards.sheetFor(userId, chatId);
+      const sheet = await sheetOf(userId, chatId);
       const r = await load(userId, chatId);
       if (!sheet || !r) return;
       const name = withPromoted(sheet, r).cast.find((c) => c.id === castId)?.name ?? scenario.npc.name;
@@ -1844,9 +2060,15 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         const m = mem(r);
         if (!m.items.some((x) => x.name === stake)) m.items = [...m.items, { name: stake, description: price ? `Agreed on day ${r.scene.day}, for ${amount(price, unit)}.` : `Won on day ${r.scene.day}.`, from: name }];
       }
-      // The thread only moves when that's what the talk was about.
-      const learned = state.end.kind === "won" && scenario.card?.aboutThread ? revealNext(r) : null;
+      // Winning someone over brings out the piece that is about them. A talk that was about the thread itself brings out
+      // the next piece, whoever it names.
+      const about = got && r.thread && !r.threadEnd ? pieceFrom(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), castId) : undefined;
+      const piece = about ?? (state.end.kind === "won" && scenario.card?.aboutThread ? nextPiece(r) : undefined);
+      const learned = piece ? foundPiece(r, piece) : null;
+      // A talk that didn't get it says what that leaves: tomorrow, and the ways to make tomorrow go better.
+      const keeps = !learned && !!r.thread && !r.threadEnd && !!pieceFrom(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), castId);
       if (learned) note(r, `${name} lets it out: ${learned}`);
+      else if (keeps) note(r, `${name} gives nothing away today. Try again tomorrow: they give way sooner if they like you, or if you have found something on them.`);
       // How it ended, as a picture: the two of you at the talk's last beat.
       const how = PARLEY_END_SCENE[state.end.kind] ?? "the talk ends";
       // What was actually said stands: the night and the next day hold to it, not just to how it was labelled.
@@ -1855,7 +2077,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // Back on the page, the story has moved on: where the talk got to, and how it ended.
       const lastSaid = state.exchanges.findLast((e) => e.text)?.text ?? "";
       const lastReply = state.exchanges.findLast((e) => e.reply)?.reply ?? "";
-      r.story = [...(r.story ?? []), { said: "", roll: `Talking with ${name}: ${PARLEY_END_TAG[state.end.kind] ?? "it's over"}`, reply: cleanReply(lastReply, 120), day: r.scene.day, where: spotOf(r), ...(learned || got ? { found: learned ?? `Yours now: ${stake}.` } : {}) }].slice(-40);
+      r.story = [...(r.story ?? []), { n: r.logN ?? 0, said: "", roll: `Talking with ${name}: ${PARLEY_END_TAG[state.end.kind] ?? "it's over"}${keeps ? ". Nothing given away today: try again tomorrow" : ""}`, reply: cleanReply(lastReply, 120), day: r.scene.day, where: spotOf(r), ...(learned || got ? { found: learned ?? `Yours now: ${stake}.` } : {}) }].slice(-40);
       await save(userId, chatId, r);
       await show(userId, chatId, sheet, r);
       // The talk may have sent someone off, or brought them along: the scene shows the same story.
@@ -1870,7 +2092,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
      * meaning or rule words (facts) decide.
      */
     async notice(userId: string, chatId: string, lines: { name: string; content: string; isUser: boolean }[]) {
-      const sheet = await cards.sheetFor(userId, chatId);
+      const sheet = await sheetOf(userId, chatId);
       const r0 = await load(userId, chatId);
       if (!sheet || !r0) return;
       const last = [...lines].reverse().find((l) => l.isUser);
@@ -1914,7 +2136,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // An adult scene's line (its first reply or a swipe): its note goes at the prompt's very end.
       const scene = (await cards.adultOn?.(ctx.userId, ctx.chatId).catch(() => false)) ? await latestScene(ctx.userId, ctx.chatId) : null;
       if (scene) {
-        const sheet = await cards.sheetFor(ctx.userId, ctx.chatId).catch(() => null);
+        const sheet = await sheetOf(ctx.userId, ctx.chatId).catch(() => null);
         const kind = scene.won ? "scene.win.note" : "scene.loss.note";
         const note = fillNote(noteText(kind, await notes.edits(ctx.userId)), { player: sheet?.player.name ?? "", partner: scene.partner, ...(scene.look ? { look: scene.look } : {}) });
         messages = withSuffix(messages, { role: "system", content: note } as LlmMessageDTO);
@@ -1922,9 +2144,12 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         scenesWriting.set(ctx.chatId, { userId: ctx.userId, meta: scene, ...(taking?.meta.id === scene.id && taking.offer ? { offer: taking.offer } : {}) });
         send({ type: "scene.afterglow", chatId: ctx.chatId, title: sceneTitle(scene), pages: null }, ctx.userId);
       }
+      // A story beat the chat is writing (its first reply or a swipe): what the game decided goes at the prompt's end.
+      const beat = scene ? null : await latestBeat(ctx.chatId).catch(() => null);
+      if (beat) messages = withSuffix(messages, { role: "system", content: beat.note } as LlmMessageDTO);
       const r = await load(ctx.userId, ctx.chatId).catch(() => null);
       if (!r?.memory) return messages;
-      const sheet = await cards.sheetFor(ctx.userId, ctx.chatId).catch(() => null);
+      const sheet = await sheetOf(ctx.userId, ctx.chatId).catch(() => null);
       // Memories the latest line is about, by meaning (embeddings); a short wait at most, never past the deadline.
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
       const query = typeof lastUser?.content === "string" ? lastUser.content : "";
@@ -1937,9 +2162,35 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
 
     /** A generation in a chat ended, failed or was stopped: an adult scene's reply is read page by page. True when it was one. */
     async onGenerationEnded(chatId: string, content: string | undefined, messageId?: string, error?: string): Promise<boolean> {
+      // A story beat's reply: the line that asked for it is waiting on it (say).
+      const beat = beatsWriting.get(chatId);
+      if (beat) {
+        beat.done(error ? "" : (content ?? ""));
+        return true;
+      }
       if (!scenesWriting.has(chatId)) return false;
       await sceneEnded(chatId, content ?? "", messageId, error);
       return true;
+    },
+
+    /** A story beat's reply as the chat writes it, shown on the page a few times a second. */
+    onStreamToken(chatId: string, token: string, reasoning: boolean) {
+      const b = beatsWriting.get(chatId);
+      if (!b || reasoning) return;
+      b.text += token;
+      if (b.timer) return;
+      b.timer = setTimeout(() => {
+        b.timer = null;
+        if (beatsWriting.get(chatId) === b) send({ type: "scene.story", chatId, said: b.said, roll: b.roll, text: beatProse(b.text) }, b.userId);
+      }, 250);
+    },
+
+    /** Who writes the scene's replies (the drawer's choice). */
+    storyNarrator: storyMode,
+    async setStoryNarrator(userId: string, mode: ParleyNarrator) {
+      const all = await spindle.userStorage.getJson<Record<string, unknown>>(SETTINGS, { fallback: {}, userId });
+      await spindle.userStorage.setJson(SETTINGS, { ...all, storyNarrator: mode }, { userId });
+      send({ type: "story.narrator", mode }, userId);
     },
 
     /** Where the scene is, for the reply detector's "where" question (null when there is no open scene to move). */
@@ -1948,7 +2199,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (!r || r.delve || r.battleId) return null;
       const here = r.world.places[r.scene.placeId];
       if (!here) return null;
-      const sheet = await cards.sheetFor(userId, chatId);
+      const sheet = await sheetOf(userId, chatId);
       const people = sheet ? withPromoted(sheet, r).cast.map((c) => ({ id: c.id, name: c.name, here: here.people.includes(c.id) })) : [];
       return { here: { id: here.id, name: here.name }, places: Object.values(r.world.places).map((p) => ({ id: p.id, name: p.name })), time: TIMES[r.scene.time]!, people };
     },
@@ -1956,7 +2207,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
     /** The chat moved the scene (4.5): to a known place, or somewhere new that is added, quoted from the chat. */
     async moved(userId: string, chatId: string, pick: string, p: number, lines: { name: string; content: string }[]) {
       if (p < 0.6) return;
-      const sheet = await cards.sheetFor(userId, chatId);
+      const sheet = await sheetOf(userId, chatId);
       let r = await load(userId, chatId);
       if (!sheet || !r || r.delve || r.battleId) return;
       const here = r.world.places[r.scene.placeId]!;
@@ -1988,7 +2239,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
 
     /** The chat says what time it is or who is there: the scene shows the same story. */
     async settled(userId: string, chatId: string, now: { time?: string; here: string[]; away: string[] }) {
-      const sheet = await cards.sheetFor(userId, chatId);
+      const sheet = await sheetOf(userId, chatId);
       const r = await load(userId, chatId);
       if (!sheet || !r || r.delve || r.battleId) return;
       const time = TIMES.findIndex((t) => t === now.time);
@@ -2037,6 +2288,14 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (!ctx) return;
       await show(userId, chatId, ctx.sheet, ctx.r);
       await rejoinFight(userId, chatId, ctx.r);
+      // A chat whose thread ended before threads followed one another, or that never had one, gets its goal now.
+      if (wantsThread(ctx.sheet, ctx.r)) void nextThread(userId, chatId, ctx.sheet).catch((err: unknown) => log(`thread: ${String(err).slice(0, 160)}`));
+    },
+
+    /** The theme this chat's scene is played in; null for a chat with no scene. */
+    async themeOf(userId: string, chatId: string): Promise<ThemeId | null> {
+      const r = await load(userId, chatId);
+      return r ? (THEMES.some((t) => t.id === r.theme) ? r.theme : "storybook") : null;
     },
 
     async setTheme(userId: string, chatId: string, theme: ThemeId) {
@@ -2095,7 +2354,7 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // The systems that take over from here: the line is their opening move.
       // Whatever takes over, the line was written: it stays in the story, before how it came out.
       const wrote = () => {
-        r.story = [...(r.story ?? []), { said: line, roll: null, reply: "", day: dayBefore, where: spotOf(r) }].slice(-40);
+        r.story = [...(r.story ?? []), { n: r.logN ?? 0, said: line, roll: null, reply: "", day: dayBefore, where: spotOf(r) }].slice(-40);
       };
       if (read.route === "press") {
         wrote();
@@ -2116,7 +2375,10 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
 
       const index = r.beats ?? 0;
       const res = resolveBeat(`${chatId}:${r.cardKey}`, index, read, sheet.player.social);
-      const roll = res.roll ? rollLine(read.attempt, res.roll) : null;
+      // Warmth that lands does something: once a day per person they like you a little better for it, and the page says so.
+      const warmTo = read.route === "bond" && read.target ? withPromoted(sheet, r).cast.find((c) => c.id === read.target) : undefined;
+      const warmed = !!warmTo && !(r.memory?.deeds ?? []).some((d) => d.kind === "charmed" && d.target === warmTo.id && d.day === dayBefore);
+      const roll = res.roll ? rollLine(read.attempt, res.roll) : warmed ? `${warmTo!.name} warms to you` : null;
 
       // A risky way out still gets them out: a failed roll changes what it costs, never what they wrote. Only a disaster stops them.
       const from = r.scene.placeId;
@@ -2133,19 +2395,28 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       // gets what it went for (the way to the guild, a room for the night); only the secret waits.
       const searchedHere = r.scene.searched.includes(r.scene.placeId);
       const finds = read.route === "seek" && beatWorked(res.roll) && !searchedHere;
-      const next = finds ? r.thread?.revelations.find((x) => !r.revealed?.includes(x.id)) : undefined;
+      // The thread's piece that belongs here (or one that belongs nowhere), then the card's own secrets.
+      const next = finds && r.thread && !r.threadEnd ? pieceAt(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), r.scene.placeId, sheet.modules.parley === false) : undefined;
       const fact = finds && !next ? sheet.facts.find((f) => !f.known && !r.scene.found.includes(f.id)) : undefined;
-      const found = next?.text ?? fact?.text ?? null;
-      const fallout = found ? `${res.fallout} They discover this, so show it: ${found}` : `${res.fallout}${left}`;
+      const total = r.thread?.revelations.length ?? 0;
+      const found = next ? `${next.text} (piece ${(r.thread?.revelations.filter((x) => r.revealed?.includes(x.id)).length ?? 0) + 1} of ${total})` : (fact?.text ?? null);
+      const discovered = next?.text ?? fact?.text ?? null;
+      const warmth = warmed ? `${warmTo!.name} is touched by this and is warmer toward them from now on: show it in how ${warmTo!.name} answers.` : "";
+      const fallout = discovered ? `${res.fallout} They discover this, so show it: ${discovered}` : `${res.fallout}${left}${warmth}`;
       const told = res.told;
 
       send({ type: "scene.story", chatId, said: line, roll, text: "" }, userId);
       // What the card's lorebook says about what the line names holds, so the narrator doesn't make up the world around it.
-      const lore = (await cards.loreFor?.(userId, chatId, line).catch(() => "")) ?? "";
+      // Under the chat's preset the chat writes the beat itself, and its lorebook and memory notes ride along as on any reply.
+      const byChat = (await storyMode(userId)) === "chat" ? await writeInChat(userId, chatId, line, roll, chatBeatNote(story, fallout)) : null;
+      const inChat = byChat?.text ?? "";
+      const lore = inChat ? "" : ((await cards.loreFor?.(userId, chatId, line).catch(() => "")) ?? "");
       const brief = storyNarrator({ ...story, ...(lore ? { lore } : {}) }, line, fallout, read.route);
       const words = beatWords(read.route);
       let last = 0;
-      const written = await writeWithRetry(
+      const written = inChat
+        ? ""
+        : await writeWithRetry(
         modelsFor(spindle),
         userId,
         () => ({ messages: [{ role: "system", content: brief.system }, { role: "user", content: brief.user }], parameters: { temperature: 0.9, max_tokens: beatTokens(read.route) }, signal: AbortSignal.timeout(25_000) }),
@@ -2156,18 +2427,19 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         },
         { retryMs, log, usable: (t) => !!cleanReply(t, words * 2) },
       );
-      const clean = cleanReply(written, words * 2);
+      const clean = inChat || cleanReply(written, words * 2);
       const reply = clean || storyFallback(story, told);
 
       // The world may have grown while the models wrote: the beat lands on the latest record.
       const fresh = (await load(userId, chatId)) ?? r;
       fresh.beats = index + 1;
-      fresh.story = [...(fresh.story ?? []), { said: line, roll, reply, day: dayBefore, where: spotOf(fresh), ...(found ? { found } : {}) }].slice(-40);
+      fresh.story = [...(fresh.story ?? []), { n: fresh.logN ?? 0, said: line, roll, reply, day: dayBefore, where: spotOf(fresh), ...(found ? { found } : {}) }].slice(-40);
       if (res.vigorLoss) fresh.scene = { ...fresh.scene, vigor: Math.max(0.2, fresh.scene.vigor - res.vigorLoss) };
       if (res.caughtBy) {
         const name = withPromoted(sheet, fresh).cast.find((p) => p.id === res.caughtBy)?.name ?? res.caughtBy;
         record_(sheet, fresh, [{ day: fresh.scene.day, kind: "caught", target: res.caughtBy, name, method: read.attempt, place: from }]);
       }
+      if (warmed) record_(sheet, fresh, [{ day: dayBefore, kind: "charmed", target: warmTo!.id, name: warmTo!.name, place: from }]);
       if (finds) fresh.scene = { ...fresh.scene, searched: [...fresh.scene.searched, fresh.scene.placeId] };
       if (next) fresh.revealed = [...(fresh.revealed ?? []), next.id];
       if (fact) {
@@ -2175,7 +2447,8 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
         await cards.markKnown?.(userId, chatId, fact.id);
       }
       spend(fresh, read.route);
-      await postBeat(chatId, line, clean ? (roll ? `*(${roll})*\n\n${clean}` : clean) : null);
+      // What the chat wrote is already in it, under the line. When it wrote nothing, the narrator's reply goes under the line.
+      if (!inChat) await postBeat(chatId, byChat?.posted ? null : line, clean ? (roll ? `*(${roll})*\n\n${clean}` : clean) : null);
       await save(userId, chatId, fresh);
       await show(userId, chatId, sheet, fresh);
       const following = clean ? cards.followBeat?.(userId, chatId, [{ content: line }, { content: clean }]).catch((err: unknown) => log(`story people: ${String(err).slice(0, 160)}`)) : undefined;
@@ -2191,12 +2464,26 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
       if (!ctx) return;
       const { sheet, r } = ctx;
       const p = r.world.places[r.scene.placeId]!;
-      const spot = menuFor(sheet, r).find((h) => h.id === hotspot);
+      // The same people the screen showed: someone this chat promoted can be asked and talked to like the card's own.
+      const spot = menuFor(withPromoted(sheet, r), r).find((h) => h.id === hotspot);
       const wild = wildCell(r);
       const day = r.scene.day;
       const held = heldBy(r);
       if (!spot) return send({ type: "notice", level: "warn", text: held && /^(go:|explore$|delve$)/.test(hotspot) ? `${held} won't let you leave before morning.` : "That is not something you can do here.", chatId }, userId);
       if (spot.id === "afterglow") return afterglow(userId, chatId, sheet, r);
+      // Asking someone for what they know of the thread opens a talk with that piece at stake: one try a day each.
+      if (spot.id.startsWith("ask:")) {
+        const castId = spot.id.slice(4);
+        r.asked = { ...(r.asked ?? {}), [castId]: r.scene.day };
+        interest(r, `cast:${castId}`, NOTICE.talk);
+        const whom = withPromoted(sheet, r).cast.find((c) => c.id === castId);
+        note(r, `You ask ${whom?.name ?? "them"} ${whatTheyKnow(whom?.pronoun)}.`);
+        await save(userId, chatId, r);
+        await show(userId, chatId, sheet, r);
+        // The talk is told what it is about, so it opens on that question and not on whatever the chat last turned on.
+        const theirs = r.thread ? pieceFrom(r.thread.revelations, r.revealed ?? [], threadWorld(sheet, r), castId) : undefined;
+        return cards.talk(userId, chatId, castId, "persuade", undefined, undefined, r.thread ? { goal: r.thread.goal, ...(theirs ? { piece: theirs.text } : {}) } : undefined);
+      }
       switch (spot.kind) {
         case "talk":
           // Talking is writing to them, in the box the screen has just addressed. Only a line that presses them starts a contest.
@@ -2224,6 +2511,10 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
             r.hex!.state = { ...r.hex!.state, supplies: Math.max(0, r.hex!.state.supplies - 2) };
             r.scene = sleepScene(r.scene, fed ? 0.85 : 0.55);
             note(r, `You make camp. Day ${r.scene.day} begins${fed ? "" : ", cold and hungry"}.`);
+          } else if (spot.id === "roughit") {
+            // No bed here: the night still passes, on the ground, and does less for the party.
+            r.scene = sleepScene(r.scene, ROUGH_VIGOR);
+            note(r, `You sleep rough. Day ${r.scene.day} begins, stiff and cold.`);
           } else {
             r.scene = moveScene(r.world, r.scene, { kind: "rest" });
             if (r.hex) r.hex.state = { ...r.hex.state, supplies: SUPPLY_MAX };
@@ -2264,18 +2555,27 @@ ${effects.join(" ")}` : text, stars: tier, art: cg };
             break;
           }
           try {
-            const res = searchScene(r.world, r.scene, sheet, `${chatId}:${p.id}`);
+            // A piece of the thread that belongs to this place comes before the card's own secrets: the player was sent
+            // here for it. One that belongs nowhere turns up once the place has no secret of its own left to give.
+            // What someone knows is won from them, not found lying about: a search turns up the piece that belongs to
+            // the place itself (or to nobody), and otherwise something about the people here to use when you ask them.
+            const tw = r.thread && !r.threadEnd ? threadWorld(sheet, r) : null;
+            const noTalks = sheet.modules.parley === false;
+            const mine = r.thread && tw ? pieceHere(r.thread.revelations, r.revealed ?? [], tw, p.id, noTalks) : undefined;
+            const res = searchScene(r.world, r.scene, mine ? { ...sheet, facts: [] } : sheet, `${chatId}:${p.id}`);
             r.scene = res.scene;
             const fact = res.factId ? sheet.facts.find((f) => f.id === res.factId) : undefined;
-            let line = fact ? `Looking around ${p.name} (${res.roll} vs ${res.dc}), you learn: ${fact.text}` : `You look around ${p.name} (${res.roll} vs ${res.dc}) and find nothing new.`;
-            // With the card's secrets found, searching turns up the central thread, one revelation at a time.
-            const rev = !fact && r.thread && res.roll >= 8 ? r.thread.revelations.find((x) => !r.revealed?.includes(x.id)) : undefined;
-            if (rev) {
-              r.revealed = [...(r.revealed ?? []), rev.id];
-              line = `Looking around ${p.name} (${res.roll}), you uncover part of it: ${rev.text}`;
-            }
-            note(r, line);
+            const holder = fact && r.thread && tw ? sheet.cast.find((c) => fact.about.includes(c.id) && !!pieceFrom(r.thread!.revelations, r.revealed ?? [], tw, c.id)) : undefined;
+            let line = fact
+              ? `Looking around ${p.name} (${res.roll} vs ${res.dc}), you learn: ${fact.text}${holder ? ` You can use this when you ask ${holder.name}.` : ""}`
+              : mine
+                ? `You search ${p.name} for it (${res.roll}, needed ${PIECE_ROLL}) and come up empty. It will still be here tomorrow.`
+                : `You look around ${p.name} (${res.roll} vs ${res.dc}) and find nothing new.`;
+            const rev = !fact && r.thread && tw && res.roll >= PIECE_ROLL ? (mine ?? pieceAt(r.thread.revelations, r.revealed ?? [], tw, p.id, noTalks)) : undefined;
+            if (rev) line = `Searching ${p.name} (${res.roll}), you uncover part of it: ${foundPiece(r, rev)}`;
+            // The clock first, so what the search found is the newest line on the page.
             spend(r, "seek");
+            note(r, line);
             await save(userId, chatId, r);
             if (rev) await aside(chatId, line);
             if (fact) {

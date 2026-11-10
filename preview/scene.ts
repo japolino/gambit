@@ -68,7 +68,7 @@ const sheet = {
 let r: PlayRecord = (() => {
   const world = buildWorld(sheet, "preview");
   const base: PlayRecord = { v: 1, cardKey: "preview-harbor-0001", world, scene: newScene(world), theme: (new URLSearchParams(location.search).get("theme") ?? "storybook") as ThemeId, log: ["You arrive by the morning ferry."], album: [{ key: "cg:preview.a1", caption: "The ferry docks at dawn.", day: 1 }, { key: "cg:preview.a2", caption: "A deal struck at the fish market.", day: 1 }] };
-  base.thread = { goal: "Find out why the lighthouse went dark", revelations: [1, 2, 3, 4].map((i) => ({ id: `rev${i}`, text: `Revelation ${i}` })), by: "fallback" };
+  base.thread = { goal: "Find out why the lighthouse went dark", revelations: ["The lamp oil was paid for and never came.", "Mara signed for the oil that never came.", "A boat with no lights waits by the Smugglers' Caves.", "The warden left a note nobody has read."].map((text, i) => ({ id: `rev${i + 1}`, text })), by: "fallback" };
   base.revealed = ["rev1"];
   base.deadline = base.scene.day + 2;
   base.memory = {
@@ -166,7 +166,7 @@ if (KO) {
   const ko = ["레퍼리드 사단", "한소연", "リリム"];
   (sheet.cast as { name: string }[]).forEach((m, i) => (m.name = ko[i % 3]!));
 }
-// ?story=N: a story long enough to test the reading room.
+// ?story=N: a story long enough to test the reading room. With &after=1 something has happened since its last beat.
 const storyBeats = Number(new URLSearchParams(location.search).get("story") ?? 0);
 if (storyBeats) {
   // The box shows the beats of the scene you are in (scene-build.ts), so they happen here, today.
@@ -176,15 +176,17 @@ if (storyBeats) {
     ...r,
     story: Array.from({ length: storyBeats }, (_, i) =>
       i === storyBeats - 1 && i > 1
-        ? { ...here, said: "", roll: "You won the argument", reply: "They close the ledger with one finger, and push it across the desk toward you." }
-        : { ...here, said: i % 2 ? "I lean over the book and run a finger down the names. \"Which one is yours, Mara?\"" : "\"Where does the night boat go?\"", roll: i % 2 ? "Reading a face: 14 vs 11, worked" : null, reply: told, ...(i === 1 ? { found: "A name that shouldn't be there." } : {}) },
+        ? { ...here, n: 0, said: "", roll: "You won the argument", reply: "They close the ledger with one finger, and push it across the desk toward you." }
+        : { ...here, n: 0, said: i % 2 ? "I lean over the book and run a finger down the names. \"Which one is yours, Mara?\"" : "\"Where does the night boat go?\"", roll: i % 2 ? "Reading a face: 14 vs 11, worked" : null, reply: told, ...(i === 1 ? { found: "A name that shouldn't be there." } : {}) },
     ),
+    ...(new URLSearchParams(location.search).get("after") === "1" ? { logN: 1, log: [...r.log, "You look around. Nothing here you have not already seen."] } : {}),
   };
 }
 const handle = mountScene(host, buildSceneView(sheet, "preview", r), {
   say(text) {
     const risky = /sneak|steal|lie/i.test(text);
-    r = { ...r, story: [...(r.story ?? []), { where: r.scene.placeId, day: r.scene.day, said: text, roll: risky ? "Sneaking: 7 vs 12, failed" : null, reply: risky ? "He doesn't turn around. \"Going somewhere, darling?\"" : "The gulls answer, and the tide comes on." }] };
+    countLog();
+    r = { ...r, story: [...(r.story ?? []), { n: r.logN ?? 0, where: r.scene.placeId, day: r.scene.day, said: text, roll: risky ? "Sneaking: 7 vs 12, failed" : null, reply: risky ? "He doesn't turn around. \"Going somewhere, darling?\"" : "The gulls answer, and the tide comes on." }] };
     handle.setView(buildSceneView(sheet, "preview", r));
   },
   act(id) {
@@ -379,7 +381,17 @@ const REAL = new URLSearchParams(location.search).get("real") === "1";
 const REAL_PERSON: Record<string, [string, boolean]> =
   new URLSearchParams(location.search).get("opaque") === "1" ? { mara: ["opaque1", false], tobin: ["opaque2", false], ilse: ["place4", false] } : { mara: ["opaque1", false], tobin: ["cut1", true], ilse: ["cut2", true] };
 
+// The preview adds to the log itself: its lines are counted as the backend's note() counts them, so a line that came
+// after the story's last beat reads under it (scene-build.ts logAfter).
+let logged: string | null = null;
+function countLog(): void {
+  const now = r.log.join(" | ");
+  if (logged !== null && now !== logged) r = { ...r, logN: (r.logN ?? 0) + 1 };
+  logged = now;
+}
+
 function refresh(): void {
+  countLog();
   const v = buildSceneView(sheet, "preview", r);
   if (new URLSearchParams(location.search).get("busy") === "1") v.busy = "Mara is thinking it over…";
   // ?imageid=1: people carry their own opaque images (served at /api/v1/images/<id>), as on real cards; Ilse's can't be keyed.

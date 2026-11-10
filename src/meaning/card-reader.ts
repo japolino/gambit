@@ -639,7 +639,21 @@ export function chipFromAnswers(sheet: CardSheet, answers: Record<string, Decisi
 
 /* -------------------------------- frame ------------------------------- */
 
-export function framePrompt(sheet: CardSheet, castId: string, recent: { name: string; content: string }[], kind?: ContestKind, line?: string, carried?: { feel: string; remembers: string[]; thread?: string }): { system: string; user: string } {
+/**
+ * A talk opened by asking someone what they know of the thread: the goal, and (when it is theirs) the piece they
+ * hold. The framer writes the scene around that question; code keeps the stake on it (askStake).
+ */
+export interface FrameAsk {
+  goal: string;
+  piece?: string;
+}
+
+/** The stake of an "ask" talk: the framer's phrase when it is about what they know, else the plain one. */
+export function askStake(stake: string, name: string): string {
+  return /\b(know|knows|knew|saw|seen|heard|truth|secret|tell|tells|told)\b/i.test(stake) && !/^what you're asking for$/i.test(stake) ? stake : `what ${name} knows`;
+}
+
+export function framePrompt(sheet: CardSheet, castId: string, recent: { name: string; content: string }[], kind?: ContestKind, line?: string, carried?: { feel: string; remembers: string[]; thread?: string; ask?: FrameAsk }): { system: string; user: string } {
   const c = sheet.cast.find((m) => m.id === castId);
   const system = [
     "You frame one contest of words in a roleplay game. You name what is at stake; the engine sets every number.",
@@ -677,13 +691,21 @@ Write:
     user: [
       user,
       ...(carried?.remembers.length ? [`${them} remembers this about the player, and feels ${carried.feel} toward them. The opening should show it: ${carried.remembers.join("; ")}`] : []),
-      ...(carried?.thread ? [`Also add "about_thread": true if what's at stake bears on this, false if it doesn't: <<<${clip(carried.thread, 400)}>>>`] : []),
+      ...(carried?.ask
+        ? [
+            `This contest is already decided: the player has come to ${them} to ask what they know about this: <<<${clip(carried.ask.goal, 300)}>>>. The stake is what ${them} knows about it, written as a short phrase that starts "what ${them} knows about". Nothing else is at stake: no escort, errand, price or favour.`,
+            ...(carried.ask.piece ? [`What ${them} knows, and has not said: <<<${clip(carried.ask.piece, 300)}>>>. The opening must not give it away or hint at its content; ${them} is guarded about the subject, in their own way.`] : []),
+          ]
+        : carried?.thread
+          ? [`Also add "about_thread": true if what's at stake bears on this, false if it doesn't: <<<${clip(carried.thread, 400)}>>>`]
+          : []),
     ].join("\n\n"),
   };
 }
 
-export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castId: string, kindHint?: ContestKind): ContestFrame {
+export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castId: string, kindHint?: ContestKind, ask?: FrameAsk): ContestFrame {
   const k = str(raw.kind, 20) as ContestKind;
+  const name = sheet.cast.find((m) => m.id === castId)?.name ?? "they";
   const size = Math.round(Number(raw.stake_size ?? raw.stakeSize));
   const price = Number(raw.price);
   const pay = Number(raw.pay);
@@ -691,7 +713,7 @@ export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castI
   return {
     castId,
     kind: (CONTEST_KINDS as readonly string[]).includes(k) ? k : (kindHint ?? "persuade"),
-    stake: str(raw.stake, 120) || "what you're asking for",
+    stake: ask ? askStake(str(raw.stake, 120), name) : str(raw.stake, 120) || "what you're asking for",
     stakeSize: (size >= 1 && size <= 4 ? size : 2) as 1 | 2 | 3 | 4,
     price: Number.isFinite(price) && price > 0 ? Math.round(price) : null,
     ...(Number.isFinite(offered) && offered >= 0 ? { offered: Math.round(offered) } : {}),
@@ -700,7 +722,7 @@ export function parseFrame(raw: Record<string, unknown>, sheet: CardSheet, castI
     setting: str(raw.setting, 300) || sheet.places[0]?.description || sheet.premise,
     opening: str(raw.opening, 500),
     ...(str(raw.voice, 160) ? { voice: str(raw.voice, 160) } : {}),
-    ...(raw.about_thread === true ? { aboutThread: true } : {}),
+    ...(ask || raw.about_thread === true ? { aboutThread: true } : {}),
     by: "architect",
   };
 }
@@ -737,18 +759,20 @@ export function storySoFar(recent: { name: string; content: string }[], turns = 
     .join("\n");
 }
 
-export function fallbackFrame(sheet: CardSheet, castId: string, recent: { name: string; content: string; isUser?: boolean }[], kind?: ContestKind): ContestFrame {
+export function fallbackFrame(sheet: CardSheet, castId: string, recent: { name: string; content: string; isUser?: boolean }[], kind?: ContestKind, ask?: FrameAsk): ContestFrame {
   const c = sheet.cast.find((m) => m.id === castId);
   const theirs = [...recent].reverse().find((m) => !m.isUser && c && norm(m.name) === norm(c.name));
   return {
     castId,
     kind: kind ?? "persuade",
-    stake: "what you're asking for",
+    stake: ask ? `what ${c?.name ?? "they"} knows` : "what you're asking for",
     stakeSize: 2,
     price: null,
     unit: null,
     setting: sheet.places[0]?.description || sheet.premise,
-    opening: theirs ? lastBeat(theirs.content) : "",
+    // Asked about the thread, an old line of theirs would be an answer to something else.
+    opening: theirs && !ask ? lastBeat(theirs.content) : "",
+    ...(ask ? { aboutThread: true } : {}),
     by: "fallback",
   };
 }

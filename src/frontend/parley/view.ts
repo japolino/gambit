@@ -99,8 +99,6 @@ export function mountParley(
     narrator: ParleyNarrator;
     /** The scene theme to dress the talk in (style.ts); none keeps the painted default. */
     theme?: ThemeId;
-    /** The Table theme's hand of fact cards (same as `theme: "table"`; kept for older callers). */
-    table?: boolean;
     /** The scene staged this talk in its 3D room (the scene stays visible under the view). */
     inRoom?: boolean;
     /** The scene's cast, so a person's lines wear the same colour here as in the scene. */
@@ -122,7 +120,7 @@ export function mountParley(
   const blocks = new Map<number, { npc: HTMLElement; read: HTMLElement; ready: boolean }>();
 
   ensureFonts();
-  const theme: ThemeId | undefined = where.theme ?? (where.table ? "table" : undefined);
+  const theme: ThemeId | undefined = where.theme;
   /** The pixel themes' bitmap faces only have straight quotes. */
   const curlyQuotes = theme !== "onebit" && theme !== "command";
   const given = where.voices ?? { cast: [], player: scenario.speaker.name === "you" ? "" : scenario.speaker.name };
@@ -136,8 +134,6 @@ export function mountParley(
   // A theme that stages the talk in its 3D scene room: no backdrop of our own, the room shows through.
   if (look?.inRoom && where.inRoom) wrap.classList.add("in-room");
   if (theme) wrap.classList.add(`th-${theme}`);
-  // The Table theme (6.1): a game across a table, with what you know as a hand of cards.
-  if (where.table || theme === "table") wrap.classList.add("table");
 
   /* ---------------- scene ---------------- */
   const scene = el("div", "scene");
@@ -220,7 +216,9 @@ export function mountParley(
   titleRow.append(el("div", "kind", stakeLine(scenario)));
   const modeSwitch = el("div", "mode");
   const modeBtns = (["immersive", "transparent"] as const).map((m) => {
-    const b = el("button", undefined, m === "immersive" ? "Immersive" : "Transparent");
+    // Named for what each does, not for the mode's name: one shows the story alone, the other adds the dice.
+    const b = el("button", undefined, m === "immersive" ? "Story only" : "Show dice");
+    b.title = m === "immersive" ? "Show only what happens, with no numbers" : "Show the dice, the target and why each line scored as it did";
     b.addEventListener("click", () => cb.setMode(m));
     b.dataset.m = m;
     modeSwitch.append(b);
@@ -386,7 +384,10 @@ export function mountParley(
   let shownValue = state.value;
   function paintHead() {
     wrap.dataset.mode = viewMode;
-    modeBtns.forEach((b) => b.classList.toggle("on", b.dataset.m === viewMode));
+    modeBtns.forEach((b) => {
+      b.classList.toggle("on", b.dataset.m === viewMode);
+      b.setAttribute("aria-pressed", String(b.dataset.m === viewMode));
+    });
     meterValue.textContent = formatValue(scenario, state.value);
     meterValue.append(meterDelta);
     const span = Math.max(1, c.start - c.hardFloor);
@@ -497,8 +498,14 @@ export function mountParley(
     const box = el("div", "npc");
     box.append(el("div", "speaker", npc.name));
     const prose = el("div", "prose waiting");
-    prose.append(el("span", "dots", "…"));
+    // Said in words while the reply is written: three dots alone read as a stuck screen, and a chat preset
+    // can take a minute before its first word.
+    prose.append(el("span", "wait", `${npc.name} is answering`), el("span", "dots", "…"));
     box.append(prose);
+    if (chatBound && narrator === "chat")
+      setTimeout(() => {
+        if (prose.isConnected && prose.classList.contains("waiting")) prose.append(el("span", "slow", "Your chat's model is writing this reply. A long preset can take a minute or more."));
+      }, 8000);
     return box;
   }
 

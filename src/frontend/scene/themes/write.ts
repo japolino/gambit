@@ -19,6 +19,7 @@ export const writeFormHtml = (cls: string, send = "Write"): string =>
 
 /**
  * The story so far. A line you wrote rolls first; a talk or a fight that's over has no line, and ends on how it came out.
+ * What a beat found is its last line.
  * Classes to style: .beat, .said, .roll, .found, .told, and the dialogue in them (story-text.ts). `curly`: a book face
  * draws a straight quote as a closing one, even where the speech opens; a terminal's type has no curly ones.
  */
@@ -34,7 +35,9 @@ export function beatsHtml(story: SceneView["story"], voices: Voices, curly = tru
       const told = paras("told", x.reply, { streaming: x.live });
       // The narrator was told to show what's found: when it has, word for word, once is enough.
       const found = x.found && !flat(x.reply).includes(flat(x.found)) ? paras("found", x.found) : "";
-      return `<div class="beat">${x.said ? `${paras("said", x.said, { speaker: "you" })}${roll}` : ""}${found}${told}${x.said ? "" : roll}</div>`;
+      // What was found closes the beat: the page opens on its newest lines, and under a long reply a find that
+      // came first was scrolled out of sight, which is the one line the player played the beat for.
+      return `<div class="beat">${x.said ? `${paras("said", x.said, { speaker: "you" })}${roll}` : ""}${told}${x.said ? "" : roll}${found}</div>`;
     })
     .join("");
 }

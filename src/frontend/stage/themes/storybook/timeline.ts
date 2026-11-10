@@ -18,14 +18,16 @@ export class BookTimeline extends TimelineStrip {
   private band = new ArtSprite("scroll-band", scrollBand);
   private end = new ArtSprite("scroll-end", scrollEnd);
   private coins: Coin[] = [];
-  private kicker = new Text({ text: "THE ORDER OF THE TALE", style: new TextStyle({ fontFamily: CINZEL, fontWeight: "700", fontSize: 11, fill: 0x7a3b16, letterSpacing: 2.4 }) });
+  /** The scroll's parchment, there before its picture is: the title on it is dark ink. */
+  private flat = new Graphics();
+  private kicker = new Text({ text: "ORDER OF TURNS", style: new TextStyle({ fontFamily: CINZEL, fontWeight: "700", fontSize: 11, fill: 0x7a3b16, letterSpacing: 2.4 }) });
   private layer = new Container();
   private nowLayer = new Container();
 
   constructor() {
     super();
     this.removeChildren();
-    this.addChild(this.band, this.end, this.kicker, this.layer, this.nowLayer);
+    this.addChild(this.flat, this.band, this.end, this.kicker, this.layer, this.nowLayer);
   }
 
   override place(rect: Rect, ui: number): void {
@@ -34,9 +36,10 @@ export class BookTimeline extends TimelineStrip {
     this.position.set(rect.x, rect.y);
     const h = rect.h;
     const bh = h * 0.8;
-    const ks = Math.max(8, Math.round(bh * 0.14));
-    this.kicker.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "700", fontSize: ks, fill: 0x7a3b16, letterSpacing: ks * 0.22 });
-    this.kicker.position.set(h * 0.7 + h * 0.42, (h - bh) / 2 + bh * 0.2);
+    const ks = Math.max(11, Math.round(bh * 0.13));
+    this.kicker.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: ks, fill: 0x6a2f10, letterSpacing: ks * 0.2 });
+    // On the scroll's top rule, clear of the crests that hang under it.
+    this.kicker.position.set(h * 0.7 + h * 0.42, (h - bh) / 2 + bh * 0.12);
     // On a phone the strip is for the faces: no title over them.
     this.kicker.visible = rect.w > 300 && !GEO.compact;
     this.fit(rect.w);
@@ -51,6 +54,8 @@ export class BookTimeline extends TimelineStrip {
     const w = Math.max(this.kicker.visible ? this.kicker.x + this.kicker.width + 20 : 0, Math.min(this.rect.w, len)) ;
     this.band.draw(Math.max(10, w - bx - ew * 0.5), bh);
     this.band.position.set(bx, (h - bh) / 2);
+    this.flat.clear();
+    if (!GEO.compact) this.flat.roundRect(bx, (h - bh) / 2 + bh * 0.07, Math.max(10, w - bx - ew * 0.5), bh * 0.86, 3).fill({ color: 0xe6d3ab }).stroke({ width: 1, color: 0x8a5a2a });
     this.end.draw(ew, bh * 1.2);
     this.end.position.set(w - ew, (h - bh * 1.2) / 2);
   }
@@ -59,7 +64,7 @@ export class BookTimeline extends TimelineStrip {
     const h = this.rect.h;
     const big = h;
     const bh = h * 0.8;
-    const small = Math.round(bh * (GEO.compact ? 0.86 : this.kicker.visible ? 0.64 : 0.78));
+    const small = Math.round(bh * (GEO.compact ? 0.86 : this.kicker.visible ? 0.55 : 0.78));
     const gap = Math.round(small * 0.12);
     const start = h * 0.7 + h * 0.42;
     const room = this.rect.w - start - (bh * 1.2 * 40) / 110;
@@ -131,7 +136,7 @@ export class BookTimeline extends TimelineStrip {
         if (i === 1) glow.ellipse(cw / 2, size / 2, cw * 0.75, size * 0.66).fill({ color: 0xffc860, alpha: 0.28 }).ellipse(cw / 2, size / 2, cw * 0.55, size * 0.5).fill({ color: 0xffe0a0, alpha: 0.25 });
       }
       coin.target = now ? 0 : x;
-      coin.c.y = now ? 0 : GEO.compact ? h / 2 - size * 0.56 : h / 2 + (this.kicker.visible ? bh * 0.13 : 0) - size / 2 + (i === 1 ? 6 * this.ui : 0);
+      coin.c.y = now ? 0 : GEO.compact ? h / 2 - size * 0.56 : h / 2 + (this.kicker.visible ? bh * 0.19 : 0) - size / 2 + (i === 1 ? 2 * this.ui : 0);
       next.push(coin);
       if (!now) x += cw + gap;
     });

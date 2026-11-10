@@ -32,6 +32,21 @@ export function echoesFact(text: string, fact: string, ignore: string): boolean 
   return shared >= 2;
 }
 
+/**
+ * Does one line say again what the other already says? Most of the shorter one's distinctive words are in the other,
+ * in any form: three of them at least, or all of them when it has fewer. A shared name alone is never enough.
+ */
+export function restates(a: string, b: string): boolean {
+  const key = (t: string) => new Set(words(t).filter((w) => w.length >= 4 && !STOP.has(w)).map(stem));
+  const ka = key(a);
+  const kb = key(b);
+  const [small, big] = ka.size <= kb.size ? [ka, kb] : [kb, ka];
+  if (small.size < 2) return false;
+  let shared = 0;
+  for (const w of small) if (big.has(w)) shared++;
+  return shared >= Math.min(3, small.size) && shared / small.size >= 0.6;
+}
+
 const jaccard = (a: Set<string>, b: Set<string>): number => {
   if (!a.size || !b.size) return 0;
   let shared = 0;

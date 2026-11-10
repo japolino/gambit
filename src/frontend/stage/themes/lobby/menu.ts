@@ -1,7 +1,8 @@
 /**
  * The Lobby battle's skills: big brass medallions along the bottom right, each a real button (keyboard and touch)
  * with the skill's glyph engraved in its dial, its name on a bolted plaque and its cost below. A skill that
- * cannot be used now is padlocked and dimmed, with the reason in place of the cost. The signature skill is the
+ * cannot be used now is padlocked and dimmed, with the reason in place of the cost. Above them a brass "Your
+ * turn" tag, who is acting and what to do, so whose turn it is reads before anything else. The signature skill is the
  * largest, on a sunburst with a crimson dial. Choosing a target swaps the row for an obsidian glass plate with
  * the skill, the hint, Back and (for area skills) Confirm.
  */
@@ -98,7 +99,8 @@ export class LobbyMenu extends ActionMenu {
     const slotN = (portrait ? 76 : 176) * u;
     const slotS = (portrait ? 92 : 220) * u;
     const need = (n - sigs) * slotN + sigs * slotS + gap * Math.max(0, n - 1);
-    const headH = (portrait ? 28 : 70) * u;
+    // Room for the heading and the larger names and costs under the medallions, clear of the enemies' plates above.
+    const headH = (portrait ? 28 : 94) * u;
     const fit = Math.min(1, w / need, (h - headH) / ((portrait ? 150 : 300) * u));
     el.style.setProperty("--fit", fit.toFixed(3));
     el.style.setProperty("--dn", `${baseN * u * fit}px`);
@@ -109,7 +111,7 @@ export class LobbyMenu extends ActionMenu {
     const head = aiming
       ? `<header class="hd aim"><span class="rb"><span class="bgp">${plaque(400, 44)}</span><b>${esc(aiming.skill)}</b><i>${esc(aiming.hint)}</i></span>
 <button type="button" class="bk" aria-label="Back (Escape)"><span class="pa">${plaque(150, 40)}</span><b>Back</b></button>${aiming.confirm ? `<button type="button" class="cf" aria-label="Confirm (Enter)"><span class="pa">${plaque(170, 40)}</span><b>Confirm</b></button>` : ""}</header>`
-      : `<header class="hd"><b>${esc(this.actor)}</b><span>Choose a skill</span></header>`;
+      : `<header class="hd"><span class="yt">Your turn</span><b>${esc(this.actor)}</b><span class="do">Choose a skill<i class="kh"> · keys 1-${Math.min(9, skills.length)}</i></span></header>`;
     el.innerHTML = `<div class="col">${head}<div class="row"></div></div>`;
     el.querySelector(".bk")?.addEventListener("click", () => this.onBack());
     el.querySelector(".cf")?.addEventListener("click", () => this.onConfirm());

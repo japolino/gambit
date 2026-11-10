@@ -57,6 +57,7 @@ parleys.setEndHook((u, scenario, state) => void play!.onParleyEnd(u, scenario, s
 parleys.setStoryHook({
   heard: (u, c, lines) => play!.notice(u, c, lines),
   known: async (u, c) => ((await cards.sheetFor(u, c))?.facts ?? []).filter((f) => f.known).map((f) => f.id),
+  theme: (u, c) => play!.themeOf(u, c),
 });
 /** World-changing actions run one at a time per chat. */
 const acting = createGate();
@@ -73,7 +74,11 @@ spindle.registerInterceptor(async (messages, ctx) => {
 }, 50);
 
 spindle.on("GENERATION_STARTED", (p) => parleys.onGenerationStarted(p.chatId));
-spindle.on("STREAM_TOKEN_RECEIVED", (p, userId) => parleys.onStreamToken(p.chatId, p.token, p.type === "reasoning", userId));
+spindle.on("STREAM_TOKEN_RECEIVED", (p, userId) => {
+  parleys.onStreamToken(p.chatId, p.token, p.type === "reasoning", userId);
+  // A story beat the chat is writing under its own preset shows on the page as it comes.
+  play?.onStreamToken(p.chatId, p.token, p.type === "reasoning");
+});
 spindle.on("GENERATION_ENDED", (p, userId) => {
   // Order matters: the contest detector must see whether this reply was a Parley narration.
   const wasParley = parleys.awaitingIn(p.chatId);
@@ -112,7 +117,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         return;
       case "hello": {
         await art.setCampaign(CAMPAIGN, userId);
-        send({ type: "welcome", version: VERSION, styleLook: art.styleLock(userId)?.lookId ?? null, ui: art.lookUi(userId) }, userId);
+        // The drawer shows who writes the replies from the start, not only once a talk has opened.
+        const prefs = await spindle.userStorage.getJson<{ parleyNarrator?: "gambit" | "chat" }>("settings.json", { fallback: {}, userId }).catch(() => ({}) as { parleyNarrator?: "gambit" | "chat" });
+        send({ type: "welcome", version: VERSION, styleLook: art.styleLock(userId)?.lookId ?? null, ui: art.lookUi(userId), storyNarrator: await play!.storyNarrator(userId), parleyNarrator: prefs.parleyNarrator ?? "gambit" }, userId);
         break;
       }
       case "resume":
@@ -133,6 +140,9 @@ spindle.onFrontendMessage(async (raw: unknown, userId: string) => {
         break;
       case "parley.narrator":
         await parleys.setNarrator(userId, msg.mode);
+        break;
+      case "story.narrator":
+        await play!.setStoryNarrator(userId, msg.mode);
         break;
       case "card.status":
         await cards.status(userId, msg.chatId);

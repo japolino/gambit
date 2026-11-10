@@ -90,6 +90,8 @@ export interface Panel {
   /** The open Parley's name (null when none), the view mode, and how many facts the journal holds. */
   setParley(open: string | null, mode: ParleyViewMode, journalSize: number): void;
   setNarrator(mode: ParleyNarrator): void;
+  /** Who writes the scene's replies: the chat under its own preset, or Gambit's short narrator. */
+  setStoryNarrator(mode: ParleyNarrator): void;
   /** Which connection each kind of model call uses (the Models section). */
   setModels(state: ModelsState): void;
   /** The words Gambit adds to the chat's own generations (the Story notes section). */
@@ -115,6 +117,7 @@ export function createPanel(
     resumeParley(): void;
     setParleyMode(mode: ParleyViewMode): void;
     setNarrator(mode: ParleyNarrator): void;
+    setStoryNarrator(mode: ParleyNarrator): void;
     /** The drawer's tab was opened. */
     shown(): void;
     card: CardActions;
@@ -138,6 +141,10 @@ export function createPanel(
   root.innerHTML = `
     <button class="primary" data-parley-resume hidden>Resume the Parley</button>
     <section><h3>This chat</h3><div class="card-sec" data-card></div></section>
+    <section><h3>Who writes the replies</h3>
+      <div class="ctl"><span>In the scene</span><div class="seg" data-story-narrator><button data-n="chat">Chat preset</button><button data-n="gambit">Gambit</button></div></div>
+      <div class="ctl"><span>In a talk</span><div class="seg" data-parley-narrator><button data-n="chat">Chat preset</button><button data-n="gambit">Gambit</button></div></div>
+      <div class="hint">Chat preset: your chat's own model and preset write the reply, at their own length, and Gambit adds what the game decided at the end of the prompt. Gambit: a short reply from the Narrator model, which is quicker.</div></section>
     <section><h3>Voice</h3><div data-voice></div></section>
     <section><h3>Music</h3><div data-music></div></section>
     <div class="status" data-status></div>
@@ -155,8 +162,7 @@ export function createPanel(
       ${Object.values(PARLEYS)
         .map((p) => `<button data-parley="${p.id}" title="${esc(p.blurb)}">${esc(p.name)}</button>`)
         .join("")}
-      <div class="ctl"><span>View</span><div class="seg" data-parley-mode><button data-m="immersive">Immersive</button><button data-m="transparent">Transparent</button></div></div>
-      <div class="ctl"><span>NPC lines</span><div class="seg" data-parley-narrator><button data-n="gambit">Gambit</button><button data-n="chat">Chat preset</button></div></div>
+      <div class="ctl"><span>View</span><div class="seg" data-parley-mode><button data-m="immersive">Story only</button><button data-m="transparent">Show dice</button></div></div>
       <div class="hint" data-parley-hint></div>
       <h3>Encounters</h3>${Object.values(ENCOUNTERS)
         .map((e) => `<button data-enc="${e.id}">${esc(e.name)}${e.boss ? " · boss" : ""}</button>`)
@@ -183,6 +189,10 @@ export function createPanel(
   narratorBtns.forEach((b) => b.addEventListener("click", () => actions.setNarrator(b.dataset.n as ParleyNarrator)));
   const paintNarrator = (m: ParleyNarrator) => narratorBtns.forEach((b) => b.classList.toggle("on", b.dataset.n === m));
   paintNarrator("gambit");
+  const storyBtns = [...root.querySelectorAll<HTMLButtonElement>("[data-story-narrator] button")];
+  storyBtns.forEach((b) => b.addEventListener("click", () => actions.setStoryNarrator(b.dataset.n as ParleyNarrator)));
+  const paintStory = (m: ParleyNarrator) => storyBtns.forEach((b) => b.classList.toggle("on", b.dataset.n === m));
+  paintStory("chat");
 
   /* ------------------------------- Music ------------------------------- */
   const renderMusic = (m: MusicUi) => {
@@ -341,6 +351,7 @@ export function createPanel(
     setStatus: (t) => (status.textContent = t),
     setResumable: (on) => (openBtn.textContent = on ? "Resume the fight" : "Open the Stage"),
     setNarrator: (m) => paintNarrator(m),
+    setStoryNarrator: (m) => paintStory(m),
     setModels: (st) => renderModels(st),
     setNotes: (st) => renderNotes(st),
     setCard: (st, hasChat) => renderCard(cardEl, st, hasChat, actions.card),

@@ -4,10 +4,10 @@
  * window light falling across them, their name on an obsidian-glass plaque across their chest (as the hall's lead
  * stands in the scene). The haggle is a brass balance at the top right (their price in coins on one pan, your
  * purse on the other; the beam tips as the deal moves), with the fare engraved beside it and patience as amber
- * jewels hanging under it; the deal itself hangs from the balance on chains, as brass plaques. What you know is
- * a fan of dossier slips over the dialogue (play one to cite it), the moments are prints in brass mounts on the
- * wall, and the talk runs in a brass-rimmed dialogue box along the bottom with the line you write sealed by a
- * brass Say.
+ * jewels hanging under it; the deal itself hangs from the balance on chains, as brass plaques. The talk runs in a
+ * tall brass-rimmed dialogue box along the bottom, in large type; what you know is a readable list of dossier
+ * slips in the box's right-hand column (click one to cite it), the moments are prints in brass mounts on the
+ * wall, and the line you write is sent by a brass Say (the scene's Write, so the two read as one game).
  *
  * The view's side panel, header and footer are dissolved (`display: contents`) so their pieces sit where a story
  * scene puts them; every control stays the view's own element, reachable by keyboard. Scoped `.pl.th-lobby`.
@@ -69,7 +69,7 @@ const css = (paper: string) => `
 .th-lobby .silhouette { color: rgba(223,193,131,.6); font-family: ${CINZ}; background: radial-gradient(60% 40% at 50% 22%, rgba(223,193,131,.16), rgba(14,12,10,.85) 70%); }
 
 /* ---------- Their name, across their chest on obsidian glass ---------- */
-.th-lobby .plaque { left: var(--hx); translate: -50% 0; bottom: 37%; z-index: 6; min-width: 420px; max-width: min(640px, 46%); padding: 14px 70px 17px; text-align: center; isolation: isolate; text-shadow: none; }
+.th-lobby .plaque { left: var(--hx); translate: -50% 0; translate: round(-50%, 1px) 0; bottom: 37%; z-index: 6; min-width: 420px; max-width: min(640px, 46%); padding: 14px 70px 17px; text-align: center; isolation: isolate; text-shadow: none; }
 .th-lobby .plaque .lp-tab { position: absolute; inset: 0; z-index: -1; }
 .th-lobby .plaque .who { font: 800 32px/1.05 ${CINZ}; letter-spacing: .1em; text-transform: uppercase; color: #F5E8C7; text-shadow: 0 1px 3px #000, 0 0 14px rgba(223,193,131,.35); }
 .th-lobby .plaque .role { margin-top: 7px; font: 700 12.5px/1.3 ${GARA}; letter-spacing: .14em; text-transform: uppercase; color: #DFC183; opacity: 1; }
@@ -143,9 +143,9 @@ const css = (paper: string) => `
 .th-lobby .actions button::before, .th-lobby .actions button::after { content: ""; position: absolute; top: -26px; width: 12px; height: 30px; background: ${chainBg()} center / contain no-repeat; }
 .th-lobby .actions button::before { left: calc(18% - 6px); } .th-lobby .actions button::after { right: calc(18% - 6px); }
 .th-lobby .actions .walk { background-image: ${choiceBg(true)}; color: #f0c8b8; }
-.th-lobby .actions button:hover:not(:disabled), .th-lobby .actions button:focus-visible { outline: none; transform: rotate(-1.5deg); filter: drop-shadow(0 0 14px rgba(255,206,120,.6)); background-image: ${choiceBg(false, true)}; color: #FFE7AE; }
+.th-lobby .actions button:hover:not(:disabled), .th-lobby .actions button:focus-visible { outline: none; filter: drop-shadow(0 0 14px rgba(255,206,120,.6)); background-image: ${choiceBg(false, true)}; color: #FFE7AE; }
 .th-lobby .actions .walk:hover:not(:disabled), .th-lobby .actions .walk:focus-visible { background-image: ${choiceBg(true, true)}; color: #ffe2d6; }
-.th-lobby .end { position: absolute; z-index: 8; left: 50%; top: 40%; translate: -50% -50%; min-width: 520px; max-width: 80%; padding: 34px 60px 30px; background: rgba(10,8,6,.92); box-shadow: 0 0 0 2px #1c1308, 0 0 0 5px #b68d40, 0 0 0 6px #f5e1a4, 0 30px 80px #000; }
+.th-lobby .end { position: absolute; z-index: 8; left: 50%; top: 40%; translate: -50% -50%; translate: round(-50%, 1px) round(-50%, 1px); min-width: 520px; max-width: 80%; padding: 34px 60px 30px; background: rgba(10,8,6,.92); box-shadow: 0 0 0 2px #1c1308, 0 0 0 5px #b68d40, 0 0 0 6px #f5e1a4, 0 30px 80px #000; }
 .th-lobby .end-title { font: 800 34px/1.1 ${CINZ}; letter-spacing: .06em; color: #FFE7AE; text-shadow: ${SHADOW}; }
 .th-lobby .end-sub { font: italic 18px ${GARA}; color: #d8c9a8; }
 .th-lobby .leave { margin-top: 10px; min-width: 300px; height: 60px; border: 0; border-radius: 0; background: ${choiceBg(false)} center / 100% 100% no-repeat; font: 800 18px ${CINZ}; letter-spacing: .14em; text-transform: uppercase; color: #F5E8C7; padding: 0 50px; }
@@ -174,8 +174,74 @@ const css = (paper: string) => `
 .th-lobby .moment .cap { font: italic 500 30px/1.3 ${GARA}; color: #F5E8C7; left: 8%; right: 8%; bottom: 8%; text-align: center; }
 .th-lobby .moment::before { background: linear-gradient(transparent 58%, rgba(10,8,6,.92)); }
 
-@media (min-aspect-ratio: 2/1) { .pl.th-lobby { --bxw: 72%; --hx: 23%; } }
-@media (min-width: 761px) and (max-height: 960px) { .pl.th-lobby { --bxh: 34%; } }
+/* ---------- Not a phone: the talk is what the screen is for ----------
+   A taller box so several replies are in view, the conversation in large type at a readable measure on the left,
+   and what you know as a straight, readable list on the right (the fan of tilted slips could not be read, and
+   hid under the box). The controls carry their words. */
+.pl.th-lobby:not(.pl-phone) { --bxw: min(90%, 1680px); --bxh: 42%; --hw: clamp(280px, 26%, 470px); }
+.th-lobby:not(.pl-phone) .plaque { bottom: calc(var(--bxb) + var(--bxh) + 16px); }
+/* An opaque portrait stands whole above the box, so the nameplate sits under the chin and never across the face. */
+.th-lobby:not(.pl-phone) .figure:has(.fig.framed) { top: 7%; bottom: calc(var(--bxb) + var(--bxh) + 62px); height: auto; }
+.th-lobby:not(.pl-phone) .fig.framed { height: 100%; aspect-ratio: 4 / 5; margin-bottom: 0; }
+/* The prints hang between the person and the balance at every width. */
+.th-lobby:not(.pl-phone) .moments { left: auto; right: 548px; }
+.th-lobby:not(.pl-phone) .title-row { max-width: min(900px, 56%, calc(100% - 610px)); }
+.th-lobby:not(.pl-phone) .log { gap: 14px; padding-right: 14px !important; scrollbar-width: thin; scrollbar-color: #b68d40 rgba(0,0,0,.35); }
+.th-lobby:not(.pl-phone):has(.hand .fact-card) .log { right: calc(var(--bxr) + 46px + var(--hw) + 30px); }
+.th-lobby:not(.pl-phone) .log > * { max-width: 44em; }
+.th-lobby:not(.pl-phone) .setting { font-size: 19px; color: #b8a27a; }
+.th-lobby:not(.pl-phone) .speaker { font-size: 14px; margin-bottom: 4px; }
+.th-lobby:not(.pl-phone) .npc .prose { font-size: 24px; line-height: 1.45; }
+.th-lobby:not(.pl-phone) .you .prose { font-size: 21px; line-height: 1.42; }
+.th-lobby:not(.pl-phone) .imm { font-size: 20px; }
+.th-lobby:not(.pl-phone) .trn { font-size: 17px; }
+.th-lobby:not(.pl-phone) .tier { font-size: 13px; }
+.th-lobby:not(.pl-phone) .result { font-size: 16px; }
+.th-lobby:not(.pl-phone) .status { font-size: 19px; color: #FFE2A8; right: auto; left: calc(var(--bxl) + 46px); bottom: calc(var(--bxb) + 96px); }
+.th-lobby:not(.pl-phone) .hand { z-index: 4; right: calc(var(--bxr) + 40px); width: var(--hw); max-width: none; top: calc(100% - var(--bxb) - var(--bxh) + 34px); bottom: calc(var(--bxb) + 100px); box-sizing: border-box; padding: 0 8px 4px 22px; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 9px; overflow-y: auto; border-left: 1px solid rgba(200,170,110,.35); scrollbar-width: thin; scrollbar-color: #b68d40 rgba(0,0,0,.35); }
+.th-lobby:not(.pl-phone) .hand:empty { display: none; }
+.th-lobby:not(.pl-phone) .hand:not(:empty)::before { content: "What you know: click one to cite it"; flex: none; padding: 2px 0 3px; font: 800 13px/1.2 ${CINZ}; letter-spacing: .14em; text-transform: uppercase; color: #DFC183; }
+.th-lobby:not(.pl-phone) .fact-card, .th-lobby:not(.pl-phone) .fact-card.used { flex: none; width: auto; min-height: 0; margin: 0; padding: 11px 16px 12px 18px; font: 500 18px/1.3 ${GARA}; transform: none; transition: box-shadow .16s, filter .16s; }
+.th-lobby:not(.pl-phone) .fact-card:hover, .th-lobby:not(.pl-phone) .fact-card:focus-visible { margin: 0; transform: none; filter: brightness(1.08); box-shadow: 0 0 0 2px #FFE2A8, 0 0 0 4px rgba(28,19,8,.9), 0 0 18px rgba(255,206,120,.6), 0 10px 18px rgba(0,0,0,.7); }
+.th-lobby:not(.pl-phone) .fact-card:active { filter: brightness(.9); }
+.th-lobby:not(.pl-phone) .fact-card.used { color: rgba(43,29,14,.72); filter: sepia(.35) brightness(.78); padding-right: 84px; }
+.th-lobby:not(.pl-phone) .fact-card.used::after { left: auto; right: -4px; top: 8px; padding: 4px 10px 4px 16px; font-size: 12px; letter-spacing: .12em; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 8px 50%); }
+.th-lobby:not(.pl-phone) .composer { height: 66px; grid-template-columns: 1fr 148px; gap: 14px; }
+.th-lobby:not(.pl-phone) .composer textarea { height: 58px; padding: 13px 18px; font-size: 21px; line-height: 1.4; background: rgba(6,5,4,.7); box-shadow: inset 0 0 0 1px rgba(200,170,110,.5), inset 0 2px 10px rgba(0,0,0,.8); }
+.th-lobby:not(.pl-phone) .composer textarea:focus { box-shadow: inset 0 0 0 1.5px #FFE2A8, 0 0 12px rgba(230,198,135,.4); }
+.th-lobby:not(.pl-phone) .composer textarea::placeholder { color: #a69272; }
+.th-lobby:not(.pl-phone) .say { width: 148px; height: 58px; border-radius: 4px; border: 1px solid #1c1308; background: linear-gradient(180deg, #e6c687 0%, #b68d40 48%, #8c6224 100%); box-shadow: inset 0 1px 0 rgba(255,242,194,.8), 0 3px 8px rgba(0,0,0,.7); font-size: 20px; letter-spacing: .16em; filter: none; transition: filter .15s; }
+.th-lobby:not(.pl-phone) .say:hover:not(:disabled), .th-lobby:not(.pl-phone) .say:focus-visible { transform: none; background: linear-gradient(180deg, #fff2c2 0%, #d4b475 48%, #a0752c 100%); filter: drop-shadow(0 0 10px rgba(255,206,120,.6)); outline: 1.5px dashed rgba(245,225,164,.85); outline-offset: 3px; }
+.th-lobby:not(.pl-phone) .say:hover:not(:disabled):not(:focus-visible) { outline: 0; }
+.th-lobby:not(.pl-phone) .say:active:not(:disabled) { filter: brightness(.85); }
+/* The view mode says what each boss does. */
+.th-lobby:not(.pl-phone) .mode { gap: 8px; }
+.th-lobby:not(.pl-phone) .mode button { width: auto; height: 42px; padding: 0 14px 0 46px; background-position: 6px center; background-size: 32px; background-color: rgba(10,8,6,.6); box-shadow: inset 0 0 0 1px rgba(200,170,110,.35); filter: none; }
+.th-lobby:not(.pl-phone) .mode button::after { font: 800 13px/1 ${CINZ}; letter-spacing: .1em; text-transform: uppercase; color: #b8a27a; white-space: nowrap; }
+.th-lobby:not(.pl-phone) .mode button[data-m="immersive"]::after { content: "Story only"; }
+.th-lobby:not(.pl-phone) .mode button[data-m="transparent"]::after { content: "Show dice"; }
+.th-lobby:not(.pl-phone) .mode button.on { background-color: rgba(60,44,20,.85); box-shadow: inset 0 0 0 1.5px #DFC183, 0 0 10px rgba(255,214,140,.35); filter: none; }
+.th-lobby:not(.pl-phone) .mode button.on::after { color: #FFE7AE; }
+.th-lobby:not(.pl-phone) .mode button:hover, .th-lobby:not(.pl-phone) .mode button:focus-visible { transform: none; filter: none; box-shadow: inset 0 0 0 1.5px #FFE2A8; }
+.th-lobby:not(.pl-phone) .mode button:hover::after, .th-lobby:not(.pl-phone) .mode button:focus-visible::after { color: #FFF1CC; }
+.th-lobby:not(.pl-phone) .meter-label { font-size: 15px; }
+.th-lobby:not(.pl-phone) .pl-label { font-size: 14px; }
+.th-lobby:not(.pl-phone) .plaque .role { font-size: 14px; letter-spacing: .1em; }
+.th-lobby:not(.pl-phone) .actions button { font-size: 20px; }
+@media (min-aspect-ratio: 2/1) { .pl.th-lobby:not(.pl-phone) { --bxw: 74%; --hx: 21%; } }
+@media (min-width: 761px) and (max-height: 960px) { .pl.th-lobby:not(.pl-phone) { --bxh: 46%; } }
+/* A short window: the balance's drawing goes (the fare, patience and the deal stay), so the deal clears the box. */
+@media (min-width: 761px) and (max-height: 900px) {
+  .th-lobby:not(.pl-phone) .lp-scale { display: none; }
+  .th-lobby:not(.pl-phone) .meter { top: 12px; padding-top: 24px; padding-bottom: 20px; }
+  .th-lobby:not(.pl-phone) .lp-ped { top: 0; }
+  .th-lobby:not(.pl-phone) .meter-value { font-size: 36px; }
+  .th-lobby:not(.pl-phone) .actions { top: calc(var(--mh, 170px) + 20px); gap: 16px; }
+  .th-lobby:not(.pl-phone) .actions button { height: 54px; font-size: 18px; }
+  .th-lobby:not(.pl-phone) .actions button::before, .th-lobby:not(.pl-phone) .actions button::after { top: -20px; height: 24px; }
+  .th-lobby:not(.pl-phone) .moments { padding-top: 13vh; }
+  .th-lobby:not(.pl-phone) .moments button { width: 132px; height: 94px; }
+}
 /* ---------- Phones (view.ts sets pl-phone, pl-short, --pl-h): the talk comes first ----------
    Real rows instead of a stage: a compact bar (name, fare, patience, what you know), a band of the person, the deal,
    the talk, the input. The brass box and its ornaments go, so no text runs under them; the balance, the crest, the
@@ -387,8 +453,6 @@ export const theme: ParleyTheme = {
     const stopDust = dust(dustEl, ctx.reducedMotion);
     scene.querySelector(".plaque")?.prepend(mk("lp-tab", glassTab()));
     root.append(mk("lp-crest", crest()));
-    // The view modes are engraved bosses beside the title; name them for the pointer.
-    root.querySelectorAll<HTMLButtonElement>(".mode button").forEach((b) => (b.title = b.dataset.m === "transparent" ? "Show the dice maths" : "Immersive: the story only"));
     // The balance, tipping with the deal.
     const scale = mk("lp-scale", balanceRig());
     const meterEl = root.querySelector<HTMLElement>(".meter");

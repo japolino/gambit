@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { withPieces } from "../src/engine/card/sizing.js";
 import { PARLEYS } from "../src/engine/content/parleys.js";
 import { applyExchange, closeParley, createParley, exchangeFaces, parseOffer, replayParley, tierFromQuality } from "../src/engine/parley/exchange.js";
 import { amount, fallbackReply, immersiveRead, narratorPrompt, outcomeBlock, rollLine, tellFor, whyText } from "../src/engine/parley/narrate.js";
@@ -252,6 +253,24 @@ describe("Words about an outcome", () => {
     expect(whyText(marta, r.exchange)).toContain("Leverage from your journal");
     expect(immersiveRead(marta, r.exchange)).toMatch(/Marta/);
   });
+
+  test("what someone knows is said on a win and kept back until then", () => {
+    const asked = { ...marta, card: { cardKey: "k", castId: "marta", journalKey: "j", aboutThread: true, gives: "The ledger was burned on the quay" } };
+    const r = applyExchange(asked, createParley(asked, "gives"), "Tell me about the ledger.", read());
+    const open = outcomeBlock(asked, r.state, { ...r.exchange, ended: null });
+    expect(open).toContain("stays unsaid");
+    expect(open).not.toContain("burned on the quay");
+    const won = outcomeBlock(asked, r.state, { ...r.exchange, ended: { kind: "won" as const } });
+    expect(won).toContain("<<<The ledger was burned on the quay>>>");
+    expect(won).not.toContain("stays unsaid");
+    expect(outcomeBlock(asked, r.state, { ...r.exchange, ended: { kind: "refused" as const } })).toContain("stays unsaid");
+    // The chat's own model has the card's lore: it is told which of the things it knows to keep out, last of all.
+    const told = outcomeBlock(asked, r.state, { ...r.exchange, ended: null }, true);
+    expect(told.split("\n").at(-1)).toMatch(/^HARD RULE.*<<<The ledger was burned on the quay>>>/);
+    expect(outcomeBlock(asked, r.state, { ...r.exchange, ended: { kind: "won" as const } }, true)).not.toContain("HARD RULE");
+    // A talk about anything else reads as it did.
+    expect(outcomeBlock(marta, r.state, { ...r.exchange, ended: { kind: "won" as const } })).toContain("the player gets");
+  });
 });
 
 describe("Referee answers", () => {
@@ -322,6 +341,24 @@ describe("what a playthrough turned up", () => {
     expect(r.exchange.bluff).toBeNull();
     expect(r.exchange.leverageFacts).toContain(fact.id);
     expect(r.state.usedFacts).toContain(fact.id);
+  });
+
+  test("a piece of the thread already won is the player's to argue with, and never a bluff", () => {
+    const held = withPieces(marta, [{ id: "piece:a", text: "The warden burned the harbour ledger before the audit" }]);
+    expect(held.known).toContain("piece:a");
+    expect(withPieces(held, [{ id: "piece:a", text: "again" }])).toBe(held);
+    const line = "The warden burned the ledger, and you know what that means for the audit.";
+    const guess = read({ tactic: "bluff", tacticP: { bluff: 0.9 }, otherClaim: 0.9 });
+    // Without the piece the same words are a claim to be checked, on guile.
+    const before = applyExchange(marta, createParley(marta, "piece"), line, guess).exchange;
+    expect(before.bluff).not.toBeNull();
+    expect(before.roll.stat).toBe("guile");
+    const after = applyExchange(held, createParley(held, "piece"), line, guess).exchange;
+    expect(after.bluff).toBeNull();
+    expect(after.leverageFacts).toEqual(["piece:a"]);
+    expect(after.roll.leverage).toBe(2);
+    expect(after.read.tactic).toBe("logic");
+    expect(after.roll.stat).toBe("presence");
   });
 
   test("a claim that matches nothing known is still a bluff", () => {

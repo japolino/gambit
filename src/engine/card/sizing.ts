@@ -75,6 +75,19 @@ export function factFrom(f: SheetFact, targetId: string): Fact {
   };
 }
 
+/**
+ * A piece of the thread the player has already won. It is theirs to use on anyone: said in a talk it is leverage,
+ * and never read as a bluff. It moves no floor: that takes something on the person themself.
+ */
+export const factFromPiece = (id: string, text: string): Fact => ({ id, text, claim: text, leverage: 2, keywords: keywordsFor(text) });
+
+/** Put the thread pieces the player holds into a talk, as things they know. */
+export function withPieces(scenario: ParleyScenario, pieces: readonly { id: string; text: string }[]): ParleyScenario {
+  const fresh = pieces.filter((p) => !scenario.facts.some((f) => f.id === p.id));
+  if (!fresh.length) return scenario;
+  return { ...scenario, facts: [...scenario.facts, ...fresh.map((p) => factFromPiece(p.id, p.text))], known: [...scenario.known, ...fresh.map((p) => p.id)] };
+}
+
 export function speakerFrom(sheet: CardSheet): Speaker {
   const p = sheet.player;
   return { name: p.name || "you", ...(p.concept ? { who: p.concept } : {}), ...(p.person ? { person: p.person } : {}), stats: { presence: socialOf(p.social.presence), menace: socialOf(p.social.menace), guile: socialOf(p.social.guile) } };

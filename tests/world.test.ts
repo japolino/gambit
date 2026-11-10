@@ -102,7 +102,8 @@ describe("the card's places", () => {
   test("the menu has talk, look, exits, and what the place allows", () => {
     const w = buildWorld(sheet("town"), "s");
     const menu = hotspotsOf(w, "ward", sheet("town"));
-    expect(menu.map((h) => h.kind)).toEqual(["talk", "search", "exit", "fight", "wait"]);
+    // The day can always be ended: with no bed here, on the ground.
+    expect(menu.map((h) => h.kind)).toEqual(["talk", "search", "exit", "fight", "rest", "wait"]);
     expect(hotspotsOf(w, "crypt", sheet("town")).some((h) => h.kind === "delve")).toBe(true);
     expect(hotspotsOf(w, "manor", sheet("town")).some((h) => h.kind === "rest")).toBe(true);
   });

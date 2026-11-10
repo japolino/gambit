@@ -1,17 +1,22 @@
 /**
  * The Command theme's Parley: the talk happens on the scene's own monitor (../../stage/themes/command/shell.ts)
- * and runs in its terminal. The screen switches to the 72-column text mode (one 8x8 face, a finer cell, so prose
- * reads at about thirty characters a line), and every glyph on it sits on that one grid:
+ * and runs in its terminal. In a talk the words are the main thing, so the screen switches to a text mode a step
+ * finer than the scene's (a 24px cell at 1080p, about 37 characters a line) and gives the conversation nearly two
+ * thirds of the width and the whole height. Every glyph sits on that one grid:
  *
- *  - VIEW (left): the place, dithered to the screen's palette, with the person you are talking to standing in it
- *    (a cut-out, dithered on the same register and edged in black), their nameplate docked at its foot; an opaque
- *    picture is shown in its own framed window instead. What you know opens over it as a window, like the scene's
- *    journal. A moment swaps the whole view to its picture, dithered too.
- *  - the status window (right, top): the stake and its track in block cells, patience as blocks, the journal key.
- *  - the terminal (right, the rest): the talk scrolling, your lines echoed after the prompt, rolls as one line, and
- *    under a divider the prompt itself and the numbered deal and walk-away commands.
+ *  - the terminal (right): the talk scrolling, your lines echoed after the prompt, rolls as one line, and under a
+ *    divider the prompt itself (a field that says what it is for, and a Say key) and the deal and walk-away
+ *    commands with their F-keys. What you know opens over the talk as a window, the prompt still in reach.
+ *  - VIEW (left, top): the place, dithered to the screen's palette, with the person you are talking to standing in
+ *    it (a cut-out, dithered on the same register and edged in black), their nameplate docked at its foot; an
+ *    opaque picture is shown in its own framed window instead. A moment swaps the view to its picture, dithered too.
+ *  - the stake window (left, under the view): what is at stake in words, its track in block cells, patience as
+ *    blocks, the journal key, and whether the dice are shown.
  *
- * Structure and art are built in `decorate`; the stylesheet only places and inverts. This file is the theme's
+ * Speech is set in the bright half of the palette (cyan for the one you talk to, as their name is; green for you),
+ * narration in white: the dark inks and blue do not read on black.
+ *
+ the stylesheet only places and inverts. This file is the theme's
  * own; see ./types.ts for what a Parley theme may provide.
  *
  * On a phone (.pl-phone) there is no monitor and no character-grid layout: it is a DOS screen in one column, a thin
@@ -49,6 +54,9 @@ const COMMAND = `
 .th-command .cmdp-crt.scan { background-image: var(--scan), url("${grilleTile()}"); background-size: 100% var(--v), 3px 1px; }
 .th-command .cmdp-crt.vig { background: var(--vig) 0 0 / 100% 100% no-repeat; }
 
+/* A phone's own parts (the sheet behind its Know key, its more-below mark): not on a monitor. */
+.th-command .cmdp-sheet, .th-command .cmdp-more { display: none; }
+
 /* VIEW: the place and the person. */
 .th-command .scene { position: absolute; background: #000; overflow: hidden; z-index: 2; }
 .th-command .plate, .th-command .vignette, .th-command .figure, .th-command .plaque { display: none; }
@@ -59,12 +67,13 @@ const COMMAND = `
 .th-command .cmdp-win { position: absolute; }
 .th-command .cmdp-win > .fr { position: absolute; inset: 0; width: 100%; height: 100%; }
 .th-command .cmdp-plate { position: absolute; z-index: 3; }
-.th-command .cmdp-plate .role { position: absolute; color: ${GREY}; white-space: normal; overflow: hidden; }
-.th-command .cmdp-ld { position: absolute; color: ${DARK}; animation: cmdpBlink .8s steps(1) infinite; }
+.th-command .cmdp-plate .who { position: absolute; color: ${YEL}; white-space: pre; overflow: hidden; }
+.th-command .cmdp-plate .role { position: absolute; color: ${GREY}; white-space: pre; overflow: hidden; }
+.th-command .cmdp-ld { position: absolute; color: ${GREY}; background: #000; animation: cmdpBlink .8s steps(1) infinite; }
 @keyframes cmdpBob { 50% { transform: translateY(calc(var(--v) * -1)); } }
 @keyframes cmdpJolt { 25% { transform: translateX(calc(var(--v) * -2)); } 50% { transform: translateX(calc(var(--v) * 2)); } 75% { transform: translateX(calc(var(--v) * -1)); } }
 @keyframes cmdpBlink { 50% { opacity: 0; } }
-.th-command .tell { position: absolute; z-index: 6; left: 50%; top: var(--c); translate: -50% 0; max-width: calc(100% - var(--c) * 2); text-align: left;
+.th-command .tell { position: absolute; z-index: 6; left: var(--c); right: var(--c); top: var(--c); width: fit-content; max-width: calc(100% - var(--c) * 2); margin: 0 auto; translate: none; text-align: left;
   font: ${F}; font-style: normal; color: #000; background: ${YEL}; padding: 0 var(--c); text-shadow: none; }
 .th-command .tell.show { animation: cmdpTell 6s steps(1) forwards; }
 @keyframes cmdpTell { 0% { opacity: 0; } 3%, 82% { opacity: 1; } 100% { opacity: 0; } }
@@ -82,15 +91,16 @@ const COMMAND = `
 @keyframes cmdpFlash { 0% { opacity: .9; } 50% { opacity: .9; background: ${MAG}; } 100% { opacity: 0; } }
 .th-command .moment .cap { left: var(--c); right: var(--c); bottom: var(--c); font: ${F}; font-style: normal; color: ${YEL}; background: #000; padding: var(--c); text-shadow: none; outline: var(--v) solid #fff; outline-offset: calc(var(--v) * -3); }
 .th-command .moment.show .cap { animation: none; }
-/* What you know: a window over the view, like the scene's journal. */
+/* What you know: a window over the talk (it is a page of sentences: the view's column is too narrow for them), the prompt left in reach under it. */
 .th-command .journal { position: absolute; z-index: 8; margin: 0; padding: calc(var(--c) * 2) calc(var(--c) * 2) var(--c); list-style: none; background: #000; border: 0; border-radius: 0;
-  font: ${F}; color: #fff; overflow: hidden; }
+  font: ${F}; color: #fff; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; max-height: none; }
+.th-command .journal::-webkit-scrollbar { display: none; }
 .th-command .journal.open { display: block; }
 .th-command .journal::before { content: ""; position: absolute; inset: 0; background: var(--jframe) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
-.th-command .journal::after { content: "What you know"; position: absolute; top: 0; left: 50%; translate: -50% 0; color: ${YEL}; background: #000; padding: 0 var(--c); }
+.th-command .journal::after { content: "What you know - J closes"; position: absolute; top: 0; left: 0; right: 0; width: fit-content; margin: 0 auto; color: ${YEL}; background: #000; padding: 0 var(--c); }
 .th-command .journal li { margin: 0 0 var(--c); padding-left: calc(var(--c) * 2); position: relative; }
 .th-command .journal li::before { content: ""; position: absolute; left: 0; top: 0; width: var(--c); height: var(--c); background: url("${glyph("star", YEL)}") 0 0 / 100% 100%; image-rendering: pixelated; }
-.th-command .journal li.used { color: ${DARK}; }
+.th-command .journal li.used { color: ${GREY}; }
 .th-command .journal li.used::before { background-image: url("${glyph("star", DARK)}"); }
 .th-command .journal li.empty { color: ${GREY}; font-style: normal; margin-left: 0; padding-left: 0; }
 .th-command .journal li.empty::before { display: none; }
@@ -100,29 +110,36 @@ const COMMAND = `
 .th-command .head, .th-command .log, .th-command .foot { position: absolute; z-index: 2; background: none; border: 0; box-shadow: none; margin: 0; padding: 0; }
 .th-command .head { overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-auto-rows: var(--c); column-gap: var(--c); align-items: start; }
 .th-command .title-row, .th-command .meter { display: contents; }
-.th-command .kind { grid-row: 1 / span 2; grid-column: 1 / -1; height: calc(var(--c) * 2); font: ${F}; text-transform: none; color: ${GREY}; white-space: normal; overflow: hidden; text-overflow: clip;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.pl.th-command .head .kind { grid-row: 1 / span 3; grid-column: 1 / -1; display: block; height: calc(var(--c) * 3); font: ${F}; text-transform: none; color: #fff; white-space: normal; overflow: hidden; text-overflow: clip;
+  -webkit-line-clamp: unset; line-clamp: unset; }
 .th-command .kind::first-letter { text-transform: uppercase; }
-.th-command .meter-label { grid-row: 3; grid-column: 1; font: ${F}; text-transform: capitalize; color: ${CYAN}; }
+.th-command .meter-label { grid-row: 4; grid-column: 1; font: ${F}; text-transform: capitalize; color: ${CYAN}; }
 .th-command .meter-label::after { content: ":"; }
-.th-command .meter-value { grid-row: 3; grid-column: 2; justify-self: end; font: ${F}; color: ${YEL}; gap: var(--c); }
+.th-command .meter-value { grid-row: 4; grid-column: 2; justify-self: end; font: ${F}; color: ${YEL}; gap: var(--c); }
 .th-command .delta { font: ${F}; }
 .th-command .delta.show { animation: cmdpTell 2.4s steps(1) forwards; }
 .th-command .delta.down { color: ${GREEN}; } .th-command .delta.up { color: ${RED}; }
-.th-command .bar { grid-row: 4; grid-column: 1 / -1; height: var(--c); border-radius: 0; border: 0; padding: 0; background: url("${glyph("half", DARK)}") 0 0 / var(--c) var(--c) repeat-x; image-rendering: pixelated; }
+.th-command .bar { grid-row: 5; grid-column: 1 / -1; height: var(--c); border-radius: 0; border: 0; padding: 0; background: url("${glyph("half", DARK)}") 0 0 / var(--c) var(--c) repeat-x; image-rendering: pixelated; }
 .th-command .bar .fill { height: 100%; background: url("${glyph("full", YEL)}") 0 0 / var(--c) var(--c) repeat-x; transition: width .6s steps(8); }
-.th-command .patience { grid-row: 5; grid-column: 1 / -1; display: flex; gap: 0; align-items: flex-start; }
+.th-command .patience { grid-row: 6; grid-column: 1 / -1; display: flex; gap: 0; align-items: flex-start; }
 .th-command .pl-label { font: ${F}; text-transform: none; color: ${CYAN}; margin: 0 var(--c) 0 0; }
 .th-command .pl-label::after { content: ":"; }
 .th-command .pip { width: var(--c); height: var(--c); border: 0; border-radius: 0; background: url("${glyph("half", DARK)}") 0 0 / 100% 100%; image-rendering: pixelated; }
 .th-command .pip.on { background: url("${glyph("full", MAG)}") 0 0 / 100% 100%; }
-.th-command .journal-btn { grid-row: 6; grid-column: 1; margin: 0; justify-self: start; max-width: 100%; overflow: hidden; text-align: left; font: ${F}; color: ${CYAN}; text-transform: none; padding: 0; white-space: nowrap; }
-.th-command .journal-btn::before { content: "J "; color: ${YEL}; }
+/* The journal key: its letter in yellow (as every key on these screens is), then what it opens. */
+.th-command .journal-btn { grid-row: 7; grid-column: 1 / -1; margin: 0; justify-self: start; max-width: 100%; overflow: hidden; text-align: left; font: ${F}; color: #fff; text-transform: none; padding: 0; white-space: nowrap; }
+.th-command .journal-btn::before { content: "J"; color: ${YEL}; margin-right: var(--c); }
+.th-command.cmdp-narrow .journal-btn { font-size: 0; }
+.th-command.cmdp-narrow .journal-btn::before { font: ${F}; }
+.th-command.cmdp-narrow .journal-btn::after { content: "Know (" attr(data-n) ")"; font: ${F}; }
 .th-command .journal-btn:hover, .th-command .journal-btn:focus-visible { background: #fff; color: ${BLUE}; outline: none; text-shadow: none; }
-.th-command .mode { grid-row: 6; grid-column: 2; justify-self: end; border: 0; border-radius: 0; gap: var(--c); overflow: visible; }
-.th-command .mode button { font-size: 0; color: ${DARK}; padding: 0; width: calc(var(--c) * 3); height: var(--c); overflow: hidden; white-space: nowrap; }
-.th-command .mode button::after { font: ${F}; content: "IMM"; }
-.th-command .mode button + button::after { content: "TRN"; }
+.th-command .journal-btn:hover::before, .th-command .journal-btn:focus-visible::before { color: ${BLUE}; }
+/* Whether the roll's arithmetic is shown: said in words ("Dice: Hide Show"), the one in use in inverse. */
+.th-command .mode { grid-row: 8; grid-column: 1 / -1; justify-self: start; border: 0; border-radius: 0; gap: var(--c); overflow: visible; }
+.th-command .mode::before { content: "Dice:"; font: ${F}; color: ${CYAN}; }
+.th-command .mode button { font-size: 0; color: ${GREY}; padding: 0; width: calc(var(--c) * 4); height: var(--c); overflow: hidden; white-space: nowrap; }
+.th-command .mode button::after { font: ${F}; content: "Hide"; }
+.th-command .mode button + button::after { content: "Show"; }
 /* The face fills its cell top to bottom: the inverse cell grows a virtual pixel all round so the letters keep a cyan edge. */
 .th-command .mode button.on { background: ${CYAN}; color: #000; text-shadow: none; box-shadow: 0 0 0 var(--v) ${CYAN}; position: relative; z-index: 1; }
 .th-command .mode button:hover, .th-command .mode button:focus-visible { background: #fff; color: ${BLUE}; outline: none; }
@@ -131,7 +148,7 @@ const COMMAND = `
 .th-command .log { overflow-x: hidden; overflow-y: auto; display: block; scrollbar-width: none; scroll-behavior: auto; padding-bottom: 0; }
 .th-command .log::-webkit-scrollbar { display: none; }
 .th-command .log > * { margin: 0 0 var(--c); }
-.th-command .setting { font: ${F}; font-style: normal; color: ${GREY}; }
+.th-command .setting { font: ${F}; font-style: normal; color: #fff; }
 .th-command .speaker { font: ${F}; text-transform: none; color: ${CYAN}; margin: 0; }
 .th-command .npc .speaker { float: left; margin-right: var(--c); }
 .th-command .npc .speaker::after { content: ":"; }
@@ -139,7 +156,7 @@ const COMMAND = `
 .th-command .prose p { margin: 0; }
 .th-command .prose em { font-style: normal; color: ${GREY}; }
 .pl.th-command { ${VOICES} }
-.th-command .npc .prose.waiting .dots { color: ${DARK}; }
+.th-command .npc .prose.waiting .dots { color: ${GREY}; }
 .th-command .you { align-self: stretch; max-width: none; border: 0; border-radius: 0; padding: 0; background: none; }
 .th-command .you .speaker { display: none; }
 .th-command .you .prose { color: ${GREEN}; }
@@ -147,11 +164,11 @@ const COMMAND = `
 .th-command .read { border: 0; padding: 0; gap: 0; display: grid; }
 .th-command .tray { gap: var(--c); min-height: var(--c); flex-wrap: nowrap; }
 .th-command .die { display: flex; width: auto; height: var(--c); padding: 0; clip-path: none; background: none; color: #fff; font: ${F}; transition: none; transform: none; }
-.th-command .die::before { content: "["; color: ${DARK}; } .th-command .die::after { content: "]"; color: ${DARK}; }
+.th-command .die::before { content: "["; color: ${GREY}; } .th-command .die::after { content: "]"; color: ${GREY}; }
 .th-command .die.rolling { animation: cmdpRoll .14s steps(1) infinite; }
 @keyframes cmdpRoll { 50% { color: ${MAG}; } }
 .th-command .die.kept { transform: none; box-shadow: none; background: none; color: ${YEL}; text-shadow: inherit; }
-.th-command .die.dropped { opacity: 1; color: ${DARK}; }
+.th-command .die.dropped { opacity: 1; color: ${GREY}; text-decoration: line-through; }
 .th-command .die.nat20 { color: #fff; background: ${YEL}; color: #000; } .th-command .die.nat1 { color: #000; background: ${RED}; }
 .th-command .result { font: ${F}; text-transform: uppercase; white-space: nowrap; transition: opacity .2s steps(2); transform: none; }
 .th-command .r-crit_success { color: ${YEL}; } .th-command .r-success { color: ${GREEN}; } .th-command .r-partial { color: ${CYAN}; } .th-command .r-fail { color: ${GREY}; } .th-command .r-crit_fail { color: ${RED}; }
@@ -163,30 +180,34 @@ const COMMAND = `
 .th-command .why summary { font: ${F}; color: ${CYAN}; }
 .th-command .why pre { font: ${F}; color: ${GREY}; }
 
-.th-command .foot { display: grid; grid-auto-rows: min-content; gap: 0; align-content: start; }
+.th-command .foot { display: grid; grid-auto-rows: min-content; gap: 0; align-content: start; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
+.th-command .foot::-webkit-scrollbar { display: none; }
 .th-command .status { height: var(--c); min-height: 0; font: ${F}; font-style: normal; color: ${YEL}; white-space: nowrap; overflow: hidden; }
 .th-command .status:not(:empty)::after { content: "_"; animation: cmdpBlink 1s steps(1) infinite; }
 .th-command .composer { grid-template-columns: calc(var(--c) * 2) 1fr auto; gap: 0; align-items: start; }
 .th-command .composer::before { content: ">"; color: ${GREEN}; font: ${F}; }
 .th-command .composer textarea { grid-column: 2; border: 0; border-radius: 0; background: #000; padding: 0; margin: 0; height: calc(var(--c) * 2); font: ${F}; color: ${GREEN};
   caret-color: ${GREEN}; overflow: hidden; }
-.th-command .composer textarea::placeholder { color: transparent; }
-.th-command .composer textarea:placeholder-shown:not(:focus) { background: url("${glyph("full", GREEN)}") 0 0 / var(--c) var(--c) no-repeat; animation: cmdpBlink 1s steps(1) infinite; }
+/* The field says what it is for (it was a lone blinking block); the key beside it says Say. */
+.th-command .composer textarea::placeholder { color: ${GREY}; opacity: 1; }
 .th-command .composer textarea:focus { outline: none; }
-.th-command .say { grid-column: 3; height: var(--c); font-size: 0; font-weight: normal; background: none; color: ${CYAN}; padding: 0 0 0 var(--c); border-radius: 0; text-transform: none; text-shadow: none; box-shadow: none; }
-.th-command .say::after { content: "[RET]"; font: ${F}; }
+.th-command .say { grid-column: 3; height: var(--c); font-size: 0; font-weight: normal; background: ${CYAN}; color: #000; padding: 0 var(--c); margin-left: var(--c); border-radius: 0; text-transform: none; text-shadow: none; box-shadow: none; }
+.th-command .say::after { content: "Say"; font: ${F}; }
 .th-command .say:hover:not(:disabled), .th-command .say:focus-visible { background: #fff; color: ${BLUE}; outline: none; }
-.th-command .say:disabled, .th-command .deal:disabled { opacity: 1; background: none; color: ${DARK}; }
+.th-command .say:disabled, .th-command .deal:disabled { opacity: 1; background: none; color: ${GREY}; }
 .th-command .actions { display: grid; gap: 0; justify-items: start; }
-.th-command .actions button, .th-command .leave { font: ${F}; background: none; color: ${YEL}; border: 0; border-radius: 0; padding: 0; box-shadow: none; text-transform: none; text-align: left; white-space: normal; max-width: 100%; }
-.th-command .actions button::before { content: attr(data-k) " "; color: #fff; }
+.th-command .actions button, .th-command .leave { font: ${F}; background: none; color: #fff; border: 0; border-radius: 0; padding: 0; box-shadow: none; text-transform: none; text-align: left; white-space: normal; max-width: 100%; }
+.th-command .actions button::before { content: attr(data-k); color: ${YEL}; margin-right: var(--c); }
+.th-command .actions button:disabled, .th-command .actions button:disabled::before { color: ${GREY}; }
+.th-command .actions button:hover:not(:disabled)::before, .th-command .actions button:focus-visible::before { color: ${BLUE}; }
+.th-command .leave { color: #000; background: ${CYAN}; padding: 0 var(--c); text-shadow: none; }
 .th-command .actions .walk { color: ${RED}; }
-.th-command .actions button:hover, .th-command .actions button:focus-visible, .th-command .leave:hover { background: #fff; color: ${BLUE}; outline: none; text-shadow: none; }
+.th-command .actions button:hover:not(:disabled), .th-command .actions button:focus-visible, .th-command .leave:hover { background: #fff; color: ${BLUE}; outline: none; text-shadow: none; }
 .th-command .hint { display: none; }
 .th-command .end { padding: 0; justify-items: start; text-align: left; }
 .th-command .end.show { display: grid; gap: 0; }
 .th-command .end-title { font: ${F}; color: #000; background: ${YEL}; padding: 0 var(--c); text-transform: uppercase; }
-.th-command .end-sub, .th-command .reveals { font: ${F}; color: ${CYAN}; }
+.th-command .end-sub, .th-command .reveals { font: ${F}; color: #fff; margin: 0; }
 .th-command :focus-visible { outline: var(--v) dashed ${YEL}; outline-offset: 0; }
 @media (max-width: 760px) { .th-command .composer textarea { font-size: max(16px, var(--c)); } }
 @media (prefers-reduced-motion: reduce) { .th-command *, .th-command *::before, .th-command *::after { animation: none !important; transition: none !important; } .th-command .moment.show::after { display: none; } }
@@ -216,6 +237,7 @@ ${PL} .pip { background-color: #000; }
 ${PL} .bar { grid-row: 3; grid-column: 1 / -1; align-self: end; height: 4px; margin: 0 -8px; background: #000; }
 ${PL} .bar .fill { background: ${YEL}; }
 ${PL} .journal-btn { grid-row: 1 / span 2; grid-column: 3; align-self: center; height: 36px; min-width: 44px; padding: 0 6px; font-size: 0; background: ${CYAN}; color: #000; text-align: center; touch-action: manipulation; }
+${PL} .mode::before { content: none; }
 ${PL} .journal-btn::before { display: none; }
 ${PL} .journal-btn::after { content: "Know " attr(data-n); font: ${F}; line-height: 36px; }
 
@@ -247,7 +269,7 @@ ${PL} .composer::before { content: none; }
 ${PL} .composer textarea { grid-column: 1; height: 44px; line-height: 18px; padding: 4px 6px; box-sizing: border-box; overflow-y: auto; background: #000; }
 ${PL} .composer textarea::placeholder { color: ${GREY}; }
 ${PL} .composer textarea:placeholder-shown:not(:focus) { background: #000; animation: none; }
-${PL} .say { grid-column: 2; height: 44px; min-width: 64px; padding: 0 8px; text-align: center; background: ${CYAN}; color: #000; touch-action: manipulation; }
+${PL} .say { grid-column: 2; height: 44px; min-width: 64px; padding: 0 8px; margin-left: 0; text-align: center; background: ${CYAN}; color: #000; touch-action: manipulation; }
 ${PL} .say::after { content: "Say"; line-height: 44px; }
 ${PL} .say:disabled { background: #000; color: ${GREY}; }
 
@@ -268,6 +290,7 @@ ${PL} .sh-who { flex: none; padding: 8px 10px 0; color: ${GREY}; }
 ${PL} .sh-who b { display: block; font-weight: normal; color: ${YEL}; }
 ${PL} .journal { position: static; display: block; flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 12px 10px; background: none; }
 ${PL} .journal::before, ${PL} .journal::after { content: none; }
+${PL} .journal { max-height: none; }
 ${PL} .journal li { margin: 0 0 12px; padding-left: calc(var(--c) * 1.5); }
 ${PL} .journal li::before { width: var(--c); height: var(--c); top: 2px; }
 ${PL} .journal li.used { color: ${GREY}; }
@@ -310,27 +333,38 @@ ${PL}.cmdp-land .end { flex: 1 0 100%; }
 
 type WinId = "view" | "stat" | "term";
 type Wins = Record<WinId, Rect>;
-/** The text grid inside the glass: the monitor's own cell divided down to the 72-column mode. */
+/** The text grid inside the glass: the monitor's cell, or three quarters of it when that is still a readable size. */
 interface Text80 {
   t: number;
   cols: number;
   rows: number;
 }
 
+/**
+ * Prose wants more characters to a line than the scene's 46 columns give a half-screen window, and no fewer pixels
+ * than read at arm's length: a 24px cell where the monitor's is 28 to 36 (1080p, the ultrawide), the monitor's own
+ * cell where that is 24 or less, whole multiples of 8 so the 8x8 face stays crisp.
+ */
 function textGrid(geo: Geo): Text80 {
-  const t = geo.tall ? Math.max(8, Math.min(16, Math.floor(geo.W / 32))) : Math.max(8, Math.round((geo.c * 2) / 3 / 8) * 8);
+  const t = geo.tall || geo.c <= 24 ? geo.c : Math.max(24, Math.round((geo.c * 0.75) / 8) * 8);
   return { t, cols: Math.floor((geo.cols * geo.c) / t), rows: Math.floor((geo.rows * geo.c) / t) };
 }
 
-/** The scene's own split: the view on the left, status and terminal on the right (a column on a phone). */
+/** The stake window's rows: the stake in words (3), its number, its track, patience, the journal key, the dice switch. */
+const STAT_ROWS = 8;
+
+/**
+ * In a talk the words are the main thing: the terminal takes the right two thirds and the whole height; the person
+ * stands in a portrait view at the left, over the stake (a column on a tall window).
+ */
 function windowsFor(g: Text80, tall: boolean): Wins {
+  const sh = STAT_ROWS + 2;
   if (!tall) {
-    const vw = Math.round(g.cols * 0.56);
-    const rw = g.cols - vw;
-    return { view: { x: 0, y: 0, w: vw, h: g.rows }, stat: { x: vw, y: 0, w: rw, h: 8 }, term: { x: vw, y: 8, w: rw, h: g.rows - 8 } };
+    const vw = Math.max(18, Math.min(24, Math.round(g.cols * 0.38)));
+    return { view: { x: 0, y: 0, w: vw, h: g.rows - sh }, stat: { x: 0, y: g.rows - sh, w: vw, h: sh }, term: { x: vw, y: 0, w: g.cols - vw, h: g.rows } };
   }
-  const viewH = Math.max(16, Math.round(g.rows * 0.4));
-  return { view: { x: 0, y: 0, w: g.cols, h: viewH }, stat: { x: 0, y: viewH, w: g.cols, h: 8 }, term: { x: 0, y: viewH + 8, w: g.cols, h: Math.max(12, g.rows - viewH - 8) } };
+  const viewH = Math.max(12, Math.round(g.rows * 0.32));
+  return { view: { x: 0, y: 0, w: g.cols, h: viewH }, stat: { x: 0, y: viewH, w: g.cols, h: sh }, term: { x: 0, y: viewH + sh, w: g.cols, h: Math.max(12, g.rows - viewH - sh) } };
 }
 const FOOT_ROWS = 5;
 
@@ -363,28 +397,6 @@ function paletteId(): PaletteId {
   return "ega";
 }
 const lookOf = (pal: PaletteId) => (pal === "mono" ? { contrast: 1.4, saturation: 1, lift: 4 } : pal === "cga" ? { contrast: 1.3, saturation: 1.6, lift: 6 } : { contrast: 1.35, saturation: 1.2, lift: 4, spread: 64 });
-
-/** The tube's curve as a displacement map (the scene's own, ../../scene/themes/command.ts barrel). */
-function barrelMap(w: number, h: number): string {
-  const c = canvas(w, h);
-  const g = c.getContext("2d")!;
-  const im = g.createImageData(w, h);
-  const cx = w / 2, cy = h / 2, k = 0.008;
-  for (let y = 0; y < h; y++) {
-    const v = (y + 0.5 - cy) / cy;
-    for (let x = 0; x < w; x++) {
-      const u = (x + 0.5 - cx) / cx;
-      const r2 = u * u + v * v;
-      const i = (y * w + x) * 4;
-      im.data[i] = 128 + Math.round(-(x + 0.5 - cx) * k * r2) * 8;
-      im.data[i + 1] = 128 + Math.round(-(y + 0.5 - cy) * k * r2) * 8;
-      im.data[i + 2] = 128;
-      im.data[i + 3] = 255;
-    }
-  }
-  g.putImageData(im, 0, 0);
-  return c.toDataURL();
-}
 
 /** The glass edge's falloff (the scene's vignette). */
 function vignette(w: number, h: number): string {
@@ -455,20 +467,23 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   // Where the words go is a fact the player should keep: on the screen it was a line of small print, here it is
   // on the printout taped by the drive (and the hint stays in the DOM for screen readers).
   const local = /no chat/i.test(hint?.textContent ?? "");
+  // The bezel carries the keys that work here (the scene's Classes and Disks keys do nothing in a talk).
+  const act = (i: number) => () => {
+    const b = root.querySelectorAll<HTMLButtonElement>(".actions button")[i];
+    if (b && !b.disabled) b.click();
+  };
   const shell = mountShell(root, {
     drive: "Command",
-    card: [["TYPE", "speak"], ["ENTER", "say"], ["J", "what you know"], ["F2 F3", "deal / walk"], ["CHAT", local ? "not posted" : "talk is posted"]],
-    keys: [["J", "JOURNAL"], ["C", "CLASSES"], ["T", "DISKS"], ["M", "EGA"]],
+    card: [["TYPE", "speak"], ["ENTER", "say"], ["J", "you know"], ["F2", "deal"], ["F3", "walk away"], ["CHAT", local ? "not posted" : "posted"]],
+    keys: [["J", "KNOW", () => journal.classList.toggle("open")], ["F2", "DEAL", act(0)], ["F3", "WALK", act(1)]],
   });
   hint?.setAttribute("style", "position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)");
   const screen = document.createElement("div");
   screen.className = "cmdp-screen";
-  screen.innerHTML = `<svg class="defs" aria-hidden="true" style="position:absolute;width:0;height:0"><filter id="cmdpBarrel" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feImage class="bmap" x="0" y="0" preserveAspectRatio="none" result="m"/><feDisplacementMap in="SourceGraphic" in2="m" scale="31.875" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
-    <div class="cmdp-scr"><div class="cmdp-grid"></div></div><div class="cmdp-crt scan"></div><div class="cmdp-crt vig"></div>`;
+  // No filter over the words: the tube's curve is the housing's bowed opening and the falloff at the glass edge.
+  screen.innerHTML = `<div class="cmdp-scr"><div class="cmdp-grid"></div></div><div class="cmdp-crt scan"></div><div class="cmdp-crt vig"></div>`;
   shell.back.after(screen);
-  const scr = screen.querySelector<HTMLElement>(".cmdp-scr")!;
   const grid = screen.querySelector<HTMLElement>(".cmdp-grid")!;
-  const bmap = screen.querySelector("feImage")!;
   const wins: Record<WinId, HTMLDivElement> = { view: document.createElement("div"), stat: document.createElement("div"), term: document.createElement("div") };
   for (const w of Object.values(wins)) {
     w.className = "cmdp-w";
@@ -547,9 +562,10 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   const ARTM = 4;
   /** What the place canvas holds (or is being made): its art, palette and size. */
   let placeJob = "";
-  /** The nameplate's rows at the view's foot (name in its rule, the role under it). */
+  /** The nameplate's rows at the view's foot: the name whole (a long one on two rows), the role under it. */
+  let nameLines: string[] = [];
   let roleLines: string[] = [];
-  const plateRows = () => roleLines.length + 2;
+  const plateRows = () => nameLines.length + roleLines.length + 2;
   function drawPlace(): void {
     const r = w.view;
     const phone = isPhone();
@@ -716,6 +732,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   function buildPlate(): void {
     if (isPhone()) {
       roleLines = [];
+      nameLines = [];
       Object.assign(plate.style, { left: "", top: "", width: "", height: "" });
       plate.textContent = npc.name;
       return;
@@ -723,12 +740,15 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     const r = w.view;
     const c = T();
     const cw = r.w - 2;
-    roleLines = wrapText(npc.role, cw - 2).slice(0, 3);
+    nameLines = wrapText(npc.name, cw - 2).slice(0, 2);
+    // The person keeps at least three fifths of the view: on a short screen the role goes (whole, never cut mid-phrase).
+    const role = wrapText(npc.role, cw - 2);
+    const room = Math.floor((r.h - 2) * 0.4) - 2 - nameLines.length;
+    roleLines = role.length <= Math.min(3, room) ? role : [];
     const ph = plateRows();
-    const label = fit(npc.name, cw - 4);
     put(plate, { x: 0, y: (r.h - 2 - ph) * c, w: cw * c, h: ph * c });
-    plate.innerHTML = `${frameSvg(cw, ph, { top: label.length, mat: "#000" })}<div class="notch" style="left:${Math.floor((cw - label.length) / 2) * c}px;top:0;width:${label.length * c}px;color:${YEL}">${esc(label)}</div>
-      <div class="role" style="left:${c}px;right:${c}px;top:${c}px;height:${roleLines.length * c}px">${roleLines.map(esc).join("<br>")}</div>`;
+    plate.innerHTML = `${frameSvg(cw, ph, { mat: "#000" })}<div class="who" style="left:${c}px;right:${c}px;top:${c}px;height:${nameLines.length * c}px">${nameLines.map(esc).join("<br>")}</div>
+      <div class="role" style="left:${c}px;right:${c}px;top:${(1 + nameLines.length) * c}px;height:${roleLines.length * c}px">${roleLines.map(esc).join("<br>")}</div>`;
     plate.querySelector("svg")!.setAttribute("style", "position:absolute;inset:0;width:100%;height:100%");
     put(loading, { x: c, y: c, w: 10 * c, h: c });
   }
@@ -736,12 +756,12 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
   function titles(): void {
     if (isPhone()) return;
     frame(wins.view, w.view, ctx.scenario.name, "", CYAN);
-    frame(wins.stat, w.stat, `${contest.kind.charAt(0).toUpperCase()}${contest.kind.slice(1)} - Exchange ${exchanges + 1}`);
-    frame(wins.term, w.term, "Parley");
+    frame(wins.stat, w.stat, "Stake");
+    frame(wins.term, w.term, `${contest.kind.charAt(0).toUpperCase()}${contest.kind.slice(1)} - Exchange ${exchanges + 1}`);
     // The divider between the talk and the prompt, labelled like the scene's command rule.
     const t = w.term;
     const c = T();
-    const row = t.h - 2 - FOOT_ROWS;
+    const row = t.h - 2 - footRows;
     const label = "Command";
     const svgW = t.w * 8;
     const v = 1;
@@ -750,6 +770,27 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     const b0 = (tx + label.length + 1) * 8;
     const rule = `<svg viewBox="0 0 ${svgW} 8" preserveAspectRatio="none" shape-rendering="crispEdges" style="position:absolute;left:0;top:${row * c}px;width:${t.w * c}px;height:${c}px;display:block"><rect x="3" y="3" width="${a0 - 3}" height="${v}" fill="#fff"/><rect x="${b0}" y="3" width="${svgW - 3 - b0}" height="${v}" fill="#fff"/></svg>`;
     wins.term.insertAdjacentHTML("beforeend", rule + `<div class="notch" style="left:${tx * c}px;top:${row * c}px;width:${label.length * c}px;color:${YEL}">${label}</div>`);
+  }
+
+  /**
+   * The foot is as tall as what it holds: the prompt and the two commands are five rows, the card that ends a talk
+   * (how it came out, what you learned, Leave) is more, and none of it may fall off the window's foot.
+   */
+  let footRows = FOOT_ROWS;
+  function measureFoot(): boolean {
+    const c = T();
+    const was = footRows;
+    const h = foot.style.height;
+    foot.style.height = "auto";
+    footRows = Math.max(FOOT_ROWS, Math.min(Math.ceil(foot.offsetHeight / c), Math.floor((w.term.h - 2) * 0.6)));
+    foot.style.height = h;
+    return footRows !== was;
+  }
+  function placeTerm(): void {
+    const c = T();
+    const t = inner(w.term);
+    put(log, { x: t.x, y: t.y, w: t.w, h: t.h - (footRows + 1) * c });
+    put(foot, { x: t.x, y: t.y + t.h - footRows * c, w: t.w, h: footRows * c });
   }
 
   /** Where the view's parts live: in the view on a wide screen, in the sheet (or over everything) on a phone. */
@@ -761,7 +802,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       titleRow.append(modeSwitch);
       scene.insertBefore(momentTabs, plate);
       scene.insertBefore(moment, plate);
-      scene.append(journal);
+      grid.append(journal);
       for (const el of [sheet, more]) el.classList.remove("open", "show");
     }
   }
@@ -788,7 +829,7 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     root.style.setProperty("--c", `${c}px`);
     root.style.setProperty("--v", `${c / 8}px`);
     root.classList.toggle("cmdp-land", root.classList.contains("pl-short") && W > H * 1.4 && H >= 280);
-    scr.style.filter = "";
+    root.classList.remove("cmdp-narrow");
     put(screen, { x: 0, y: 0, w: W, h: H });
     put(grid, { x: 0, y: 0, w: W, h: H });
     for (const el of [scene, head, log, foot, journal]) Object.assign(el.style, { left: "", top: "", width: "", height: "" });
@@ -822,33 +863,27 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     const v = c / 8;
     root.style.setProperty("--c", `${c}px`);
     root.style.setProperty("--v", `${v}px`);
-    screen.style.setProperty("--scan", `url("${scanTile(geo.c / 8)}")`);
+    // The scanlines fall on this mode's own pixel rows (not the scene's coarser ones, which would cut through the glyphs).
+    screen.style.setProperty("--scan", `url("${scanTile(v)}")`);
+    root.classList.toggle("cmdp-narrow", w.stat.w - 2 < 19);
+    syncKnow();
     put(screen, geo.glass);
     const gx = Math.floor((geo.glass.w - tg.cols * c) / 2);
     const gy = Math.floor((geo.glass.h - tg.rows * c) / 2);
     Object.assign(grid.style, { left: `${gx}px`, top: `${gy}px`, width: `${tg.cols * c}px`, height: `${tg.rows * c}px` });
-    titles();
     put(scene, inner(w.view));
     put(head, inner(w.stat));
     const t = inner(w.term);
-    put(log, { x: t.x, y: t.y, w: t.w, h: t.h - (FOOT_ROWS + 1) * c });
-    put(foot, { x: t.x, y: t.y + t.h - FOOT_ROWS * c, w: t.w, h: FOOT_ROWS * c });
-    const vr = w.view;
-    const jw = Math.min(vr.w - 4, 34);
-    const jh = Math.min(vr.h - 6, 22);
-    const jx = Math.floor((vr.w - 2 - jw) / 2);
-    put(journal, { x: jx * c, y: 2 * c, w: jw * c, h: jh * c });
-    journal.style.setProperty("--jframe", `url("data:image/svg+xml,${encodeURIComponent(frameSvg(jw, jh, { top: 15 }).replace("<svg ", "<svg xmlns='http://www.w3.org/2000/svg' "))}")`);
-    if (!geo.tall && geo.glass.w > 8) {
-      screen.style.setProperty("--vig", `url("${vignette(geo.glass.w, geo.glass.h)}")`);
-      bmap.setAttribute("width", String(geo.glass.w));
-      bmap.setAttribute("height", String(geo.glass.h));
-      bmap.setAttribute("href", barrelMap(geo.glass.w, geo.glass.h));
-      scr.style.filter = "url(#cmdpBarrel)";
-    } else {
-      screen.style.setProperty("--vig", "none");
-      scr.style.filter = "";
-    }
+    put(foot, { x: t.x, y: t.y, w: t.w, h: FOOT_ROWS * c });
+    measureFoot();
+    titles();
+    placeTerm();
+    const tr = w.term;
+    const jw = Math.min(tr.w - 2, 42);
+    const jh = Math.max(8, tr.h - footRows - 3);
+    put(journal, { x: (tr.x + Math.floor((tr.w - jw) / 2)) * c, y: (tr.y + 1) * c, w: jw * c, h: jh * c });
+    journal.style.setProperty("--jframe", `url("data:image/svg+xml,${encodeURIComponent(frameSvg(jw, jh, { top: 26 }).replace("<svg ", "<svg xmlns='http://www.w3.org/2000/svg' "))}")`);
+    screen.style.setProperty("--vig", !geo.tall && geo.glass.w > 8 ? `url("${vignette(geo.glass.w, geo.glass.h)}")` : "none");
     buildPlate();
     drawPlace();
     drawFigure(true);
@@ -984,7 +1019,11 @@ function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       shell.busy(!!root.querySelector(".status")?.textContent);
       if (n !== exchanges) {
         exchanges = n;
+        if (!isPhone()) titles();
+      }
+      if (!isPhone() && measureFoot()) {
         titles();
+        placeTerm();
       }
       const p = paletteId();
       if (p !== pal) {

@@ -15,6 +15,8 @@ export interface Hotspot {
   label: string;
   /** Cast id (talk), place id (exit), foe id (fight). */
   target?: string;
+  /** Doing this follows a lead of the thread: the person a missing piece is about, the place it is in, or the way there. */
+  lead?: boolean;
 }
 
 export interface WorldPlace {
@@ -300,7 +302,8 @@ export function hotspotsOf(world: World, placeId: string, sheet: Pick<CardSheet,
   if (p.delve && sheet.modules.delves) out.push({ id: "delve", kind: "delve", label: `Explore ${p.name}` });
   if (p.danger && sheet.modules.encounters) out.push({ id: "fight", kind: "fight", label: fightLabel(sheet.skin.fight) });
   if (p.shop) out.push({ id: "shop", kind: "shop", label: "Shop" });
-  if (p.rest) out.push({ id: "rest", kind: "rest", label: "Rest" });
+  // The day can always be ended in one step: in a bed where there is one, on the ground where there isn't.
+  out.push(p.rest ? { id: "rest", kind: "rest", label: "Rest" } : { id: "roughit", kind: "rest", label: "Sleep rough until morning" });
   out.push({ id: "wait", kind: "wait", label: "Wait a while" });
   return out;
 }

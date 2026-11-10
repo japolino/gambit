@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { beatsHtml, canWrite, isWriting, writeFormHtml } from "../src/frontend/scene/themes/write.js";
-import { typewriterHtml } from "../src/frontend/scene/themes/typewriter.js";
 import { fitScroll } from "../src/frontend/scene/themes/storybook/scroll-fit.js";
 import type { SceneView } from "../src/frontend/scene/themes/contract.js";
 
@@ -42,9 +41,12 @@ describe("the beats", () => {
     expect(html.match(/class="told"/g)).toHaveLength(2);
   });
 
-  test("what a line turned up comes before what's told", () => {
+  test("what a beat turned up is its last line, under the reply and the roll", () => {
     const html = beatsHtml([beat({ said: "I look", found: "A key", reply: "It's cold." })], NO_ONE);
-    expect(html.indexOf("found")).toBeLessThan(html.indexOf("told"));
+    expect(html.indexOf("told")).toBeLessThan(html.indexOf("found"));
+    const talk = beatsHtml([beat({ roll: "Talking with Mara: won over", found: "Mara lets it out", reply: "She sighs." })], NO_ONE);
+    expect(talk.indexOf('class="roll"')).toBeLessThan(talk.indexOf('class="found"'));
+    expect(talk.indexOf('class="told"')).toBeLessThan(talk.indexOf('class="roll"'));
   });
 });
 
@@ -58,27 +60,11 @@ describe("every theme offers it", () => {
     });
   }
 
-  test("table, on a typewriter", () => {
-    const src = readFileSync("src/frontend/scene/themes/table.ts", "utf8");
-    expect(src).toContain("wireTypewriter(ctx,");
-    expect(src).toContain("typewriterHtml(");
-    expect(src).toContain("TYPEWRITER_CSS");
-  });
 
-  test("diorama, on a typewriter in both its rooms", () => {
-    expect(readFileSync("src/frontend/scene/themes/diorama/shared.ts", "utf8")).toContain("typewriterHtml(");
-    expect(readFileSync("src/frontend/scene/themes/diorama.ts", "utf8")).toContain("TYPEWRITER_CSS");
-    for (const f of ["flat", "room3d"]) expect(readFileSync(`src/frontend/scene/themes/diorama/${f}.ts`, "utf8")).toContain("wireTypewriter(ctx,");
-  });
 
-  test("two typewriters don't share gradients: one hidden would take them with it", () => {
-    const ids = (html: string) => [...html.matchAll(/id="(tw\d+)e"/g)].map((m) => m[1]);
-    expect(ids(typewriterHtml("a"))).not.toEqual(ids(typewriterHtml("b")));
-  });
 
   test("the field finds its way past the host's keys, and \"/\" finds the field", () => {
     expect(writeFormHtml("x")).toContain("data-write");
-    expect(typewriterHtml("x")).toContain("data-write");
     const host = readFileSync("src/frontend/scene/view.ts", "utf8");
     // In a shadow root the window sees only the host as the target: this has to look past it.
     expect(host).toContain("e.composedPath()[0]");
@@ -102,8 +88,8 @@ describe("the words on the page", () => {
 describe("the name scroll", () => {
   test("a short name keeps its size, a long one shrinks to fit the curve", () => {
     expect(fitScroll("Mara")).toEqual({ label: "Mara", size: 15 });
-    expect(fitScroll("Sister Maren Voss").label).toBe("Sister Maren Voss");
-    expect(fitScroll("Sister Maren Voss").size).toBeLessThan(11);
+    expect(fitScroll("Brother Tam Wicks").label).toBe("Brother Tam Wicks");
+    expect(fitScroll("Brother Tam Wicks").size).toBeLessThan(11);
     // The widest capitals with their spacing take 1.14em; the curve is about 146 units long.
     expect(fitScroll("WWWWWWWWWWWW").size * 12 * 1.14).toBeLessThanOrEqual(146);
   });

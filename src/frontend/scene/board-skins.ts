@@ -8,7 +8,7 @@ import type { BoardSkin } from "./board.js";
 
 const FELL = '"Gambit Fell", "Gambit Garamond", Georgia, serif';
 
-export const BOARD_SKINS: Record<"storybook" | "diorama" | "lobby" | "table" | "onebit" | "command", BoardSkin> = {
+export const BOARD_SKINS: Record<"storybook" | "lobby" | "onebit" | "command", BoardSkin> = {
   // Gilt and parchment over a leather-bound page.
   storybook: {
     style: "print",
@@ -27,22 +27,6 @@ export const BOARD_SKINS: Record<"storybook" | "diorama" | "lobby" | "table" | "
     veil: "radial-gradient(ellipse at 50% 45%, rgba(40,20,8,.62), rgba(14,7,3,.94))",
   },
   // Paper craft on a lamplit tabletop.
-  diorama: {
-    style: "print",
-    font: `16px/1.4 ${FELL}`,
-    ink: "#fbe7a8",
-    panel: "rgba(43,23,10,.9)",
-    edge: "rgba(251,231,168,.38)",
-    accent: "#ffe24a",
-    back: "#5a3418",
-    backEdge: "#d4a24a",
-    face: "#e9dcbc",
-    faceEdge: "#2b170a",
-    rings: { safe: "#5fb6f0", chance: "#8fd16a", lore: "#d08cf0", goal: "#ffe24a" },
-    foe: "#b3261e",
-    token: "#fbe7a8",
-    veil: "radial-gradient(ellipse at 50% 50%, rgba(60,32,12,.55), rgba(18,9,3,.93))",
-  },
   // Brass and cream, a grand hotel's lobby at night.
   lobby: {
     style: "glass",
@@ -61,22 +45,6 @@ export const BOARD_SKINS: Record<"storybook" | "diorama" | "lobby" | "table" | "
     veil: "radial-gradient(ellipse at 50% 40%, rgba(34,24,11,.6), rgba(10,7,3,.94))",
   },
   // Cards dealt face down on green baize.
-  table: {
-    style: "card",
-    font: `16px/1.4 ${FELL}`,
-    ink: "#fff2e0",
-    panel: "rgba(16,30,20,.9)",
-    edge: "rgba(242,207,122,.4)",
-    accent: "#ffcf6a",
-    back: "#9c1419",
-    backEdge: "#f2cf7a",
-    face: "#fbf3e2",
-    faceEdge: "#2a1804",
-    rings: { safe: "#4aa8ff", chance: "#16b877", lore: "#b46cff", goal: "#ffcf6a" },
-    foe: "#2a1804",
-    token: "#fff2e0",
-    veil: "radial-gradient(ellipse at 50% 45%, rgba(20,82,50,.82), rgba(4,24,14,.96))",
-  },
   // Black and white only: dithered backs, rings told apart by their dashes.
   onebit: {
     style: "dither",

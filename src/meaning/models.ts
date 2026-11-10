@@ -73,6 +73,7 @@ const KIND_ROLE: Record<string, ModelRole> = {
   "board-scene": "narrator",
   "lore-scene": "narrator",
   "place-from-chat": "helper",
+  thread: "narrator",
   frame: "helper",
   typed: "helper",
 };

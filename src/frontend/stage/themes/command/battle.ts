@@ -3,7 +3,7 @@
  * stage's canvas becomes the tube: a royal blue chassis on a rigid 8x8 character grid, with black windows cut
  * into it, each rimmed by one white rule that breaks around a label between chevron caps (the scene's frames).
  *
- *   wide (48 x 30 cells)                         phone (one column)
+ *   wide (about 46 x 27 cells)                   phone (one column)
  *   +-- Foes ------------+-- Party -----+          VIEW, LOG, NEXT, PARTY, COMMAND
  *   | first-person view  | 4 fixed rows |
  *   | (the foes, the     +-- Next ------+
@@ -106,9 +106,9 @@ type WinId = "view" | "party" | "order" | "term";
 type Wins = Record<WinId, Rect>;
 type Plan = { wins: Wins; viewSplit: number; termSplit: number };
 
-/** Party rows: two character rows each, in a fixed block for four whether two or four are fighting (a VRAM region). */
+/** Party rows: two character rows each, in a block for three at least (a VRAM region); the rows it does not need go to the log. */
 const ROW = 2;
-const slotsFor = (n: number) => Math.max(4, Math.min(6, n));
+const slotsFor = (n: number) => Math.max(3, Math.min(6, n));
 /** Foe rows in the view's foot: two each (name, then HP) for one or two foes, one each beyond. */
 const foeRowsFor = (n: number) => (n <= 2 ? 2 * Math.max(1, n) : Math.min(6, n));
 const MENU_ROWS = 7;
@@ -121,8 +121,9 @@ function planFor(geo: Geo, n: number, foes: number): Plan {
   const party = 2 + ROW * slotsFor(n);
   const fr = foeRowsFor(foes);
   if (!geo.tall) {
-    const vw = 27;
-    const rw = geo.cols - vw;
+    // The right column has the width for a command's whole name and its cost ("4 Find the Opening 10F").
+    const rw = Math.min(24, Math.max(20, Math.ceil(geo.cols / 2) + 1));
+    const vw = geo.cols - rw;
     const view = { x: 0, y: 0, w: vw, h: geo.rows };
     const term = { x: vw, y: party + 3, w: rw, h: geo.rows - party - 3 };
     return {
@@ -633,8 +634,8 @@ export class CommandMenu extends ActionMenu {
       return;
     }
     const { w, h } = this.rect;
-    // The grid cell is the type size: derive it from the layout's ui (cell = 20 * ui) but keep it whole.
-    const c = (this.cell = Math.max(8, Math.round((this.ui * 20) / 8) * 8));
+    // The grid cell is the type size (the layout's own: a monitor's cell is not always a multiple of 8).
+    const c = (this.cell = Math.max(8, fightSize.cell));
     const rowsFit = Math.max(1, Math.floor(h / c));
     const a = adv(c);
     const cols = Math.max(4, Math.floor(w / a));
@@ -730,7 +731,7 @@ export class CommandMenu extends ActionMenu {
     });
     const flavor = cur?.flavor;
     if (flavor && skills.length + 2 <= rowsFit) {
-      wrap(flavor, cols).slice(0, rowsFit - skills.length - 1).forEach((t, i) => line(skills.length + 1 + i, t, DARK));
+      wrap(flavor, cols).slice(0, rowsFit - skills.length - 1).forEach((t, i) => line(skills.length + 1 + i, t, GREY));
     }
   }
 
@@ -1289,8 +1290,9 @@ function paletteId(): PaletteId {
   return "ega";
 }
 
-const CARD_KEYS: [string, string][] = [["1-0", "command"], ["ARROWS", "select"], ["ENTER", "confirm"], ["ESC", "back"], ["TAP", "target"]];
-const BEZEL_KEYS: [string, string][] = [["J", "JOURNAL"], ["C", "CLASSES"], ["T", "DISKS"], ["M", "EGA"]];
+const CARD_KEYS: [string, string][] = [["1-0", "command"], ["ARROWS", "select"], ["ENTER", "confirm"], ["ESC", "back"], ["CLICK", "target"]];
+/** A fight's keys, printed on the bezel as a legend (the scene's Journal, Classes and Disks keys do nothing in a fight, so they are not shown). */
+const BEZEL_KEYS: [string, string][] = [["1-0", "COMMAND"], ["ARROWS", "SELECT"], ["ENTER", "OK"], ["ESC", "BACK"]];
 
 const nameOf = (stage: BattleStage, id: string): string => stage.units.get(id)?.name ?? stage.state.combatants.find((c) => c.id === id)?.name ?? "?";
 const isParty = (stage: BattleStage, id: string): boolean => (stage.units.get(id)?.side ?? stage.state.combatants.find((c) => c.id === id)?.side) === "party";
@@ -1509,7 +1511,8 @@ export function decorateCommand(stage: BattleStage): StageDecor {
     log.phone = foePlates.phone = !!phone;
     log.layout(phone?.log ?? band(geo, plan.wins.term, 1, plan.termSplit - 1), geo.c);
     tube.filterArea = new Rectangle(geo.glass.x, geo.glass.y, geo.glass.w, geo.glass.h);
-    crt.set(geo.glass, geo.c / 8, !geo.tall);
+    // Flat: bowing the picture resamples every glyph between pixels (soft type). The tube's curve is the housing's opening.
+    crt.set(geo.glass, geo.c / 8, false);
     // A phone's screen has no shader: it softens the type, and it costs the battery.
     tube.filters = phone ? [] : [crt];
     if (menu instanceof CommandMenu) {

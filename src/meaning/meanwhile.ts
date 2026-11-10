@@ -74,6 +74,7 @@ export const quietDay = (b: Pick<NightBrief, "beats" | "deeds" | "chat" | "talks
 
 const DEED_WORDS: Partial<Record<DeedKind, (name: string) => string>> = {
   killed: (n) => `You beat ${n}`,
+  beat: (n) => `You beat ${n} in a fight, and left them standing`,
   spared: (n) => `You spared ${n}`,
   recruited: (n) => `${n} joined you`,
   bargained: (n) => `You bargained with ${n}`,
@@ -278,6 +279,7 @@ const ECHO: Partial<Record<DeedKind, (name: string) => string>> = {
   spared: (n) => `${n} is alive tonight, and knows who to thank for it.`,
   lost_to: (n) => `${n} tells the story of how they beat you, a little bigger each time.`,
   killed: (n) => `Somebody goes looking for ${n}, and finds what you left.`,
+  beat: (n) => `${n} sits up late with the bruises, and does not forget who gave them.`,
 };
 
 /** Without a model, the night still answers the day: what you did echoes first, and the written night fills the rest. */

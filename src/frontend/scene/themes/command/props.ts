@@ -211,6 +211,8 @@ export interface MonitorGeom {
  * bottom catching the most light) that picks up the screen's blue spill,
  * the tube's rounded corners, a cooling grille, the badge, two knobs and the
  * power lamp. The glass itself is a hole, so the screen shows through it.
+ * Nothing is printed on it smaller than can be read: the chin's legends are
+ * the keys' own (../../../stage/themes/command/shell.ts keyCapSvg).
  */
 export function monitorSvg(m: MonitorGeom): string {
   const { w, h, gx, gy, gw, gh, well } = m;
@@ -219,7 +221,14 @@ export function monitorSvg(m: MonitorGeom): string {
   const ex = gx - well, ey = gy - well, ew = gw + well * 2, eh = gh + well * 2;
   const shell = `M${R},0 H${w - R} Q${w},0 ${w},${R} V${h - R} Q${w},${h} ${w - R},${h} H${R} Q0,${h} 0,${h - R} V${R} Q0,0 ${R},0Z`;
   const hole = `M${gx},${gy} H${gx + gw} V${gy + gh} H${gx}Z`;
-  const round = `M${gx + rr},${gy} H${gx + gw - rr} Q${gx + gw},${gy} ${gx + gw},${gy + rr} V${gy + gh - rr} Q${gx + gw},${gy + gh} ${gx + gw - rr},${gy + gh} H${gx + rr} Q${gx},${gy + gh} ${gx},${gy + gh - rr} V${gy + rr} Q${gx},${gy} ${gx + rr},${gy}Z`;
+  // The tube's face: each edge bows out to the opening at its middle and falls back toward the corners, which is
+  // where the glass's curve is seen. It is drawn here, in the mask, so the picture itself is never warped.
+  const bow = Math.max(3, Math.min(gw, gh) * 0.012);
+  const round =
+    `M${gx + rr},${gy + bow} Q${gx + gw / 2},${gy - bow} ${gx + gw - rr},${gy + bow} Q${gx + gw - bow},${gy + bow} ${gx + gw - bow},${gy + rr} ` +
+    `Q${gx + gw + bow},${gy + gh / 2} ${gx + gw - bow},${gy + gh - rr} Q${gx + gw - bow},${gy + gh - bow} ${gx + gw - rr},${gy + gh - bow} ` +
+    `Q${gx + gw / 2},${gy + gh + bow} ${gx + rr},${gy + gh - bow} Q${gx + bow},${gy + gh - bow} ${gx + bow},${gy + gh - rr} ` +
+    `Q${gx - bow},${gy + gh / 2} ${gx + bow},${gy + rr} Q${gx + bow},${gy + bow} ${gx + rr},${gy + bow}Z`;
   const P = (pts: number[][]) => pts.map((p) => p.join(",")).join(" ");
   const top = P([[ex, ey], [ex + ew, ey], [gx + gw, gy], [gx, gy]]);
   const bot = P([[ex, ey + eh], [ex + ew, ey + eh], [gx + gw, gy + gh], [gx, gy + gh]]);
@@ -243,9 +252,11 @@ export function monitorSvg(m: MonitorGeom): string {
       <circle cx="${cx}" cy="${by}" r="${kr}" fill="url(#cmdKnob)"/>${ticks}<circle cx="${cx}" cy="${by}" r="${kr * 0.62}" fill="url(#cmdKnobTop)"/>
       <line x1="${cx}" y1="${by}" x2="${cx + Math.cos(a) * kr * 0.55}" y2="${by + Math.sin(a) * kr * 0.55}" stroke="#e0dccf" stroke-width="2" stroke-linecap="round"/></g>`;
   };
-  const badgeW = Math.max(96, gw * 0.13);
-  const badgeH = Math.max(18, kr * 1.5);
-  const fs = Math.max(8, Math.round((badgeH * 0.42) / 4) * 4);
+  // The desk props stand over the chin's corners: the badge and the knobs sit inside them.
+  const inset = gw * 0.035;
+  const badgeH = Math.max(18, kr * 1.7);
+  const fs = Math.max(10, Math.round(badgeH * 0.5));
+  const badgeW = Math.max(fs * 7.4, gw * 0.09);
   const spill = (id: string, x1: number, y1: number, x2: number, y2: number) =>
     `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="#2a5cff" stop-opacity=".26"/><stop offset=".55" stop-color="#2a5cff" stop-opacity=".07"/><stop offset="1" stop-color="#2a5cff" stop-opacity="0"/></linearGradient>`;
   return `<svg class="housing" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
@@ -274,18 +285,15 @@ export function monitorSvg(m: MonitorGeom): string {
   <path d="M${ex},${ey} L${gx},${gy} M${ex + ew},${ey} L${gx + gw},${gy} M${ex},${ey + eh} L${gx},${gy + gh} M${ex + ew},${ey + eh} L${gx + gw},${gy + gh}" stroke="#000" stroke-opacity=".5" stroke-width="1"/>
   <path d="${hole} ${round}" fill="#050505" fill-rule="evenodd"/>
   <path d="${round}" fill="none" stroke="#000" stroke-width="2.5"/>
-  <g transform="translate(${gx} ${by})">
+  <g transform="translate(${gx + inset} ${by})">
     <rect x="0" y="${-badgeH / 2}" width="${badgeW}" height="${badgeH}" rx="2" fill="url(#cmdPlate)" stroke="#1a1a1a" stroke-width="1"/>
     <rect x="3" y="${-badgeH / 2 + 3}" width="${badgeW - 6}" height="${badgeH - 6}" rx="1" fill="none" stroke="#5c5a54" stroke-width=".8"/>
     <text x="${badgeW / 2 + 0.8}" y="${fs * 0.42 + 1}" text-anchor="middle" font-family="Gambit 8bit" font-size="${fs}" fill="#fff" fill-opacity=".35">GAMBIT</text>
     <text x="${badgeW / 2}" y="${fs * 0.42}" text-anchor="middle" font-family="Gambit 8bit" font-size="${fs}" fill="#1b1b1c">GAMBIT</text>
   </g>
-  <text x="${gx + badgeW + kr}" y="${by + 4}" font-family="Gambit 8bit" font-size="8" fill="#a39d90" fill-opacity=".6">SYS-84 COLOR</text>
-  ${knob(gx + gw - kr * 7.4, -2.2)}
-  ${knob(gx + gw - kr * 4.5, -0.9)}
-  <text x="${gx + gw - kr * 7.4}" y="${by + kr * 2.2}" text-anchor="middle" font-family="Gambit 8bit" font-size="8" fill="#8d887d">BRT</text>
-  <text x="${gx + gw - kr * 4.5}" y="${by + kr * 2.2}" text-anchor="middle" font-family="Gambit 8bit" font-size="8" fill="#8d887d">CON</text>
-  <g transform="translate(${gx + gw - kr * 1.4} ${by})">
+  ${knob(gx + gw - inset - kr * 7.4, -2.2)}
+  ${knob(gx + gw - inset - kr * 4.5, -0.9)}
+  <g transform="translate(${gx + gw - inset - kr * 1.4} ${by})">
     <rect x="${-kr * 1.1}" y="${-kr * 0.8}" width="${kr * 2.2}" height="${kr * 1.6}" rx="2" fill="#0b0b0a" stroke="#45413b" stroke-width="1"/>
     <rect x="${-kr * 0.9}" y="${-kr * 0.62}" width="${kr * 1.8}" height="${kr * 0.7}" rx="1.5" fill="#2c2a26"/>
     <circle cx="0" cy="${kr * 0.42}" r="${kr * 0.9}" fill="url(#cmdLed)" filter="url(#cmdBloom)"/>
@@ -301,9 +309,10 @@ const DISK_TINT = ["#c8402f", "#2f6fc8", "#e0b43a", "#3f9a4e", "#9a4fc0", "#e07a
 /** One 5.25" floppy (w x h): a black paper jacket, reinforced hub, write-protect notch, and a worn sticker printed with `label`. */
 export function floppySvg(w: number, h: number, label: string, i: number): string {
   const tint = DISK_TINT[i % DISK_TINT.length]!;
-  const lw = w * 0.86;
-  const lh = h * 0.13;
-  const fs = Math.max(8, Math.min(Math.floor((lh * 0.55) / 8) * 8, Math.floor(lw / (label.length + 1) / 8) * 8));
+  // The sticker is the disk's name and the reason to click it: a fifth of the jacket, its type as big as fits.
+  const lw = w * 0.92;
+  const lh = h * 0.19;
+  const fs = Math.max(8, Math.floor(Math.min(lh * 0.6, lw / (label.length + 0.6))));
   const r = rng(seedOf(label));
   const smudges = Array.from({ length: 4 }, () => `<ellipse cx="${r() * lw}" cy="${lh * (0.3 + r() * 0.6)}" rx="${3 + r() * 8}" ry="${1.5 + r() * 3}" fill="#5a4a30" opacity="${0.06 + r() * 0.1}"/>`).join("");
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
@@ -319,11 +328,11 @@ export function floppySvg(w: number, h: number, label: string, i: number): strin
     <circle cx="${w / 2}" cy="${h * 0.6}" r="${w * 0.12}" fill="#4a3826" stroke="#6a5236" stroke-width="1"/>
     <circle cx="${w / 2}" cy="${h * 0.6}" r="${w * 0.075}" fill="#050505"/>
     <rect x="${w * 0.45}" y="${h * 0.8}" width="${w * 0.1}" height="${h * 0.17}" rx="${w * 0.05}" fill="#050505" stroke="#2a2a2c"/>
-    <g transform="translate(${(w - lw) / 2} ${h * 0.025}) rotate(${((r() - 0.5) * 2).toFixed(2)})">
+    <g transform="translate(${(w - lw) / 2} ${h * 0.012}) rotate(${((r() - 0.5) * 1.2).toFixed(2)})">
       <rect width="${lw}" height="${lh}" fill="url(#fp${i})"/>
-      <rect width="${lw}" height="${lh * 0.2}" fill="${tint}"/>
+      <rect width="${lw}" height="${lh * 0.16}" fill="${tint}"/>
       ${smudges}
-      <text x="${lw / 2}" y="${lh * 0.24 + (lh * 0.76 + fs * 0.8) / 2}" text-anchor="middle" font-family="Gambit 8bit" font-size="${fs}" fill="#2b2218" fill-opacity=".85">${label.toUpperCase()}</text>
+      <text x="${lw / 2}" y="${lh * 0.2 + (lh * 0.8 + fs * 0.78) / 2}" text-anchor="middle" font-family="Gambit 8bit" font-size="${fs}" fill="#1a130b">${label.toUpperCase()}</text>
     </g>
   </svg>`;
 }
@@ -341,8 +350,10 @@ export interface BoxGeom {
 }
 
 /** The box as the back layer (inside walls) and the front layer (front face, side wall, rim) the disks stand between. */
-export function diskBoxSvg(g: BoxGeom, part: "back" | "front"): string {
+export function diskBoxSvg(g: BoxGeom, part: "back" | "front", sticker = "THEMES"): string {
   const { w, h, fw, dx, dy, ft } = g;
+  // The sticker says what the disks in the box are for, at a size that reads.
+  const sf = Math.max(8, Math.floor(Math.min((fw * 0.74) / (sticker.length + 0.5), (h - ft) * 0.2)));
   const defs = `<defs>
     <linearGradient id="dbF" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c8bca2"/><stop offset=".15" stop-color="#b3a78c"/><stop offset="1" stop-color="#6f6652"/></linearGradient>
     <linearGradient id="dbS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8d836c"/><stop offset="1" stop-color="#5f5745"/></linearGradient>
@@ -366,9 +377,9 @@ export function diskBoxSvg(g: BoxGeom, part: "back" | "front"): string {
     <path d="M0,${ft + 1} H${fw} L${fw + dx},${ft - dy + 1}" stroke="#ece2c8" stroke-width="2.5" fill="none"/>
     <path d="M${fw},${ft} V${h}" stroke="#4e4738" stroke-width="2"/>
     <rect x="${fw * 0.08}" y="${ft + (h - ft) * 0.12}" width="${fw * 0.84}" height="${(h - ft) * 0.05}" fill="#000" opacity=".25"/>
-    <g transform="translate(${fw * 0.5} ${ft + (h - ft) * 0.4})">
-      <rect x="${-fw * 0.24}" y="${-(h - ft) * 0.11}" width="${fw * 0.48}" height="${(h - ft) * 0.22}" fill="#e9dfc4" stroke="#7a705a"/>
-      <text x="0" y="4" text-anchor="middle" font-family="Gambit 8bit" font-size="8" fill="#3a2a1a">DISK FILE 50</text>
+    <g transform="translate(${fw * 0.5} ${ft + (h - ft) * 0.42})">
+      <rect x="${-fw * 0.4}" y="${-sf * 0.95}" width="${fw * 0.8}" height="${sf * 1.9}" fill="#e9dfc4" stroke="#7a705a"/>
+      <text x="0" y="${sf * 0.4}" text-anchor="middle" font-family="Gambit 8bit" font-size="${sf}" fill="#3a2a1a">${sticker}</text>
     </g>
   </svg>`;
 }
@@ -381,6 +392,7 @@ export function diskBoxSvg(g: BoxGeom, part: "back" | "front"): string {
  * inserted disk's edge with its label, and a red busy lamp (class "dled").
  */
 export function driveSvg(w: number, h: number, inserted = ""): string {
+  const pf = Math.max(8, Math.round(h * 0.085));
   const dx = w * 0.14;
   const dy = h * 0.3;
   const fx = dx;
@@ -411,15 +423,14 @@ export function driveSvg(w: number, h: number, inserted = ""): string {
     ${inserted
       ? `<rect x="${fx + fw * 0.12}" y="${sy - fh * 0.03}" width="${fw * 0.6}" height="${fh * 0.05}" fill="#141416"/>
       <rect x="${fx + fw * 0.15}" y="${sy - fh * 0.028}" width="${fw * 0.26}" height="${fh * 0.042}" fill="url(#dvP)"/>
-      <text x="${fx + fw * 0.28}" y="${sy + fh * 0.01}" text-anchor="middle" font-family="Gambit 8bit" font-size="8" fill="#2b2218">${inserted.toUpperCase()}</text>`
+      <text x="${fx + fw * 0.28}" y="${sy + fh * 0.01}" text-anchor="middle" font-family="Gambit 8bit" font-size="${Math.max(6, Math.round(fh * 0.05))}" fill="#2b2218">${inserted.toUpperCase()}</text>`
       : `<rect x="${fx + fw * 0.12}" y="${sy - fh * 0.01}" width="${fw * 0.6}" height="${fh * 0.02}" fill="#000"/>`}
     <rect x="${fx + fw * 0.44}" y="${sy + fh * 0.12}" width="${fw * 0.12}" height="${fh * 0.08}" fill="#000" opacity=".5"/>
     <rect x="${fx + fw * 0.44}" y="${sy - fh * 0.2}" width="${fw * 0.1}" height="${fh * 0.34}" rx="3" fill="url(#dvLv)" stroke="#0a0a0b"/>
     <rect x="${fx + fw * 0.45}" y="${sy - fh * 0.19}" width="${fw * 0.08}" height="${fh * 0.035}" rx="1.5" fill="#9a9da4" opacity=".7"/>
     <rect class="dled-bloom" x="${fx + fw * 0.79}" y="${sy - fh * 0.12}" width="${fw * 0.14}" height="${fh * 0.24}" fill="url(#dvL)" filter="url(#dvB)"/>
     <rect class="dled" x="${fx + fw * 0.83}" y="${sy - fh * 0.03}" width="${fw * 0.06}" height="${fh * 0.06}" fill="#3a0a04" stroke="#000"/>
-    <text x="${fx + fw * 0.08}" y="${fy + fh * 0.86}" font-family="Gambit 8bit" font-size="8" fill="#9a9da4" fill-opacity=".7">DRIVE A:</text>
-    <text x="${fx + fw * 0.74}" y="${fy + fh * 0.86}" font-family="Gambit 8bit" font-size="8" fill="#9a9da4" fill-opacity=".45">360K</text>
+    <text x="${fx + fw * 0.08}" y="${fy + fh * 0.86}" font-family="Gambit 8bit" font-size="${pf}" fill="#9a9da4" fill-opacity=".8">DRIVE A:</text>
   </svg>`;
 }
 
@@ -452,11 +463,13 @@ export function lampSvg(w: number, h: number): string {
 /* -------------------------- Quick-reference card ------------------------ */
 
 /** The key card: a torn-off length of tractor-feed printout, folded once, in tired ribbon ink. */
-export function refCardSvg(w: number, h: number, lines: [string, string][]): string {
-  const lh = Math.max(12, Math.floor((h * 0.72) / (lines.length + 1)));
+export function refCardSvg(w: number, h: number, lines: [string, string][], font = 13): string {
+  const lh = Math.round(font * 1.7);
+  const y0 = Math.round(font * 2.6);
+  const keyW = Math.max(...lines.map(([k]) => k.length)) + 1;
   const holes = Array.from({ length: Math.floor(h / 14) }, (_, i) => `<circle cx="${w * 0.045}" cy="${10 + i * 14}" r="2.6" fill="#1a120a" opacity=".85"/><circle cx="${w * 0.955}" cy="${10 + i * 14}" r="2.6" fill="#1a120a" opacity=".85"/>`).join("");
   const rows = lines
-    .map(([k, t], i) => `<text x="${w * 0.13}" y="${h * 0.2 + lh * (i + 1)}" font-family="Gambit 8bit" font-size="8" fill="#2b2218" fill-opacity=".85">${k}</text><text x="${w * 0.42}" y="${h * 0.2 + lh * (i + 1)}" font-family="Gambit 8bit" font-size="8" fill="#2b2218" fill-opacity=".7">${t.toUpperCase()}</text>`)
+    .map(([k, t], i) => `<text x="${w * 0.12}" y="${y0 + lh * (i + 1.2)}" font-family="Gambit 8bit" font-size="${font}" fill="#2b2218">${k}</text><text x="${w * 0.12 + keyW * font}" y="${y0 + lh * (i + 1.2)}" font-family="Gambit 8bit" font-size="${font}" fill="#2b2218" fill-opacity=".8">${t.toUpperCase()}</text>`)
     .join("");
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
     <defs><pattern id="rcP" width="256" height="256" patternUnits="userSpaceOnUse"><image href="${paperGrain()}" width="256" height="256"/></pattern>
@@ -466,8 +479,8 @@ export function refCardSvg(w: number, h: number, lines: [string, string][]): str
     <path d="M${w * 0.02},${h * 0.03} L${w * 0.98},0 L${w * 0.985},${h} L${w * 0.015},${h * 0.985}Z" fill="url(#rcF)"/>
     <path d="M${w * 0.09},0 V${h} M${w * 0.91},0 V${h}" stroke="#8a7a5a" stroke-width=".8" stroke-dasharray="1 2"/>
     ${holes}
-    <text x="${w * 0.13}" y="${h * 0.15}" font-family="Gambit 8bit" font-size="8" fill="#2b2218">QUICK REFERENCE</text>
-    <path d="M${w * 0.13},${h * 0.18} H${w * 0.86}" stroke="#2b2218" stroke-opacity=".6" stroke-dasharray="2 1"/>
+    <text x="${w * 0.12}" y="${Math.round(font * 2.1)}" font-family="Gambit 8bit" font-size="${font}" fill="#2b2218">KEYS</text>
+    <path d="M${w * 0.12},${y0} H${w * 0.88}" stroke="#2b2218" stroke-opacity=".6" stroke-dasharray="2 1"/>
     ${rows}
   </svg>`;
 }

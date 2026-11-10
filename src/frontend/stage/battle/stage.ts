@@ -43,10 +43,10 @@ const BUST_STRENGTH = 1.1;
 
 const TARGET_HINT: Readonly<Record<TargetRule, string>> = {
   self: "Targets yourself.",
-  ally: "Tap an ally.",
+  ally: "Choose an ally.",
   all_allies: "Affects the whole party.",
   lowest_hp_ally: "Goes to the most wounded ally.",
-  enemy: "Tap an enemy.",
+  enemy: "Choose an enemy.",
   all_enemies: "Strikes every enemy.",
   random_enemies: "Strikes enemies at random.",
 };

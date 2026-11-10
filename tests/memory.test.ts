@@ -86,6 +86,22 @@ describe("the deed ledger and the build profile", () => {
     expect(deeds.map((d) => d.kind).sort()).toEqual(["killed", "recruited", "spared"]);
   });
 
+  test("someone from the card who falls in a fight is beaten, not dead, and remembers who did it", () => {
+    const state = {
+      outcome: "victory",
+      combatants: [
+        { id: "a", defId: "t.bandit", side: "enemy", name: "Bandit", alive: false },
+        { id: "b", defId: "t.sister_orla", side: "enemy", name: "Sister Orla", alive: false },
+      ],
+    } as unknown as BattleState;
+    const deeds = deedsFromBattle(state, 2, "docks", (id) => id.replace("t.", ""), undefined, (id) => (id === "t.sister_orla" ? "orla" : null));
+    expect(deeds).toContainEqual({ day: 2, kind: "killed", target: "bandit", name: "Bandit", n: 1, place: "docks" });
+    expect(deeds).toContainEqual({ day: 2, kind: "beat", target: "orla", name: "Sister Orla", n: 1, place: "docks" });
+    const after = remember({}, deeds, new Set(["orla"]), "Wren");
+    expect(after.orla!.affinity).toBeLessThan(0);
+    expect(after.orla!.notes.at(-1)!.text).toMatch(/Wren beat them in a fight on day 2/);
+  });
+
   test("a Parley's tactics become deeds: a bluff is a lie, a threat is a threat", () => {
     const d = deedsFromParley("mara", "Mara", "deal", ["threat", "logic", "bluff"], true, 3, "docks");
     expect(d.map((x) => x.kind)).toEqual(["deal", "lied_to", "threatened"]);

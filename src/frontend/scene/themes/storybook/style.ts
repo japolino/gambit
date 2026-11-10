@@ -60,9 +60,11 @@ export function css(): string {
 
 /* ---------- The stage ---------- */
 .sb-st { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; container-type: size; container-name: stage; }
-.sb-ui { pointer-events: none; will-change: transform; }
+.sb-ui { pointer-events: none; }
 .sb-ui > * { pointer-events: auto; }
-.sb-st { --dw: min(78cqw, 1760px); --dh: clamp(186px, 23.5cqh, 240px); --db: max(24px, 2.6cqh); --fs: clamp(19px, min(3cqh, 1.35cqw), 28px); --fb: -6cqh; --fh: 94cqh; }
+/* The page is about a quarter of the window and holds little but large words (--fs); it grows by --grow when the narration needs more lines (../storybook.ts fitPage). */
+.sb-st { --dw: min(78cqw, 1760px); --dh: clamp(206px, calc(26cqh + var(--grow, 0px)), 46cqh); --db: max(24px, 2.6cqh); --fs: clamp(20px, min(3.1cqh, 1.62cqw), 30px); --fb: -6cqh; --fh: 94cqh;
+  --hh: clamp(76px, 12cqh, 112px); --bmw: clamp(48px, 7.2cqh, 70px); --bmg: clamp(6px, 1cqh, 12px); }
 
 /* ---------- The skirt and the name scrolls ---------- */
 .sb-skirt { position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none; }
@@ -94,10 +96,25 @@ export function css(): string {
 .sb-cast .fig.cameo > svg { width: 100%; height: 100%; display: block; }
 .sb-cast .fig.cameo:hover > svg, .sb-cast .fig.cameo.hot > svg { filter: drop-shadow(0 0 16px rgba(255,200,110,.6)); }
 /* ---------- Chapter header ---------- */
-.sb-head { position: absolute; top: 2.4cqh; left: max(2.2cqw, calc(min(21cqw, 34cqh) * .42)); height: clamp(76px, 12cqh, 112px); display: flex; align-items: center; filter: drop-shadow(0 10px 14px rgba(0,0,0,.6)); }
+/* It runs from the corner flourish to the bookmarks (--mk of them), so the thread's plaque beside the scroll can never slide under them. */
+.sb-head { position: absolute; top: 2.4cqh; left: max(2.2cqw, calc(min(21cqw, 34cqh) * .42)); right: calc(min(21cqw, 34cqh) + 1.2cqw + var(--mk, 3) * (var(--bmw) + var(--bmg)) + 10px); height: var(--hh); display: flex; align-items: center; filter: drop-shadow(0 10px 14px rgba(0,0,0,.6)); pointer-events: none; }
+.sb-head > * { pointer-events: auto; }
 .sb-head .astro { width: auto; height: 100%; aspect-ratio: 1; position: relative; z-index: 2; flex: none; }
 .sb-head .astro svg { width: 100%; height: 100%; }
-.sb-head .scroll { position: relative; height: 82%; margin-left: -6%; display: flex; flex-direction: column; justify-content: center; padding: 0 clamp(26px, 4cqh, 40px) 0 clamp(26px, 4.4cqh, 44px); min-width: clamp(220px, 30cqh, 300px); }
+.sb-head .scroll { position: relative; flex: none; height: 82%; margin-left: calc(var(--hh) * -.2); display: flex; flex-direction: column; justify-content: center; padding: 0 clamp(26px, 4cqh, 40px) 0 clamp(26px, 4.4cqh, 44px); min-width: clamp(220px, 30cqh, 300px); }
+/* The thread: what you are after, how long is left, how much is found. A dark plaque with a gilt hairline, like the nameplate; it opens the journal. */
+.sb-head .sb-aim { flex: 0 1 auto; min-width: 0; margin-left: clamp(26px, 3.6cqh, 42px); padding: clamp(5px, .8cqh, 9px) clamp(12px, 1.8cqh, 20px) clamp(6px, .9cqh, 10px); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .7em; text-align: left;
+  font: italic 600 clamp(15px, 1.9cqh, 20px)/1.25 "Gambit Garamond", serif; color: #fbe8bf; text-shadow: 0 1px 2px #000;
+  background: linear-gradient(180deg, rgba(64,36,22,.94), rgba(26,13,7,.94)); border: 1px solid #2a1205; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(217,173,98,.75), inset 0 0 0 2px rgba(20,8,3,.6);
+  transition: filter .2s, transform .3s cubic-bezier(.3,1.5,.5,1); }
+.sb-head .sb-aim[hidden] { display: none; }
+.sb-head .sb-aim .g { min-width: 0; }
+.sb-head .sb-aim .g::before { content: "❦ "; font-style: normal; color: #d9ad62; }
+.sb-head .sb-aim b { flex: none; font-style: normal; font-weight: 700; color: #ffb99a; white-space: nowrap; }
+.sb-head .sb-aim .c { flex: none; font-style: normal; font-weight: 600; font-size: .86em; color: #e0b36a; white-space: nowrap; }
+/* Where the next piece is: a row of its own under the goal, so the plaque says what to do as well as what for. */
+.sb-head .sb-aim .n { flex: 0 0 auto; width: 0; min-width: 100%; font-style: normal; font-weight: 600; font-size: .84em; color: #f4e3bb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-head .sb-aim:hover, .sb-head .sb-aim:focus-visible { filter: brightness(1.2); transform: translateY(2px); }
 .sb-head .scroll > .band { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
 .sb-head .scroll > .end { position: absolute; right: -2.2%; top: -12%; height: 124%; width: auto; aspect-ratio: 40/110; transform: translateX(50%); }
 .sb-head .kick { font: 600 clamp(10px, 1.35cqh, 14px)/1.2 "Gambit Cinzel", serif; letter-spacing: .2em; text-transform: uppercase; color: #7a3b16; white-space: nowrap; }
@@ -105,8 +122,8 @@ export function css(): string {
 .sb-head .ttl { font: italic 400 clamp(20px, 3.3cqh, 34px)/1.05 "Gambit Fell", serif; color: #3a1a08; white-space: nowrap; max-width: 46cqw; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 0 rgba(255,246,220,.6); }
 
 /* ---------- Bookmarks (status) ---------- */
-.sb-marks { position: absolute; top: 0; right: calc(min(21cqw, 34cqh) + 1.2cqw); display: flex; gap: clamp(6px, 1cqh, 12px); align-items: flex-start; }
-.sb-marks .bm { position: relative; display: block; width: clamp(48px, 7.2cqh, 70px); transform-origin: 50% 0; transition: transform .35s cubic-bezier(.3,1.5,.5,1); }
+.sb-marks { position: absolute; top: 0; right: calc(min(21cqw, 34cqh) + 1.2cqw); display: flex; gap: var(--bmg); align-items: flex-start; }
+.sb-marks .bm { position: relative; display: block; width: var(--bmw); transform-origin: 50% 0; transition: transform .35s cubic-bezier(.3,1.5,.5,1); }
 .sb-marks .bm svg { width: 100%; height: auto; display: block; }
 .sb-marks button.bm:hover, .sb-marks button.bm:focus-visible { transform: translateY(5px) rotate(-1.5deg); }
 .sb-marks .bm:nth-child(2) { animation-delay: -1.3s; }
@@ -117,59 +134,76 @@ export function css(): string {
 .sb-dlg > .frame { position: absolute; left: -78px; top: -26px; pointer-events: none; }
 .sb-dlg > .frame svg { display: block; }
 .sb-dlg > .vellum { position: absolute; inset: 0; background: url(${parch}) 0 0 / 100% 100% no-repeat; }
-.sb-dlg .page { position: absolute; inset: calc(14px + 2.2cqh) clamp(56px, 6cqh, 70px) clamp(18px, 2.6cqh, 28px) clamp(40px, 5cqh, 58px); overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 100%); mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 100%); }
-.sb-dlg .page::-webkit-scrollbar { display: none; }
-.sb-dlg .page { bottom: calc(clamp(18px, 2.6cqh, 28px) + 54px); }
-.sb-say { position: absolute; z-index: 3; left: clamp(40px, 5cqh, 58px); right: clamp(56px, 6cqh, 70px); bottom: clamp(14px, 2.2cqh, 24px); display: flex; gap: 8px; align-items: stretch; }
+/* The page's contents are three rows that never share room: (a phone's thread line,) the words, the writing box. The words scroll; the box under them grows as you type and the words give way. */
+.sb-dlg .body { position: absolute; inset: calc(12px + 2.2cqh) clamp(40px, 5cqh, 58px) clamp(14px, 2.2cqh, 24px) clamp(40px, 5cqh, 58px); display: flex; flex-direction: column; gap: clamp(6px, 1cqh, 10px); }
+/* Without a writing box (a delve, the board) the nib bobs at the page's corner: the words keep clear of it. */
+.sb-dlg .body:not(:has(.sb-say:not([hidden]))) { right: clamp(56px, 6cqh, 70px); }
+.sb-dlg .page { position: relative; flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(138,90,42,.7) transparent; overscroll-behavior: contain; }
+/* An edge with more beyond it fades (../storybook.ts cue). */
+.sb-dlg .page.up { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22px); mask-image: linear-gradient(180deg, transparent 0, #000 22px); }
+.sb-dlg .page.down { -webkit-mask-image: linear-gradient(0deg, transparent 0, #000 22px); mask-image: linear-gradient(0deg, transparent 0, #000 22px); }
+.sb-dlg .page.up.down { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%); }
+.sb-say { flex: none; position: relative; z-index: 3; display: flex; gap: 8px; align-items: stretch; }
 .sb-say[hidden] { display: none; }
-.sb-say textarea { flex: 1; min-width: 0; height: 46px; resize: none; padding: 11px 12px; border: 1px solid rgba(74,38,12,.55); border-radius: 3px; background: rgba(255,248,226,.72); color: var(--ink); font-family: inherit; font-style: italic; font-weight: 500; font-size: 17px; line-height: 1.3; }
+.sb-say textarea { flex: 1; min-width: 0; height: 46px; resize: none; padding: 10px 14px; border: 1px solid rgba(74,38,12,.6); border-radius: 3px; background: linear-gradient(rgba(110,70,30,.14), rgba(255,248,226,.6)); box-shadow: inset 0 2px 5px rgba(80,45,15,.3); color: var(--ink); font-family: inherit; font-style: italic; font-weight: 500; font-size: clamp(17px, 1.9cqh, 20px); line-height: 1.3; }
+.sb-say textarea::placeholder { color: #7a5a3a; opacity: 1; }
 .sb-say textarea:focus { outline: 2px solid #8a1f1a; outline-offset: 1px; }
-.sb-say button { min-width: 72px; height: 46px; border: 1px solid #2a1205; border-radius: 3px; background: #7a1a16; color: #f6e6c0; font-family: inherit; font-weight: 600; font-size: 16px; cursor: pointer; }
+.sb .sb-say button { min-width: 92px; height: 46px; padding: 0 16px; border: 1px solid #2a1205; border-radius: 3px; background: linear-gradient(#8c211b, #5e120f); box-shadow: inset 0 0 0 1px rgba(233,197,122,.8), inset 0 0 0 2px rgba(42,10,6,.6), 0 2px 4px rgba(40,15,5,.4); color: #fff0cf; font: 700 clamp(17px, 1.9cqh, 20px)/1 "Gambit Garamond", serif; letter-spacing: .02em; text-shadow: 0 1px 2px #000; cursor: pointer; transition: filter .2s; }
+.sb .sb-say button:hover:not(:disabled), .sb .sb-say button:focus-visible { filter: brightness(1.2); }
+.sb .sb-say button:active:not(:disabled) { filter: brightness(.92); }
 .sb-say button:disabled, .sb-say textarea:disabled { opacity: .55; cursor: default; }
+.sb-dlg:has(.sb-say:not([hidden])) .nib { display: none; }
 /* Once the player is writing, the page is what they came for: it grows, and the rest gives way. */
-@container stage (min-width: 761px) and (min-height: 481px) { .sb.writing .sb-st > * { --dh: clamp(260px, 38cqh, 460px); } }
+@container stage (min-width: 761px) and (min-height: 481px) { .sb.writing .sb-st > * { --dh: clamp(260px, 36cqh, 460px); } }
 @container stage (max-width: 760px) {
-  .sb-dlg .page { bottom: 56px !important; }
-  .sb-say { left: 8px; right: 8px; bottom: 6px; }
+  .sb-dlg .body { inset: 30px 8px 6px 8px; gap: 4px; }
   .sb-say textarea { font-size: 16px; }
+  .sb .sb-say button { min-width: 72px; font-size: 16px; }
 }
 @container stage (max-width: 760px) and (min-height: 481px) { .sb.writing .sb-st > * { --dh: 50cqh; --ch: calc(1.5 * (var(--ribh) + 4px) + 8px); } }
 @container stage (max-height: 480px) {
-  .sb-dlg .page { bottom: 56px !important; }
-  .sb-say { left: 10px; right: 10px; bottom: 6px; }
+  .sb-dlg .body { inset: 28px 10px 6px 10px; gap: 4px; }
   .sb-say textarea { font-size: 16px; }
+  .sb .sb-say button { min-width: 72px; font-size: 16px; }
 }
-.sb-goal { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 12px 0 5px; border-bottom: 1px solid rgba(74,38,12,.45); background: #efe2bf; font-size: calc(var(--fs) * .72); font-weight: 600; line-height: 1.25; color: #3d1f09; }
-.sb-goal[hidden] { display: none; }
+/* The thread on a phone: the page's own first row (the framed stage has it beside the chapter scroll). */
+.sb-goal { display: none; flex: none; gap: 12px; justify-content: space-between; align-items: baseline; padding: 0 4px 5px; border-bottom: 1px solid rgba(74,38,12,.45); font-size: 14.5px; font-weight: 600; line-height: 1.25; color: #3d1f09; }
 .sb-goal .g { min-width: 0; font-style: italic; }
 .sb-goal .c { flex: none; white-space: nowrap; }
 .sb-goal .c b { color: #7a1a16; }
+.sb-goal { flex-wrap: wrap; row-gap: 1px; }
+.sb-goal .n { flex: 1 0 100%; min-width: 0; font-style: normal; font-weight: 600; font-size: 13.5px; color: #5b2c10; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-dlg .beat .found { margin: 0 0 .25em; padding-left: .7em; border-left: 2px solid #8a6a1a; font-weight: 600; }
-.sb-dlg .beat { margin-top: .7em; }
+/* A beat can be long: a size down from the narration's display type, still well above the floor. */
+.sb-dlg .beat { margin-top: .7em; font-size: max(18px, .84em); }
 .sb-dlg .beat .said { margin: 0 0 .25em; padding-left: .7em; border-left: 2px solid #8a1f1a; font-style: italic; }
 .sb-dlg .beat .roll { margin: 0 0 .25em; font-size: .82em; font-weight: 700; color: #7a1a16; }
 .sb-dlg .beat .told { margin: 0 0 .4em; }
-.sb-dlg .txt { min-height: 100%; font-size: var(--fs); line-height: 1.46; font-weight: 500; color: var(--ink); padding-top: 4px; }
-.sb-dlg .txt.two { display: grid; grid-template-columns: minmax(0, 58fr) minmax(240px, 42fr); gap: clamp(14px, 2cqh, 26px); }
-.sb-dlg .main { max-width: 46em; }
+.sb-dlg .txt { font-size: var(--fs); line-height: 1.42; font-weight: 500; color: var(--ink); }
+.sb-dlg .txt.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 34%); gap: clamp(20px, 3cqh, 40px); align-items: start; }
+.sb-dlg .main { max-width: 40em; padding-top: 2px; }
 .sb-dlg .desc { margin: 0 0 .3em; min-height: 2.5em; }
 .sb-dlg .desc .dc { float: left; width: 2.4em; height: 2.4em; margin: .2em 1px 0 -.1em; }
 .sb-dlg .desc.lone .dc { margin-right: .35em; }
 .sb-dlg .desc .fw { font-variant: small-caps; letter-spacing: .04em; font-weight: 600; }
-.sb-dlg .desc { line-height: 1.4; color: #261409; }
-.sb-dlg .now { margin: .45em 0 0; font-style: italic; font-weight: 600; font-size: .9em; color: #4a2511; }
+.sb-dlg .desc { line-height: 1.36; color: #261409; }
+.sb-dlg .now { margin: .3em 0 0; font-style: italic; font-weight: 600; font-size: .9em; line-height: 1.36; color: #4a2511; clear: both; }
 .sb-dlg .now::before { content: "❧ "; color: #9c3b26; font-style: normal; }
-.sb-dlg .fresh { animation: sbInk .9s ease both; }
-.sb-dlg .margin { position: relative; overflow-y: auto; scrollbar-width: none; max-height: calc(var(--dh) - 2.2cqh - 36px); padding-left: 34px; font-size: clamp(15px, min(2.1cqh, 1cqw), 19px); line-height: 1.5; color: #52341e; font-style: italic; }
+.sb-dlg .fresh { animation: sbInk .35s ease both; }
+/* Earlier: the quiet margin. It stays in view beside the words, as tall as the page (--ph), its list scrolling inside it, the latest first. */
+.sb-dlg .margin { position: sticky; top: 0; display: flex; flex-direction: column; max-height: var(--ph, 160px); padding-left: 34px; font-size: clamp(16px, min(2cqh, 1.12cqw), 20px); line-height: 1.4; color: #52341e; font-style: italic; }
 .sb-dlg .margin .dv { position: absolute; left: 0; top: 0; width: 22px; height: 100%; }
 .sb-dlg .margin .dvk { position: absolute; left: 0; top: calc(50% - 12px); width: 24px; height: 24px; }
-.sb-dlg .margin::-webkit-scrollbar { display: none; }
-.sb-dlg .margin .mh { font: 800 clamp(10px, 1.25cqh, 12px)/1 "Gambit Cinzel", serif; letter-spacing: .24em; text-transform: uppercase; color: #8a5a2a; margin: 2px 0 6px; }
-.sb-dlg .log { list-style: none; margin: 0; padding: 0; font-style: italic; }
-.sb-dlg .log li { position: relative; padding-left: 1.1em; color: #52341e; margin-bottom: .1em; }
+.sb-dlg .margin .mh { flex: none; font: 800 clamp(11px, 1.3cqh, 13px)/1 "Gambit Cinzel", serif; letter-spacing: .22em; text-transform: uppercase; font-style: normal; color: #8a5a2a; margin: 4px 0 6px; }
+.sb-dlg .log { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(138,90,42,.7) transparent; overscroll-behavior: contain; list-style: none; margin: 0; padding: 0 6px 0 0; font-style: italic; }
+.sb-dlg .log.down { -webkit-mask-image: linear-gradient(0deg, transparent 0, #000 26px); mask-image: linear-gradient(0deg, transparent 0, #000 26px); }
+.sb-dlg .log.up { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 26px); mask-image: linear-gradient(180deg, transparent 0, #000 26px); }
+.sb-dlg .log.up.down { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%); }
+/* More below the margin's last line: the heading says so, since the fade alone is easy to miss. */
+.sb-dlg .margin:has(.log.down) .mh::after, .sb-dlg .margin:has(.log.up) .mh::after { content: "  ·  scroll for more"; letter-spacing: .08em; text-transform: none; font: italic 600 1.1em "Gambit Garamond", serif; color: #7a4c1c; }
+.sb-dlg .log li { position: relative; padding-left: 1.1em; color: #52341e; margin-bottom: .2em; }
 .sb-dlg .log li::before { content: "❧"; position: absolute; left: 0; top: 0; color: #9c3b26; font-style: normal; font-size: .9em; }
-.sb-dlg .log li:last-child { color: #3a2010; }
+.sb-dlg .log li:first-child { color: #3a2010; }
 .sb-dlg .busy { display: flex; align-items: center; gap: .5em; margin-top: .3em; font-style: italic; color: #7a3b16; font-size: .92em; }
 .sb-dlg .busy svg { width: 1.8em; height: 1.8em; animation: sbWrite 1.1s ease-in-out infinite; transform-origin: 10% 90%; }
 .sb-dlg .busy .dots i { display: inline-block; width: .3em; height: .3em; margin: 0 .12em; border-radius: 50%; background: #7a3b16; animation: sbDot 1.2s ease-in-out infinite; }
@@ -188,6 +222,7 @@ export function css(): string {
 
 /* Index tabs (Journal, Classes, Binding): notched leather on the page's top rim, mirroring the nameplate. */
 .sb-dlg .tabs { position: absolute; right: clamp(44px, 5.4cqh, 66px); top: calc(-1 * clamp(19px, 2.3cqh, 23px)); display: flex; gap: clamp(4px, .7cqh, 8px); z-index: 3; }
+.sb-dlg .tab[hidden] { display: none; }
 .sb-dlg .tab { position: relative; display: flex; align-items: center; justify-content: center; gap: 7px; height: clamp(36px, 4.3cqh, 44px); width: clamp(122px, 14cqh, 152px); color: #f3d791;
   font: 800 clamp(11px, 1.3cqh, 13px)/1 "Gambit Cinzel", serif; letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 1px 2px #000;
   filter: drop-shadow(0 6px 6px rgba(0,0,0,.5)); transition: transform .3s cubic-bezier(.3,1.5,.5,1), filter .2s; }
@@ -198,21 +233,40 @@ export function css(): string {
 .sb-dlg .tab[aria-pressed="true"], .sb-dlg .tab[aria-expanded="true"] { transform: translateY(-6px); filter: brightness(1.25) drop-shadow(0 0 8px rgba(255,200,110,.6)); }
 
 /* ---------- Choices: ribbons ---------- */
-.sb-choices { position: absolute; right: 5cqw; width: clamp(300px, 42cqh, 380px); top: 19cqh; bottom: calc(var(--db) + var(--dh) + 44px);
-  display: flex; flex-direction: column; justify-content: flex-start; gap: clamp(5px, .9cqh, 10px); overflow-y: auto; overflow-x: visible; scrollbar-width: none; padding: 6px 4px 8px 30px; }
+/* The list runs from under the bookmarks to the page. Its ribbons give up height (down to --ribmin) before any of them is pushed out of view; past that the list scrolls, and says so (.sb-more). */
+.sb-choices { position: absolute; right: 5cqw; width: clamp(330px, 42cqh, 400px); top: 13.5cqh; bottom: calc(var(--db) + var(--dh) + 32px); --ribmin: clamp(34px, 3.5cqh, 38px);
+  display: flex; flex-direction: column; justify-content: flex-start; gap: clamp(3px, .7cqh, 9px); overflow-y: auto; overflow-x: visible; scrollbar-width: none; padding: 4px 4px 6px 30px; }
 .sb-choices::-webkit-scrollbar { display: none; }
+.sb-choices.down { -webkit-mask-image: linear-gradient(0deg, transparent 0, #000 40px); mask-image: linear-gradient(0deg, transparent 0, #000 40px); }
+.sb-choices.up { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 40px); mask-image: linear-gradient(180deg, transparent 0, #000 40px); }
+.sb-choices.up.down { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 40px, #000 calc(100% - 40px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 40px, #000 calc(100% - 40px), transparent 100%); }
+/* "More": shown only while choices are out of view below; a click (or a scroll, or Tab) brings them up. */
+.sb .sb-more { display: none; position: absolute; z-index: 2; right: calc(5cqw + 14px); bottom: calc(var(--db) + var(--dh) + 26px); width: 110px; height: 30px; align-items: center; justify-content: center; gap: 7px;
+  font: 800 12px/1 "Gambit Cinzel", serif; letter-spacing: .14em; text-transform: uppercase; color: #f3d791; text-shadow: 0 1px 2px #000;
+  background: linear-gradient(#4a2a17, #1c0f08); border: 1px solid #2a1205; border-radius: 15px; box-shadow: inset 0 0 0 1px rgba(217,173,98,.8), 0 4px 8px rgba(0,0,0,.6); }
+.sb .sb-more svg { width: 12px; height: 8px; animation: sbBob 1.2s ease-in-out infinite; }
+.sb-choices.down ~ .sb-more { display: flex; }
+.sb .sb-more:hover { filter: brightness(1.25); }
 .sb-choices > :first-child { margin-top: auto; }
 .sb-choices > :last-child { margin-bottom: auto; }
 .sb-choices .rubric { font: italic 400 clamp(19px, 2.6cqh, 27px)/1.2 "Gambit Fell", serif; color: #fbe8bf; text-shadow: 0 2px 12px #000, 0 0 24px #000, 0 0 3px #000; text-align: center; margin: 0 0 4px 24px; padding: 4px 0; display: flex; align-items: center; gap: 10px; justify-content: center; flex: none;
   background: radial-gradient(ellipse 50% 60% at 50% 55%, rgba(12,6,3,.78), rgba(12,6,3,.35) 60%, transparent 75%); }
 .sb-choices .rubric::before, .sb-choices .rubric::after { content: ""; flex: 1; height: 10px; background: ${rule()} center / 100% 100% no-repeat; filter: sepia(1) saturate(2) brightness(1.6); opacity: .8; max-width: 70px; }
-.sb-choices .rib { position: relative; flex: none; display: flex; align-items: center; gap: 10px; height: clamp(44px, 5cqh, 52px); padding: 0 60px 0 0; translate: var(--dx, 0px) 0; text-align: left; color: #fdf0d5;
+.sb-choices .rib { position: relative; flex: 0 1 clamp(44px, 5cqh, 54px); min-height: var(--ribmin); display: flex; align-items: center; gap: 10px; padding: 0 52px 0 0; translate: var(--dx, 0px) 0; text-align: left; color: #fdf0d5;
   transition: transform .4s cubic-bezier(.3,1.5,.45,1), filter .25s; }
 .sb-choices .rib.enter { animation: sbUnfurl .55s cubic-bezier(.2,.9,.3,1.1) both; animation-delay: calc(var(--i) * 45ms); }
 .sb-choices .rib .rib-art { position: absolute; inset: 0 0 0 calc(clamp(42px, 5.6cqh, 52px) * .45); width: calc(100% - clamp(42px, 5.6cqh, 52px) * .45); height: 100%; z-index: -1; filter: drop-shadow(0 6px 8px rgba(0,0,0,.55)); }
-.sb-choices .rib .med { width: clamp(46px, 6.2cqh, 58px); height: clamp(46px, 6.2cqh, 58px); flex: none; margin-left: -4px; transition: transform .5s cubic-bezier(.3,1.5,.5,1); }
-.sb-choices .rib .lb { font: 600 clamp(16px, 2cqh, 20px)/1.1 "Gambit Garamond", serif; text-shadow: 0 2px 2px rgba(0,0,0,.85); line-height: 1.05; min-width: 0; }
-.sb-choices .rib .n { position: absolute; right: 30px; padding-left: 10px; border-left: 1px dotted rgba(224,179,106,.6); font: 800 11px/1 "Gambit Cinzel", serif; color: #e0b36a; opacity: .7; }
+/* The medallion follows its ribbon's height (a little proud of it), so a list squeezed to fit keeps its rows apart. */
+.sb-choices .rib .med { height: 112%; width: auto; aspect-ratio: 1; flex: none; margin-left: -4px; transition: transform .5s cubic-bezier(.3,1.5,.5,1); }
+.sb-choices .rib .lb { font: 600 clamp(17px, 2.1cqh, 21px)/1.05 "Gambit Garamond", serif; text-shadow: 0 2px 2px rgba(0,0,0,.85); min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.sb-choices .rib .n { position: absolute; right: 28px; padding-left: 9px; border-left: 1px dotted rgba(224,179,106,.6); font: 800 12px/1 "Gambit Cinzel", serif; color: #e0b36a; opacity: .85; }
+.sb-choices .rib .n[hidden] { display: none; }
+/* What follows a lead of the thread: a gilt tag on the ribbon and on the name scroll, the same word in both places. */
+.sb-choices .rib .ld, .sb-tags .tag .ld { flex: none; padding: 3px 8px 4px; border: 1px solid rgba(255,214,140,.85); border-radius: 999px; background: rgba(52,24,4,.82); font: 800 11px/1 "Gambit Cinzel", serif; letter-spacing: .1em; text-transform: uppercase; color: #ffe2a6; box-shadow: 0 0 8px rgba(255,200,110,.45); }
+/* On the ribbon the tag stands on its top edge, clear of the words: in the row it squeezed the label onto two lines, and a long label takes both lines of the ribbon. */
+.sb-choices .rib .ld { position: absolute; right: 58px; top: 0; translate: 0 -86%; z-index: 1; }
+.sb-choices .rib:has(.ld) { margin-top: 16px; }
+.sb-tags .tag .ld { position: absolute; left: 50%; bottom: 100%; translate: -50% -2px; white-space: nowrap; pointer-events: none; }
 .sb-choices .rib .sheen { position: absolute; inset: 3px 6px 3px 30px; overflow: hidden; pointer-events: none; z-index: -1; clip-path: polygon(0 50%, 3% 0, 100% 0, 96% 50%, 100% 100%, 3% 100%); }
 .sb-choices .rib .sheen::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -50%; background: linear-gradient(100deg, transparent, rgba(255,236,190,.38), transparent); transform: skewX(-18deg); }
 .sb-choices .rib .ptr { position: absolute; left: -26px; top: 50%; width: 18px; height: 18px; margin-top: -9px; opacity: 0; transform: translateX(8px); transition: opacity .2s, transform .3s; color: #ffd27a; filter: drop-shadow(0 0 6px rgba(255,200,110,.8)); }
@@ -249,13 +303,15 @@ export function css(): string {
 .sb-ap .fr { inset: auto; left: -40px; top: -50px; }
 .sb-ap .fr svg { display: block; }
 .sb[data-mode="delve"] .sb-pagebg, .sb[data-mode="delve"] .sb-ap { display: block; }
+/* A delve has no writing box: its page is the two lines it holds, and the corridor's arch stands on its rim. */
+@container stage (min-width: 761px) and (min-height: 481px) { .sb[data-mode="delve"] .sb-st > * { --dh: clamp(170px, calc(21.5cqh + var(--grow, 0px)), 46cqh); } }
 .sb[data-mode="delve"] .sb-bg { inset: auto; left: 17cqw; width: 60cqw; top: 9cqh; height: 66cqh; clip-path: inset(0 round 50% 50% 0 0 / 22% 22% 0 0); transform: none !important; }
 .sb[data-mode="delve"] .sb-bg > .world { filter: sepia(.45) saturate(.85) contrast(1.12) brightness(1.02); }
 .sb[data-mode="delve"] .sb-rays, .sb[data-mode="delve"] .sb-grade { display: none; }
 .sb[data-mode="delve"] .sb-vig { background: radial-gradient(ellipse 80% 75% at 50% 42%, transparent 60%, rgba(10,5,2,.6) 100%); box-shadow: inset 0 0 120px rgba(18,9,4,.7); }
 
 /* ---------- Map folio (frontier overland, delve automap) ---------- */
-.sb-folio { position: absolute; left: 2.2cqw; top: calc(3.6cqh + clamp(76px, 12cqh, 112px)); width: min(30cqw, 58cqh); height: 46cqh; transform: perspective(1200px) rotateX(8deg) rotateZ(-1.2deg); transform-origin: 50% 100%; filter: drop-shadow(0 18px 20px rgba(0,0,0,.6)); }
+.sb-folio { position: absolute; left: 2.2cqw; top: calc(3.6cqh + var(--hh)); width: min(30cqw, 58cqh); height: 46cqh; transform: perspective(1200px) rotateX(8deg) rotateZ(-1.2deg); transform-origin: 50% 100%; filter: drop-shadow(0 18px 20px rgba(0,0,0,.6)); }
 .sb-folio > svg.fr { position: absolute; inset: 0; width: 100%; height: 100%; }
 .sb-folio .fl-t { position: absolute; top: 5%; left: 0; right: 0; text-align: center; font: italic 400 clamp(15px, 2.2cqh, 22px)/1 "Gambit Fell", serif; color: #5a2a10; }
 .sb-folio .hexmap, .sb-folio canvas { position: absolute; left: 6%; right: 6%; top: 15%; bottom: 6%; width: 88%; height: 79%; }
@@ -288,7 +344,7 @@ export function css(): string {
 
 /* ---------- The journal: an open book ---------- */
 .sb-jr { position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 45%, rgba(20,10,4,.55), rgba(8,4,2,.9)); animation: sbIn .35s ease both; perspective: 1600px; }
-.sb-jr .book { position: relative; width: min(1180px, 94cqw); height: min(720px, 90cqh); transform: rotateX(3deg); transform-style: preserve-3d; animation: sbOpen .6s cubic-bezier(.2,.8,.2,1) both; }
+.sb-jr .book { position: relative; width: min(1180px, 94cqw); height: min(720px, 90cqh); transform-style: preserve-3d; animation: sbOpen .6s cubic-bezier(.2,.8,.2,1) both; }
 .sb-jr .cover { position: absolute; inset: -30px -44px -46px; background: url(${blood}) center / 256px; border-radius: 10px 10px 14px 14px; box-shadow: 0 40px 70px rgba(0,0,0,.85), inset 0 0 40px rgba(0,0,0,.7), inset 0 2px 0 rgba(255,200,160,.2); }
 .sb-jr .cover::after { content: ""; position: absolute; inset: 9px; border: 1.5px dashed rgba(217,173,98,.55); border-radius: 6px; }
 .sb-jr .bc { position: absolute; width: clamp(56px, 8cqh, 84px); aspect-ratio: 1; z-index: 3; }
@@ -329,17 +385,19 @@ export function css(): string {
 
 /* ---------- Host overlays restyled into the book ---------- */
 .gs.storybook > .fg { top: 6%; right: max(3%, calc(50% - 95cqh + 2%)); bottom: 6%; width: min(600px, calc(100% - 24px)); border: 14px solid transparent; border-image: ${giltBorder()} 22 stretch; border-radius: 0;
-  background: url(${page}) center / cover; color: #2b170a; font: 500 15px/1.5 "Gambit Garamond", Georgia, serif; box-shadow: 0 30px 60px rgba(0,0,0,.8), inset 0 0 50px rgba(92,48,18,.4); }
+  background: url(${page}) center / cover; color: #2b170a; font: 500 17px/1.5 "Gambit Garamond", Georgia, serif; box-shadow: 0 30px 60px rgba(0,0,0,.8), inset 0 0 50px rgba(92,48,18,.4); }
+/* The panel's small print (tabs, tags, buttons, a skill's footnote) at sizes that can be read from the chair. */
+.gs.storybook > .fg .sheet .sk .meta { font-size: 14px; }
 .gs.storybook > .fg header b { font: italic 400 26px/1 "Gambit Fell", serif; color: #5a1a10; }
 .gs.storybook > .fg header .x { color: #5a1a10; font-size: 22px; }
-.gs.storybook > .fg nav button { border-radius: 0; border: 0; padding: 6px 14px 8px; background: url(${hide}) center / 128px; color: #f3d791; font: 800 11px/1 "Gambit Cinzel", serif; letter-spacing: .14em; text-transform: uppercase; clip-path: polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%); }
+.gs.storybook > .fg nav button { border-radius: 0; border: 0; padding: 6px 14px 8px; background: url(${hide}) center / 128px; color: #f3d791; font: 800 12.5px/1 "Gambit Cinzel", serif; letter-spacing: .12em; text-transform: uppercase; clip-path: polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%); }
 .gs.storybook > .fg nav button[aria-selected="true"] { background: url(${blood}) center / 128px; color: #fff1c2; }
 .gs.storybook > .fg .cls { border-radius: 0; border-bottom: 1px dashed rgba(122,76,28,.35); }
 .gs.storybook > .fg .cls.on { border: 1px solid rgba(168,116,47,.6); background: rgba(217,173,98,.16); }
 .gs.storybook > .fg .cls .pic, .gs.storybook > .fg .pending .pic { border-radius: 50% 50% 6px 6px; box-shadow: 0 0 0 2px #a8742f, 0 0 0 4px #3a1a08; }
-.gs.storybook > .fg .tag { background: rgba(106,20,24,.12); color: #6a1418; }
+.gs.storybook > .fg .tag { background: rgba(106,20,24,.12); color: #6a1418; font-size: 13px; }
 .gs.storybook > .fg .stars { color: #a8742f; }
-.gs.storybook > .fg button.go { background: radial-gradient(circle at 40% 35%, #c84236, #7a1418); color: #ffe7d0; border-radius: 4px; box-shadow: 0 2px 0 #3e0606; font: 800 12px/1.4 "Gambit Cinzel", serif; letter-spacing: .08em; }
+.gs.storybook > .fg button.go { background: radial-gradient(circle at 40% 35%, #c84236, #7a1418); color: #ffe7d0; border-radius: 4px; box-shadow: 0 2px 0 #3e0606; padding: 6px 12px; font: 800 13.5px/1.4 "Gambit Cinzel", serif; letter-spacing: .08em; }
 .gs.storybook > .fg button.plain { background: rgba(168,116,47,.14); color: #3a1a08; border: 1px solid rgba(122,76,28,.45); border-radius: 4px; }
 .gs.storybook > .fg textarea, .gs.storybook > .fg select { background: rgba(255,250,236,.55); color: #2b170a; border: 1px solid rgba(122,76,28,.5); border-radius: 2px; }
 .gs.storybook > .fg .sheet .sk { border-left-color: #a8742f; }
@@ -363,10 +421,11 @@ export function css(): string {
 /* ---------- Phone: the stage stacks: the header, the cast, the page, the choices. The page and the list always show in full; the book's frame, corners, skirt and light go, because they cost reading room. ---------- */
 @container stage (max-width: 760px) {
   /* --rows is how many rows of ribbons there are (../storybook.ts), up to 3.5: the half row says that the list scrolls. */
-  .sb-st > * { --ribh: 46px; --dw: calc(100cqw - 12px); --ch: calc(min(var(--rows, 3), 3.5) * (var(--ribh) + 4px) + 8px); --dh: clamp(148px, 30cqh, 230px); --db: var(--ch); --fs: 16.5px; --fb: calc(var(--db) + var(--dh) - 40px); --fh: calc(100cqh - var(--db) - var(--dh) + 20px); }
-  .sb-head { top: 4px; left: 4px; height: 50px; filter: none; }
+  .sb-st > * { --ribh: 46px; --dw: calc(100cqw - 12px); --ch: calc(min(var(--rows, 3), 3.5) * (var(--ribh) + 4px) + 8px); --dh: clamp(148px, calc(min(30cqh, 230px) + var(--grow, 0px)), 46cqh); --db: var(--ch); --fs: 16.5px; --fb: calc(var(--db) + var(--dh) - 40px); --fh: calc(100cqh - var(--db) - var(--dh) + 20px); }
+  .sb-head { top: 4px; left: 4px; right: auto; height: 50px; filter: none; }
+  .sb-head .sb-aim { display: none; }
   .sb-head .astro { height: 100%; }
-  .sb-head .scroll { min-width: 0; height: 88%; padding: 0 12px 0 18px; max-width: calc(100cqw - 196px); box-sizing: border-box; }
+  .sb-head .scroll { min-width: 0; height: 88%; margin-left: -12px; padding: 0 12px 0 18px; max-width: calc(100cqw - 196px); box-sizing: border-box; }
   .sb:has(.sb-marks .bm:nth-child(4)) .sb-head .scroll { max-width: calc(100cqw - 238px); }
   .sb-head .scroll > .end { display: none; }
   .sb-head .ttl { font-size: 18px; max-width: 100%; }
@@ -380,8 +439,12 @@ export function css(): string {
   .sb-dlg { left: 6px; }
   .sb-dlg > .frame { display: none; }
   .sb-dlg > .vellum { clip-path: none !important; box-shadow: 0 0 0 2px #d9ad62, 0 0 0 4px #2a1205, 0 4px 10px rgba(0,0,0,.6); }
-  .sb-dlg .page { inset: 30px 12px 0 12px; touch-action: pan-y; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); }
-  .sb-dlg .txt { padding: 4px 0 14px; }
+  .sb-goal { display: flex; }
+  .sb-goal[hidden] { display: none; }
+  .sb-dlg .page { padding: 0 4px; touch-action: pan-y; scrollbar-width: none; }
+  .sb-dlg .txt { padding: 4px 0 6px; }
+  .sb-dlg .main { max-width: none; padding-top: 0; }
+  .sb-dlg .beat { font-size: 1em; }
   .sb-dlg .desc .dc { width: 2.1em; height: 2.1em; }
   .sb-dlg .plate { left: 4px; top: -12px; height: 38px; filter: none; max-width: calc(100cqw - 170px); }
   .sb-dlg .plate .cap { width: 26px; }
@@ -396,11 +459,19 @@ export function css(): string {
   .sb-choices { left: 6px; right: 6px; width: auto; top: auto; bottom: 0; height: var(--ch); padding: 4px 0 4px; margin: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: var(--ribh); gap: 4px; align-content: start; touch-action: pan-y; overscroll-behavior: contain; }
   .sb-choices > :first-child, .sb-choices > :last-child { margin: 0; }
   .sb-choices .rubric { display: none; }
-  .sb-choices .rib { translate: none; height: var(--ribh); gap: 4px; padding: 0 16px 0 0; min-width: 0; }
+  .sb-choices .rib { translate: none; flex: none; height: var(--ribh); gap: 4px; padding: 0 16px 0 0; min-width: 0; }
   .sb-choices .rib.enter { animation: none; }
+  /* The lead takes a row of its own, its tag at the end of the ribbon: standing above, it pushed the ribbon into the row below. */
+  .sb-choices { grid-auto-flow: dense; }
+  .sb-choices .rib:has(.ld) { grid-column: 1 / -1; margin-top: 0; }
+  .sb-choices .rib .ld { position: static; translate: none; margin-left: auto; }
   .sb-choices .rib .rib-art { inset: 0 0 0 18px; width: calc(100% - 18px); filter: none; }
   .sb-choices .rib .rib-art path:first-child { display: none; }
   .sb-choices .rib .med { width: 42px; height: 42px; margin-left: 0; }
+  /* The half row at the foot says the list scrolls; the pill over it says so in a word, until the last row is up. */
+  .sb .sb-more { right: calc(50cqw - 52px); bottom: 3px; width: 104px; height: 28px; font-size: 12px; letter-spacing: .1em; }
+  .sb-choices.down, .sb-choices.up, .sb-choices.up.down { -webkit-mask-image: none; mask-image: none; }
+  .sb-choices.down { -webkit-mask-image: linear-gradient(0deg, rgba(0,0,0,.35) 0, #000 26px); mask-image: linear-gradient(0deg, rgba(0,0,0,.35) 0, #000 26px); }
   .sb-choices .rib .lb { font-size: 15px; line-height: 1.08; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .sb-choices .rib .n, .sb-choices .rib .ptr, .sb-choices .rib .sheen { display: none; }
   .sb-choices .rib:hover, .sb-choices .rib:focus-visible, .sb-choices .rib:active { transform: none; }
@@ -423,7 +494,10 @@ export function css(): string {
   .sb-skirt { display: none; }
   .sb-dlg .txt.two { display: flex; flex-direction: column; gap: 6px; }
   /* What came before reads above the narration: scroll up for it (the page opens on the narration's first line). */
-  .sb-dlg .margin { order: -1; max-height: none; overflow: visible; padding: 0 0 6px; font-size: 14.5px; border-bottom: 1px dashed rgba(122,76,28,.45); }
+  .sb-dlg .margin { position: static; order: -1; max-height: none; padding: 0 0 6px; font-size: 14.5px; border-bottom: 1px dashed rgba(122,76,28,.45); }
+  .sb-dlg .log { overflow: visible; padding: 0; -webkit-mask-image: none !important; mask-image: none !important; }
+  .sb-dlg .log li:first-child { color: #52341e; } .sb-dlg .log li:last-child { color: #3a2010; }
+  .sb-dlg .margin .mh::after { content: none !important; }
   .sb-dlg .margin .dv, .sb-dlg .margin .dvk { display: none; }
   .sb-dlg .margin .mh { font-size: 12px; letter-spacing: .12em; }
   .sb-folio { top: 60px; left: 3cqw; width: 60cqw; height: min(26cqh, calc(100cqh - var(--db) - var(--dh) - 90px)); transform: none; }
@@ -431,12 +505,17 @@ export function css(): string {
   .sb-folio .fl-t { font-size: 14px; }
   .sb-folio .hexmap text { font-size: 12px; }
 }
+/* An upright phone with its keyboard up: the page takes the height (the narration, what just happened, the box being typed in) and the choices keep a row and a half. */
+@container stage (max-width: 479px) and (max-height: 480px) {
+  .sb-st > * { --ch: calc(1.5 * (var(--ribh) + 4px) + 8px); --dh: calc(100cqh - var(--ch) - 60px); }
+}
 /* A short window (landscape on a phone): the page and the choices side by side under a thin header, the cast dropped behind them. */
 @container stage (max-height: 480px) and (min-width: 480px) {
   .sb-st > * { --ribh: 46px; --dw: 54cqw; --dh: calc(100cqh - 62px); --db: 4px; --fs: 16.5px; --fb: -6cqh; --fh: 94cqh; --ch: calc(100cqh - 56px); }
-  .sb-head { top: 3px; left: 4px; height: 44px; filter: none; }
+  .sb-head { top: 3px; left: 4px; right: auto; height: 44px; filter: none; }
+  .sb-head .sb-aim { display: none; }
   .sb-head .astro { height: 100%; }
-  .sb-head .scroll { min-width: 0; height: 86%; padding: 0 16px 0 16px; }
+  .sb-head .scroll { min-width: 0; height: 86%; margin-left: -10px; padding: 0 16px 0 16px; }
   .sb-head .scroll > .end { display: none; }
   .sb-head .ttl { font-size: 17px; }
   .sb-head .kick { font-size: 12px; line-height: 1; padding-top: 3px; letter-spacing: .02em; }
@@ -447,10 +526,16 @@ export function css(): string {
   .sb-dlg { left: 6px; }
   .sb-dlg > .frame { display: none; }
   .sb-dlg > .vellum { clip-path: none !important; box-shadow: 0 0 0 2px #d9ad62, 0 0 0 4px #2a1205; }
-  .sb-dlg .page { inset: 28px 12px 0 12px; touch-action: pan-y; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%); }
-  .sb-dlg .txt { padding: 4px 0 14px; }
+  .sb-goal { display: flex; }
+  .sb-goal[hidden] { display: none; }
+  .sb-dlg .page { padding: 0 4px; touch-action: pan-y; scrollbar-width: none; }
+  .sb-dlg .txt { padding: 4px 0 6px; }
+  .sb-dlg .main { max-width: none; padding-top: 0; }
+  .sb-dlg .beat { font-size: 1em; }
   .sb-dlg .txt.two { display: flex; flex-direction: column; gap: 6px; }
-  .sb-dlg .margin { order: -1; max-height: none; overflow: visible; padding: 0 0 6px; font-size: 14.5px; }
+  .sb-dlg .margin { position: static; order: -1; max-height: none; padding: 0 0 6px; font-size: 14.5px; }
+  .sb-dlg .log { overflow: visible; padding: 0; -webkit-mask-image: none !important; mask-image: none !important; }
+  .sb-dlg .margin .mh::after { content: none !important; }
   .sb-dlg .margin .dv, .sb-dlg .margin .dvk { display: none; }
   .sb-dlg .margin .mh { font-size: 12px; letter-spacing: .12em; }
   .sb-dlg .plate { left: 4px; top: -8px; height: 34px; filter: none; }
@@ -465,10 +550,15 @@ export function css(): string {
   .sb-choices { left: calc(54cqw + 16px); right: 6px; width: auto; top: 58px; bottom: 4px; height: auto; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; justify-content: flex-start; overscroll-behavior: contain; touch-action: pan-y; }
   .sb-choices > :first-child, .sb-choices > :last-child { margin: 0; }
   .sb-choices .rubric { display: none; }
-  .sb-choices .rib { translate: none; height: var(--ribh); gap: 4px; padding: 0 16px 0 0; }
+  .sb-choices .rib { translate: none; flex: none; height: var(--ribh); gap: 4px; padding: 0 16px 0 0; }
   .sb-choices .rib.enter { animation: none; }
+  /* The lead takes a row of its own, its tag at the end of the ribbon: standing above, it pushed the ribbon into the row below. */
+  .sb-choices { grid-auto-flow: dense; }
+  .sb-choices .rib:has(.ld) { grid-column: 1 / -1; margin-top: 0; }
+  .sb-choices .rib .ld { position: static; translate: none; margin-left: auto; }
   .sb-choices .rib .rib-art { inset: 0 0 0 18px; width: calc(100% - 18px); filter: none; }
   .sb-choices .rib .med { width: 42px; height: 42px; margin-left: 0; }
+  .sb .sb-more { right: calc(23cqw - 60px); bottom: 6px; width: 104px; height: 28px; }
   .sb-choices .rib .lb { font-size: 15px; }
   .sb-choices .rib .n, .sb-choices .rib .ptr, .sb-choices .rib .sheen { display: none; }
   .sb-choices .rib:hover, .sb-choices .rib:focus-visible, .sb-choices .rib:active { transform: none; }
@@ -513,16 +603,18 @@ export function css(): string {
 }
 
 @keyframes sbRise { from { opacity: 0; translate: 0 24px; } to { opacity: 1; translate: 0 0; } }
-@keyframes sbUnfurl { from { opacity: 0; clip-path: inset(0 0 0 100%); } to { opacity: 1; clip-path: inset(0 0 0 -40px); } }
+/* The clip stays once the ribbon is out, so it leaves room above for the lead tag that stands on it. */
+@keyframes sbUnfurl { from { opacity: 0; clip-path: inset(-30px 0 0 100%); } to { opacity: 1; clip-path: inset(-30px 0 0 -40px); } }
 @keyframes sbSheen { from { left: -50%; } to { left: 120%; } }
 @keyframes sbBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
 @keyframes sbWrite { 0%,100% { transform: rotate(0) translate(0,0); } 25% { transform: rotate(-8deg) translate(2px,-1px); } 50% { transform: rotate(4deg) translate(5px,0); } 75% { transform: rotate(-4deg) translate(8px,-1px); } }
 @keyframes sbDot { 0%,100% { opacity: .25; } 50% { opacity: 1; } }
-@keyframes sbInk { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: none; } }
+/* New words fade in sharp: a blur on text reads as a fault, not as ink drying. */
+@keyframes sbInk { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sbStamp { from { opacity: 0; transform: rotate(-12deg) scale(1.8); } to { opacity: 1; transform: rotate(-12deg) scale(1); } }
 @keyframes sbWave { from { transform: translateX(0); } to { transform: translateX(20px); } }
 @keyframes sbIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes sbOpen { from { opacity: 0; transform: rotateX(18deg) translateY(40px) scale(.94); } to { opacity: 1; transform: rotateX(3deg); } }
+@keyframes sbOpen { from { opacity: 0; transform: rotateX(18deg) translateY(40px) scale(.94); } to { opacity: 1; transform: none; } }
 .sb.still *, .sb.still *::before, .sb.still *::after { animation: none !important; transition: none !important; }
 `;
 }

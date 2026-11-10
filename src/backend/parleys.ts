@@ -27,6 +27,7 @@ import type { Exchange, ParleyScenario, ParleyState, RefereeRead } from "../engi
 import { EXPRESSION_FOR_MOOD } from "../shared/parley-view.js";
 import { expressionArtKey, figureArtKey, momentArtKey, npcArtKey, placeArtKey } from "../shared/art-keys.js";
 import type { ParleyMessageMeta, ParleyNarrator, ParleyViewMode, ToFrontend } from "../shared/protocol.js";
+import type { ThemeId } from "../shared/scene-view.js";
 import { modelsFor } from "./models.js";
 import { writeWithRetry } from "./writing.js";
 import { judge } from "./referee-host.js";
@@ -82,6 +83,8 @@ export type ParleyEndHook = (userId: string, scenario: ParleyScenario, state: Pa
 export interface ParleyStoryHook {
   heard(userId: string, chatId: string, lines: { name: string; content: string; isUser: boolean }[]): Promise<void>;
   known(userId: string, chatId: string): Promise<string[]>;
+  /** The theme the chat's scene is played in, when the chat has one. */
+  theme?(userId: string, chatId: string): Promise<ThemeId | null>;
 }
 
 export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { retryMs = [1500, 4000] }: { retryMs?: number[] } = {}) {
@@ -157,7 +160,8 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
   async function pushState(userId: string, state: ParleyState, resumed = false): Promise<void> {
     const scenario = await scenarioOf(userId, state.scenarioId);
     if (!scenario) return;
-    send({ type: "parley.state", state, scenario, journal: await journal(userId, scenario), view: await viewMode(userId), narrator: await narratorMode(userId), resumed }, userId);
+    const theme = state.chatId ? ((await story?.theme?.(userId, state.chatId).catch(() => null)) ?? null) : null;
+    send({ type: "parley.state", state, scenario, journal: await journal(userId, scenario), view: await viewMode(userId), narrator: await narratorMode(userId), resumed, ...(theme ? { theme } : {}) }, userId);
   }
 
   function requestNpcArt(scenario: ParleyScenario, userId: string): void {
@@ -602,7 +606,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
         if (state && scenario && ex) {
           awaiting.set(ctx.chatId, { userId: ctx.userId, parleyId: state.id, index: ex.index });
           narrating.add(ctx.chatId);
-          return inject(outcomeBlock(scenario, { ...state, value: ex.after.value, patience: ex.after.patience }, ex));
+          return inject(outcomeBlock(scenario, { ...state, value: ex.after.value, patience: ex.after.patience }, ex, true));
         }
         return messages;
       }
@@ -631,7 +635,7 @@ export function createParleys(spindle: SpindleAPI, send: Send, art: ArtApi, { re
           awaiting.set(ctx.chatId, { userId: ctx.userId, parleyId: state.id, index: r.exchange.index });
           narrating.add(ctx.chatId);
           await settle(ctx.userId, scenario, r.state, r.exchange, true);
-          return inject(outcomeBlock(scenario, r.state, r.exchange));
+          return inject(outcomeBlock(scenario, r.state, r.exchange, true));
         } finally {
           busy.delete(bk);
         }

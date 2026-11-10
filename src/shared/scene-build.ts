@@ -11,6 +11,8 @@ import type { Thread } from "../meaning/bible.js";
 import type { Adaptation, Deed, NpcMemory, Promotion, Recruit, Tally } from "../engine/memory/memory.js";
 import { BOND_AT } from "../engine/memory/memory.js";
 import type { ThreadEnd } from "../engine/story/beat.js";
+import { FEATURES, gateSheet } from "./features.js";
+import { holders, THREAD_HOW, threadLeads, threadNext, whatTheyKnow, type ThreadNext, type ThreadWorld } from "../engine/story/thread.js";
 import type { Scar } from "../meaning/night.js";
 import type { ClassBook } from "../engine/forge/forge.js";
 
@@ -40,7 +42,7 @@ export function placeArt(sheet: CardSheet, r: PlayRecord, placeId: string): stri
   return scar ? `${placeKey(sheet, placeId)}~${scar.flag}` : placeKey(sheet, placeId);
 }
 import { figureArtKey, npcArtKey, placeArtKey } from "./art-keys.js";
-import type { BoardView, DelveView, Movement, SceneView, ThemeId } from "./scene-view.js";
+import { THEMES, type BoardView, type DelveView, type Movement, type SceneView, type ThemeId } from "./scene-view.js";
 import { type Board, CAMP_COST, key as boardKey, reachable, SUPPLY_CAP as BOARD_SUPPLY_CAP, TIER_COST } from "../engine/world/board.js";
 
 export interface DayTalk {
@@ -61,8 +63,10 @@ export interface PlayRecord {
   scene: SceneState;
   theme: ThemeId;
   log: string[];
+  /** How many lines the log has ever been given: a beat's `n` is this when it was written, so the two can be told apart in time. */
+  logN?: number;
   /** Lines written in the scene, and what came of them. */
-  story?: { said: string; roll: string | null; reply: string; found?: string | null; day?: number; /** Where it happened (spotOf): a place, or an overland cell. */ where?: string; /** The adult scene this beat is (play.ts SceneMeta id). */ scene?: string }[];
+  story?: { n?: number; said: string; roll: string | null; reply: string; found?: string | null; day?: number; /** Where it happened (spotOf): a place, or an overland cell. */ where?: string; /** The adult scene this beat is (play.ts SceneMeta id). */ scene?: string }[];
   /** How far the clock has run toward the next step of the day (engine/story/beat.ts). */
   spent?: number;
   /** The last day of the thread, and how it came out. */
@@ -70,6 +74,10 @@ export interface PlayRecord {
   threadEnd?: ThreadEnd;
   /** The montage has shown how the thread ended. */
   threadTold?: boolean;
+  /** Who was asked about the thread, and on which day: one try a day each (cast id -> day). */
+  asked?: Record<string, number>;
+  /** Threads that ended before the one running now, oldest first: the game always has a goal (meaning/thread-next.ts). */
+  threadsDone?: { goal: string; ended: ThreadEnd; found: number; total: number; day: number }[];
   /** What was said in recent Parleys and how they ended: the night and the next day's narrator hold to it. */
   talks?: DayTalk[];
   /** The track each moment was given: a place keeps its theme. */
@@ -157,19 +165,117 @@ export function wildCell(r: PlayRecord): Terrain | null {
 
 /** The menu for where you are: a place's hotspots, or the wild's (camp, forage, fight). */
 export function menuFor(sheet: CardSheet, r: PlayRecord): Hotspot[] {
-  const menu = placeMenu(sheet, r);
-  return heldBy(r) ? menu.filter((h) => !LEAVING.has(h.kind)) : menu;
+  const menu = withAsks(sheet, r, placeMenu(sheet, r));
+  return withLeads(sheet, r, heldBy(r) ? menu.filter((h) => !LEAVING.has(h.kind)) : menu);
+}
+
+/** The thread still running, with its missing pieces, or null. */
+/** The story box tells this scene: what happened here since the last night. A move or a night starts it afresh. */
+const storyHere = (r: PlayRecord) => (r.story ?? []).filter((x) => x.where === spotOf(r) && (x.day ?? 0) > (r.memory?.nights?.at(-1)?.day ?? 0));
+/** Was the newest log line written after the newest beat on the page? (Beats from before the count was kept say nothing.) */
+const logAfter = (r: PlayRecord): boolean => {
+  const last = storyHere(r).at(-1);
+  return last?.n !== undefined && (r.logN ?? 0) > last.n;
+};
+
+const liveThread = (r: PlayRecord) => (r.thread && !r.threadEnd && r.thread.revelations.some((x) => !r.revealed?.includes(x.id)) ? r.thread : null);
+
+/** Who was already asked about the thread today: one try a day each. */
+export const askedToday = (r: PlayRecord): Set<string> => new Set(Object.entries(r.asked ?? {}).flatMap(([id, day]) => (day === r.scene.day ? [id] : [])));
+
+/**
+ * What someone knows, they are asked for: a person here who holds a missing piece gets "Ask <name> what they know"
+ * beside "Talk to <name>". Talking is free roleplay; asking opens a talk with the piece at stake.
+ */
+function withAsks(sheet: CardSheet, r: PlayRecord, menu: Hotspot[]): Hotspot[] {
+  const t = liveThread(r);
+  if (!t || sheet.modules.parley === false) return menu;
+  const w = threadWorldOf(sheet, r);
+  const asked = askedToday(r);
+  const hold = holders(t.revelations, r.revealed ?? [], w);
+  return menu.flatMap((h) => {
+    const id = h.kind === "talk" && h.id.startsWith("talk:") ? h.target : undefined;
+    const who = id && hold.has(id) && !asked.has(id) ? sheet.cast.find((c) => c.id === id) : undefined;
+    return who ? [h, { id: `ask:${who.id}`, kind: "talk" as const, label: `Ask ${who.name} ${whatTheyKnow(who.pronoun)}` }] : [h];
+  });
+}
+
+/** The first step from one place toward another along the world's exits (the place itself when it is next door). */
+function firstHop(r: PlayRecord, from: string, to: string): string | null {
+  if (from === to) return null;
+  const seen = new Set([from]);
+  let frontier: [string, string][] = (r.world.places[from]?.exits ?? []).map((e) => [e, e]);
+  while (frontier.length) {
+    const next: [string, string][] = [];
+    for (const [at, first] of frontier) {
+      if (at === to) return first;
+      if (seen.has(at)) continue;
+      seen.add(at);
+      for (const e of r.world.places[at]?.exits ?? []) if (!seen.has(e)) next.push([e, first]);
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+/** The one next step about the thread, given what this menu can do. */
+export function nextStep(sheet: CardSheet, r: PlayRecord, menu: readonly Hotspot[]): ThreadNext | null {
+  if (r.delve || r.board) return null;
+  // A thread that has just ended: the night shows what comes of it, and the morning brings the next.
+  if (r.thread && r.threadEnd && !r.threadTold) {
+    const sleep = menu.find((h) => h.kind === "rest")?.id;
+    return { text: "End the day to see what comes of it", ...(sleep ? { act: sleep } : {}) };
+  }
+  const t = liveThread(r);
+  if (!t) return null;
+  const here = r.scene.placeId;
+  const can = (id: string) => menu.some((h) => h.id === id);
+  const next = threadNext(t.revelations, r.revealed ?? [], threadWorldOf(sheet, r), {
+    here,
+    searched: new Set([...r.scene.searched, ...(can("search") ? [] : [here])]),
+    asked: askedToday(r),
+    talks: sheet.modules.parley !== false,
+    hop: (to) => {
+      const step = firstHop(r, here, to);
+      return step && can(`go:${step}`) ? step : can(`go:${to}`) ? to : null;
+    },
+    ...(menu.find((h) => h.kind === "rest") ? { sleep: menu.find((h) => h.kind === "rest")!.id } : {}),
+  });
+  // An action the menu doesn't have (held somewhere, out in the wild) is still said, without a button to mark.
+  return next && next.act && !can(next.act) ? { text: next.text } : next;
+}
+
+/** Who and where the thread's pieces can point at: the card's people, each where they are now, and the world's places. */
+function threadWorldOf(sheet: CardSheet, r: PlayRecord): ThreadWorld {
+  const places = Object.values(r.world.places);
+  return {
+    cast: sheet.cast.map((c) => {
+      const at = places.find((q) => q.people.includes(c.id))?.id;
+      return { id: c.id, name: c.name, ...(at ? { at } : {}), ...(c.pronoun ? { pronoun: c.pronoun } : {}) };
+    }),
+    places: places.map((q) => ({ id: q.id, name: q.name })),
+  };
+}
+
+/**
+ * The actions that follow a lead of the thread are marked, so a menu of ten equal choices says which of them the
+ * goal is behind: talking to someone a missing piece is about, searching where one can be found, going where one is.
+ */
+function withLeads(sheet: CardSheet, r: PlayRecord, menu: Hotspot[]): Hotspot[] {
+  // One action is the next step, and one is marked: a menu with four leads says as little as a menu with none.
+  const act = nextStep(sheet, r, menu)?.act;
+  return act ? menu.map((h) => (h.id === act ? { ...h, lead: true } : h)) : menu;
 }
 
 function placeMenu(sheet: CardSheet, r: PlayRecord): Hotspot[] {
   if (r.delve || r.board) return [];
   const t = wildCell(r);
   if (!t) {
-    const out = hotspotsOf(r.world, r.scene.placeId, sheet);
+    const out = hotspotsOf(r.world, r.scene.placeId, gateSheet(sheet));
     if (afterglowHere(r)) out.unshift({ id: "afterglow", kind: "talk", label: afterglowLabel(r.afterglow!) });
     const p = r.world.places[r.scene.placeId];
     // Out of doors, a place can be crossed on an expedition board; a delve has its own crawl.
-    if (p && sheet.modules.places !== false && !p.delve && (p.danger || !(p.indoor ?? INDOOR.test(`${p.name} ${p.description}`)))) {
+    if (FEATURES.board && p && sheet.modules.places !== false && !p.delve && (p.danger || !(p.indoor ?? INDOOR.test(`${p.name} ${p.description}`)))) {
       const at = out.findIndex((h) => h.kind === "search");
       out.splice(at + 1, 0, { id: "explore", kind: "explore", label: `Explore ${p.name}` });
     }
@@ -177,7 +283,7 @@ function placeMenu(sheet: CardSheet, r: PlayRecord): Hotspot[] {
   }
   const out: Hotspot[] = [{ id: "forage", kind: "search", label: "Forage for supplies" }];
   if (afterglowHere(r)) out.unshift({ id: "afterglow", kind: "talk", label: afterglowLabel(r.afterglow!) });
-  if (t !== "water") out.push({ id: "explore", kind: "explore", label: `Explore the ${TERRAIN_NAME[t].toLowerCase()}` });
+  if (FEATURES.board && t !== "water") out.push({ id: "explore", kind: "explore", label: `Explore the ${TERRAIN_NAME[t].toLowerCase()}` });
   if (sheet.modules.encounters && (t === "wood" || t === "ruin" || t === "hill")) out.push({ id: "fight", kind: "fight", label: fightLabel(sheet.skin.fight) });
   out.push({ id: "camp", kind: "rest", label: "Make camp" }, { id: "wait", kind: "wait", label: "Wait a while" });
   return out;
@@ -246,7 +352,10 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
   return {
     chatId,
     cardName: sheet.cardName,
-    theme: r.theme,
+    // The class panel (fusing, forging, awakening) is there only when its switch is on.
+    canForge: FEATURES.forge,
+    // A chat saved under a theme that is no longer there (Diorama, Table) opens in the default.
+    theme: THEMES.some((t) => t.id === r.theme) ? r.theme : "storybook",
     shape: r.world.shape,
     movement,
     skin: { currency: sheet.skin.currency, fight: sheet.skin.fight, genre: sheet.skin.genre },
@@ -262,13 +371,30 @@ export function buildSceneView(sheet: CardSheet, chatId: string, r: PlayRecord, 
     coin: r.scene.coin,
     vigor: r.scene.vigor,
     log: r.log,
-    // The story box tells this scene: what happened here since the last night. A move or a night starts it afresh.
-    story: (r.story ?? []).filter((b) => b.where === spotOf(r) && (b.day ?? 0) > (r.memory?.nights?.at(-1)?.day ?? 0)),
+    ...(logAfter(r) ? { logAfter: true } : {}),
+    story: storyHere(r),
     voices: { cast: sheet.cast.map((c) => ({ name: c.name, pronoun: c.pronoun, ...(people.some((m) => m.id === c.id) ? { here: true } : {}) })), player: sheet.player.name },
     ...(r.delve ? { delve: delveView(sheet, r)! } : {}),
     ...(r.board ? { board: boardView(sheet, r) } : {}),
     ...(r.hex ? { hex: hexView(r) } : {}),
-    ...(r.thread ? { thread: { goal: r.thread.goal, found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text), total: r.thread.revelations.length, ...(r.deadline !== undefined ? { daysLeft: Math.max(0, r.deadline - r.scene.day + 1) } : {}), ...(r.threadEnd ? { ended: r.threadEnd } : {}) } } : {}),
+    ...(r.thread
+      ? {
+          thread: {
+            goal: r.thread.goal,
+            found: r.thread.revelations.filter((x) => r.revealed?.includes(x.id)).map((x) => x.text),
+            total: r.thread.revelations.length,
+            ...(r.deadline !== undefined ? { daysLeft: Math.max(0, r.deadline - r.scene.day + 1) } : {}),
+            ...(r.threadEnd ? { ended: r.threadEnd } : {}),
+            // Where the missing pieces are, while there is still time to find them.
+            leads: r.threadEnd
+              ? []
+              : threadLeads(r.thread.revelations, r.revealed ?? [], threadWorldOf(sheet, r)),
+            // The one thing to do next about it, as an action, and the menu item that does it.
+            ...(nextStep(sheet, r, menuFor(sheet, r)) ? { next: nextStep(sheet, r, menuFor(sheet, r))! } : {}),
+            how: THREAD_HOW,
+          },
+        }
+      : {}),
     hand: sheet.facts.filter((f) => !ownSecret(f) && (f.known || r.scene.found.includes(f.id))).map((f) => ({ id: f.id, text: f.text })),
     // A Decision model's verdict when the place was judged (backend/senses.ts), else the word rule.
     indoor: !wild && !r.delve && (p.indoor ?? (p.shop || INDOOR.test(`${p.name} ${p.description}`))),

@@ -69,15 +69,15 @@ class FoePlate extends Container {
     }
     this.nameT.anchor.set(0.5);
     const k = Math.max(0.75, ui * 0.82);
-    const sw = Math.round(Math.max(150, Math.min(250, v.slot.height * 0.5)) * k);
-    this.w = sw;
-    const sh = (sw * 72) / 200;
-    this.scrollArt.draw(sw, sh);
-    this.scrollArt.position.set(-sw / 2, -sh * (18 / 72) - 4 * k);
-    const fs = Math.round((sw / 200) * 14);
-    this.nameT.style = new TextStyle({ fontFamily: CINZEL, fontWeight: "800", fontSize: fs, fill: 0xfff0cc, letterSpacing: fs * 0.12, stroke: { color: 0x2a0606, width: Math.max(1.5, fs * 0.16) } });
-    this.nameT.position.set(0, this.scrollArt.y + sh * (55 / 72) - sh * 0.02);
-    const gw = sw * 0.72, gh = Math.max(12, sw * 0.075);
+    const base = Math.round(Math.max(150, Math.min(250, v.slot.height * 0.5)) * k);
+    const sh = (base * 72) / 200;
+    // A foe's name is read across the room: set at a fixed readable size, and the scroll is as long as the name
+    // needs (up to its slot), rather than the name shrinking to fit a short scroll.
+    const fs = Math.round(Math.max(17, (base / 200) * 18.5));
+    this.nameT.style = new TextStyle({ fontFamily: GARAMOND, fontWeight: "700", fontSize: fs, fill: 0xfff0cc, letterSpacing: fs * 0.02, stroke: { color: 0x2a0606, width: Math.max(2, fs * 0.14) } });
+    this.scrollGeo = { base, sh, k, max: Math.max(base, slotW > 0 ? slotW : base * 1.5), fs };
+    this.fitScroll();
+    const gw = base * 0.72, gh = Math.max(12, base * 0.075);
     this.gaugeArt.draw(gw, gh);
     this.gw = gw;
     this.gh = gh;
@@ -99,8 +99,11 @@ class FoePlate extends Container {
       if (this.nameT.text !== u.name) this.nameT.text = u.name;
       this.gy = 3 + this.nameT.height + 2;
     } else {
-      if (this.nameT.text !== u.name.toUpperCase()) this.nameT.text = u.name.toUpperCase();
-      if (this.nameT.width > this.w * 0.68) this.nameT.scale.set((this.w * 0.68) / (this.nameT.width / this.nameT.scale.x));
+      // In the book's text face, upper and lower case: a long name keeps its size where capitals had to shrink.
+      if (this.nameT.text !== u.name) {
+        this.nameT.text = u.name;
+        this.fitScroll();
+      }
     }
     const fsig = `${t.toFixed(3)}|${this.ghost.toFixed(3)}|${u.shield}|${u.broken}|${this.gw}`;
     if (fsig !== this.fsig) this.drawFill(t, u);
@@ -108,6 +111,20 @@ class FoePlate extends Container {
     this.marksFor(u);
   }
   private fsig = "";
+  private scrollGeo = { base: 150, sh: 54, k: 1, max: 225, fs: 15 };
+  /** The scroll sized to the name on it (desktop): as long as the name needs, the name's dark band there before the scroll's picture is. */
+  private fitScroll(): void {
+    const { base, sh, k, max, fs } = this.scrollGeo;
+    this.nameT.scale.set(1);
+    const sw = Math.round(Math.max(base, Math.min(this.nameT.width / 0.66, max)));
+    this.w = sw;
+    this.scrollArt.draw(sw, sh);
+    this.scrollArt.position.set(-sw / 2, -sh * (18 / 72) - 4 * k);
+    this.nameT.position.set(0, this.scrollArt.y + sh * (55 / 72) - sh * 0.03);
+    if (this.nameT.width > sw * 0.72) this.nameT.scale.set((sw * 0.72) / this.nameT.width);
+    this.back.visible = true;
+    this.back.clear().roundRect(-sw * 0.36, this.nameT.y - fs * 0.85, sw * 0.72, fs * 1.7, 3).fill({ color: 0x4a1216, alpha: 0.92 }).stroke({ width: 1, color: 0xb98a45, alpha: 0.9 });
+  }
   private drawFill(t: number, u: { shield: number; maxHp: number; broken: boolean }): void {
     const g = this.fill;
     if (GEO.compact) {
@@ -258,7 +275,7 @@ export function decorate(stage: BattleStage): StageDecor {
   const flatPage = new Graphics();
   const vellum = new ImageSprite(parchment());
   const pageRim = new Graphics();
-  atmos.addChild(rays, vig, motes, skirt, pageArt, flatPage, vellum, pageRim);
+  atmos.addChild(rays, vig, motes, skirt, flatPage, pageArt, vellum, pageRim);
   stage.back.addChild(atmos);
   // The proscenium corners, over the fight (under the cut-ins).
   const corners = new Container();
@@ -411,7 +428,7 @@ export function decorate(stage: BattleStage): StageDecor {
       const plainPage = GEO.compact;
       rays.visible = !plainPage;
       skirt.visible = pageArt.visible = !plainPage;
-      flatPage.visible = vellum.visible = pageRim.visible = plainPage;
+      vellum.visible = pageRim.visible = plainPage;
       if (plainPage) {
         flatPage.clear().rect(p.x, p.y, p.w, p.h).fill({ color: 0xe6d3ab });
         vellum.fit(p.w, p.h);
@@ -420,6 +437,9 @@ export function decorate(stage: BattleStage): StageDecor {
         if (l.portrait) pageRim.rect(0, p.y - 3, w, 3).fill({ color: 0x2a1205 }).rect(0, p.y - 2, w, 2).fill({ color: 0xd9ad62 });
         else pageRim.rect(p.x - 3, 0, 3, h).fill({ color: 0x2a1205 }).rect(p.x - 2, 0, 2, h).fill({ color: 0xd9ad62 });
       } else {
+        // The page's ground at once (dark cradle, gilt hairline, vellum), so its words can be read before its picture is laid over.
+        flatPage.clear().roundRect(p.x - 12, p.y - 10, p.w + 24, p.h + 20, 6).fill({ color: 0x2a140b }).stroke({ width: 1.5, color: 0xb98a45 })
+          .rect(p.x, p.y, p.w, p.h).fill({ color: 0xe6d3ab });
         const art = page(p.w, p.h);
         const M = art.pad.x, T = art.pad.top, B = art.pad.bottom;
         pageArt.draw(p.w + 2 * M, p.h + T + B, `page-${p.w}x${p.h}`, () => art.svg);

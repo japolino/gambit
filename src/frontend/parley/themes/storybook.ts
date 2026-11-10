@@ -62,8 +62,8 @@ const TAB_CLIP = "polygon(9% 6%, 91% 6%, 98% 50%, 91% 94%, 9% 94%, 2% 50%)";
 /** The book's geometry, set in px by ./storybook/decor.ts (defaults for the first paint). */
 const GEO = `--dw: 1600px; --dh: 300px; --db: 24px; --dx: 160px;
   --cw: clamp(150px, min(21cqw, 34cqh), 360px); --hh: clamp(70px, 11cqh, 108px); --hx: max(2.2cqw, calc(var(--cw) * .42));
-  --bw: clamp(100px, 13cqh, 132px); --bh: calc(var(--bw) * 1.9); --br: calc(var(--cw) + 1.6cqw);
-  --rw: clamp(300px, 40cqh, 400px); --rh: clamp(44px, 5.2cqh, 54px); --fs: clamp(16px, 2.15cqh, 24px);
+  --bw: clamp(96px, 11.6cqh, 124px); --bh: calc(var(--bw) * 1.9); --br: calc(var(--cw) + 1.6cqw);
+  --rw: clamp(300px, 40cqh, 400px); --rh: clamp(44px, 5.2cqh, 54px); --fs: clamp(19px, min(2.5cqh, 1.6cqw), 27px);
   --sx: max(4cqw, calc(var(--dx) + 24px)); --na: 2;`;
 
 function css(): string {
@@ -134,10 +134,11 @@ ${P} .head, ${P} .title-row, ${P} .meter, ${P} .foot { display: contents; }
 ${P} .log { position: absolute; z-index: 4; left: calc(var(--dx) + 60px); width: calc(var(--dw) - 120px); bottom: calc(var(--db) + 84px); top: calc(100cqh - var(--db) - var(--dh) + 24px); height: auto;
   padding: 18px 8px 6px 0; gap: .45em; font-size: var(--fs); scrollbar-width: none; overscroll-behavior: contain;
   -webkit-mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 8px), transparent); mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 8px), transparent); }
-${P} .log > * { max-width: min(100%, 64em); }
+/* The conversation is set like the scene's narration: large, at a measure the eye can keep (about seventy characters). */
+${P} .log > * { max-width: min(100%, 42em); }
 ${P} .log::-webkit-scrollbar { display: none; }
-${P} .setting { font: italic 400 .8em/1.4 ${FELL}; color: #6b4a2a; }
-${P} .speaker { font: 800 clamp(10px, 1.2cqh, 12px)/1 ${CINZ}; letter-spacing: .24em; text-transform: uppercase; color: #8a5a2a; margin-bottom: .3em; }
+${P} .setting { font: italic 400 max(16px, .8em)/1.4 ${FELL}; color: #6b4a2a; }
+${P} .speaker { font: 800 clamp(12px, 1.4cqh, 15px)/1 ${CINZ}; letter-spacing: .22em; text-transform: uppercase; color: #8a5a2a; margin-bottom: .3em; }
 ${P} .npc .prose { font: 400 1em/1.42 ${FELL}; color: #261409; }
 ${P} .npc .prose em { color: #7a1c1c; }
 ${P} .log > .npc:last-child .prose { font-size: 1.04em; color: #23140b; }
@@ -146,13 +147,20 @@ ${P} .npc .prose > p:first-child { display: flow-root; }
 ${P} .sbp-dc { float: left; width: 1.62em; height: 1.62em; margin: .1em 1px 0 0; display: grid; place-items: center; padding-top: .06em;
   font: 800 1.5em/1 ${CINZ}; font-style: normal; color: #ffe7b0; text-shadow: 0 1px 0 #2a0606, 0 0 3px #2a0606; background: ${cssUrl(capTile())} center / 100% 100% no-repeat; }
 ${P} .sbp-dc.lone { margin-right: .3em; }
+/* On the framed page the cap is an initial, not two lines deep: a whole beat (the roll, its tell, the reply) then fits the page at once. */
+${P}:not(.pl-phone) .sbp-dc { width: 1.5em; height: 1.5em; margin: -.04em 2px 0 0; font-size: 1.02em; }
 ${P} .sbp-fw { font-variant: small-caps; letter-spacing: .04em; font-weight: 600; }
 ${P} .you { align-self: stretch; max-width: none; background: none; border: 0; border-left: 2px solid rgba(139,26,26,.45); border-radius: 0; padding: .1em 0 .1em .8em; box-shadow: none; }
 ${P} .you .speaker { text-align: left; color: #8b1a1a; }
-${P} .you .prose { font: italic 500 .84em/1.4 ${GARA}; color: #4a2511; }
+${P} .you .prose { font: italic 500 .82em/1.4 ${GARA}; color: #4a2511; }
 ${P} { ${VOICES} }
 ${P} .you .prose em { font-style: normal; }
-${P} .read { border-left: 2px dotted #a8742f; padding-left: .8em; gap: 4px; font-size: .8em; }
+${P} .read { border-left: 2px dotted #a8742f; padding-left: .8em; gap: 4px; font-size: .78em; }
+/* How the roll came out is the turn's headline: its die, its verdict and its tell are sized to be read, not footnotes. */
+${P}:not(.pl-phone) .die { width: 46px; height: 46px; font-size: 19px; }
+${P}:not(.pl-phone) .result { height: 30px; padding: 0 26px 0 14px; font-size: clamp(13px, 1.4cqh, 15px); }
+${P}:not(.pl-phone) .trn { font-size: clamp(15px, 1.6cqh, 17px); }
+${P}:not(.pl-phone) .tier { font-size: 13px; }
 /* On a desktop page the roll and its tell share one row, so a whole beat fits the page at once. */
 ${P}:not(.pl-phone) .read { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; row-gap: 4px; }
 ${P}:not(.pl-phone) .read > * { flex: 1 1 100%; }
@@ -178,7 +186,7 @@ ${P} .composer { position: absolute; z-index: 4; left: calc(var(--dx) + 54px); w
 ${P} .composer::before { content: ""; width: 40px; height: 40px; background: ${QUILL} center / contain no-repeat; filter: drop-shadow(0 2px 2px rgba(60,30,10,.4)); }
 ${P} .composer::after { content: ""; position: absolute; left: 0; right: 0; top: -16px; height: 14px; pointer-events: none;
   background: ${FLEURON} center / 60px 14px no-repeat, linear-gradient(90deg, transparent, #a8742f 6%, #a8742f calc(50% - 34px), transparent calc(50% - 33px), transparent calc(50% + 33px), #a8742f calc(50% + 34px), #a8742f 94%, transparent) center / 100% 1.5px no-repeat; }
-${P} .composer textarea { height: 46px; min-height: 0; padding: 11px 14px 0; font: italic 400 clamp(16px, 2cqh, 20px)/1.25 ${FELL}; color: #2b170a; border: 0; border-radius: 3px; overflow-y: auto; scrollbar-width: none;
+${P} .composer textarea { height: 46px; min-height: 0; padding: 10px 14px 0; font: italic 400 clamp(17px, 2.1cqh, 22px)/1.25 ${FELL}; color: #2b170a; border: 0; border-radius: 3px; overflow-y: auto; scrollbar-width: none;
   background: linear-gradient(rgba(110,70,30,.16), rgba(255,246,220,.22)); box-shadow: inset 0 2px 5px rgba(80,45,15,.35), inset 0 0 0 1px rgba(122,74,30,.28), 0 1px 0 rgba(255,250,235,.55); }
 ${P} .composer textarea:focus { outline: none; box-shadow: inset 0 2px 5px rgba(80,45,15,.35), inset 0 0 0 1.5px #b8862f, 0 0 0 3px rgba(255,210,122,.35); }
 ${P} .composer textarea::placeholder { color: #8f6e4e; }
@@ -196,6 +204,8 @@ ${P} .hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip
 ${P} .end.show { position: absolute; z-index: 5; left: calc(var(--dx) + 60px); width: calc(var(--dw) - 120px); bottom: calc(var(--db) + 18px); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px 22px;
   padding: 28px 0 0; background: linear-gradient(rgba(239,224,189,0), rgba(239,224,189,.96) 26px); text-align: left; }
 ${P} .end .reveals { flex: 1 0 100%; }
+/* The talk stops above the end card (./storybook/decor.ts measures it), so the last thing said is never under it. */
+${P}:not(.pl-phone):has(.end.show) .log { bottom: calc(var(--db) + var(--endh, 130px) - 10px); }
 ${P} .end-title { font: 400 clamp(24px, 3.2cqh, 34px)/1.1 ${FELL}; color: #8b1a1a; }
 ${P} .end-sub { font: italic 400 .9em ${FELL}; color: #52341e; }
 ${P} .reveals { font-size: .85em; }
@@ -205,7 +215,7 @@ ${P} .actions { position: absolute; z-index: 5; right: var(--sx); bottom: calc(v
 ${P} .actions::before { content: "What will you do?"; font: italic 400 clamp(20px, 2.7cqh, 28px)/1.2 ${FELL}; color: #fbe8bf; text-align: center; padding: 4px 0 6px 24px;
   text-shadow: 0 2px 12px #000, 0 0 24px #000, 0 0 3px #000; background: radial-gradient(ellipse 50% 60% at 55% 55%, rgba(12,6,3,.78), rgba(12,6,3,.3) 60%, transparent 75%); }
 ${P} .actions button, ${P} .leave { position: relative; z-index: 0; display: flex; align-items: center; height: var(--rh); padding: 0 40px 0 calc(var(--rh) + 10px); border: 0; border-radius: 0; background: none; text-align: left;
-  font: 600 clamp(16px, 2cqh, 20px)/1.1 ${GARA}; letter-spacing: .01em; text-transform: none; color: #fdf0d5; text-shadow: 0 2px 2px rgba(0,0,0,.85); clip-path: none;
+  font: 600 clamp(17px, 2.1cqh, 21px)/1.1 ${GARA}; letter-spacing: .01em; text-transform: none; color: #fdf0d5; text-shadow: 0 2px 2px rgba(0,0,0,.85); clip-path: none;
   filter: drop-shadow(0 6px 8px rgba(0,0,0,.55)); transition: translate .4s cubic-bezier(.3,1.5,.45,1), filter .25s; }
 ${P} .actions button::after, ${P} .leave::after { content: ""; position: absolute; inset: 0 0 0 calc(var(--rh) * .45); z-index: -1; clip-path: ${RIB_CLIP}; background: ${RIB_EDGE} 0 0 / 100% 100%, url(${cloth.walk}) 0 0 / 64px 64px; }
 ${P} .actions .deal::after { background: ${RIB_EDGE} 0 0 / 100% 100%, url(${cloth.deal}) 0 0 / 256px 64px; }
@@ -218,21 +228,25 @@ ${P} .actions button:disabled { filter: saturate(.5) brightness(.8) drop-shadow(
 ${P} .leave { margin-top: 0; min-width: 180px; }
 
 /* What you know: wax-sealed parchment slips stacked over the painting above the deal; a slip cites its fact in your next line. */
-${P} .hand { display: flex; position: absolute; z-index: 5; right: var(--sx); width: calc(var(--rw) + 40px); top: calc(var(--bh) + 12px);
+${P} .hand { display: flex; position: absolute; z-index: 5; right: var(--sx); width: calc(var(--rw) + 90px); top: calc(var(--bh) + 6px);
   bottom: calc(var(--db) + var(--dh) + 34px + clamp(36px, 4.4cqh, 46px) + var(--na) * (var(--rh) + clamp(6px, 1cqh, 10px)) + 8px);
-  flex-direction: column; align-items: stretch; gap: 5px; overflow-y: auto; scrollbar-width: none; padding: 4px 4px 4px 16px; filter: drop-shadow(0 6px 8px rgba(0,0,0,.6)); }
-${P} .hand::-webkit-scrollbar { display: none; }
+  flex-direction: column; align-items: stretch; gap: 4px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(233,197,122,.8) transparent; padding: 2px 6px 2px 16px; filter: drop-shadow(0 6px 8px rgba(0,0,0,.6)); }
 ${P} .hand::before { content: "What you know" attr(data-tally); margin-top: auto; text-align: right; padding-right: 4px; font: italic 400 clamp(17px, 2.2cqh, 22px)/1.2 ${FELL}; color: #fbe8bf; text-shadow: 0 2px 10px #000, 0 0 3px #000; }
-${P} .fact-card { position: relative; flex: none; min-height: clamp(38px, 4.2cqh, 46px); padding: 5px 14px 5px clamp(44px, 5cqh, 52px); border: 0; border-radius: 0; text-align: left; cursor: pointer;
-  font: 600 clamp(13.5px, 1.45cqh, 16px)/1.18 ${GARA}; color: #23140b; background: url(${slip}) center / cover;
+/* A fact is something to read and play: set at the size of body text. A spent one keeps to a single line (all of it under the pointer), so the ones still to play have the room. */
+${P} .fact-card { position: relative; flex: none; min-height: clamp(40px, 4.6cqh, 50px); padding: 6px 14px 6px clamp(44px, 5cqh, 52px); border: 0; border-radius: 0; text-align: left; cursor: pointer;
+  font: 600 clamp(16px, 1.62cqh, 17.5px)/1.2 ${GARA}; color: #23140b; background: url(${slip}) center / cover;
   clip-path: polygon(0 4%, 3% 0, 22% 3%, 41% 0, 63% 2%, 82% 0, 100% 3%, 99% 34%, 100% 66%, 98% 100%, 76% 97%, 55% 100%, 33% 97%, 12% 100%, 1% 97%, 0 62%);
   transition: translate .3s cubic-bezier(.3,1.5,.5,1), filter .2s; }
 ${P} .fact-card::before { content: ""; position: absolute; left: 6px; top: 50%; width: clamp(32px, 3.8cqh, 40px); aspect-ratio: 1; translate: 0 -50%; background: ${cssUrl(seal())} center / contain no-repeat; transition: rotate .4s cubic-bezier(.3,1.5,.5,1); }
 ${P} .fact-card:hover, ${P} .fact-card:focus-visible { translate: -12px 0; outline: none; filter: brightness(1.07); box-shadow: inset 0 0 0 2px #d9ad62, inset 0 0 18px rgba(255,210,122,.55); }
 ${P} .fact-card:hover::before, ${P} .fact-card:focus-visible::before { rotate: -18deg; }
-${P} .fact-card.used { order: 1; padding-right: 70px; color: #6a4a2a; filter: saturate(.7) brightness(.92); }
+${P} .fact-card.used { order: 1; padding-right: 76px; color: #5a3c22; filter: saturate(.7) brightness(.92); }
+${P}:not(.pl-phone) .fact-card.used { min-height: clamp(32px, 3.4cqh, 38px); font-size: clamp(15px, 1.5cqh, 16.5px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+${P}:not(.pl-phone) .fact-card.used:hover, ${P}:not(.pl-phone) .fact-card.used:focus-visible { white-space: normal; }
 ${P} .fact-card.used::after { content: "Used"; position: absolute; right: 10px; top: 50%; translate: 0 -50%; rotate: -10deg; padding: 1px 7px; border: 2px solid rgba(139,26,26,.75); border-radius: 2px;
-  font: 800 11px/1.3 ${CINZ}; letter-spacing: .16em; text-transform: uppercase; color: rgba(139,26,26,.85); }
+  font: 800 12px/1.3 ${CINZ}; letter-spacing: .14em; text-transform: uppercase; color: rgba(139,26,26,.9); }
+/* Open (./storybook/decor.ts): the stack rises over the bookmarks on a dark ground, so every slip can be read where a short window had cut it. */
+${P}:not(.pl-phone) .hand.sbp-open { top: 1.2cqh; z-index: 9; padding: 10px 8px 8px 18px; border-radius: 4px; background: linear-gradient(rgba(38,19,10,.95), rgba(16,8,4,.95)); box-shadow: 0 0 0 1px #d9ad62, 0 10px 24px rgba(0,0,0,.7); filter: none; }
 /* A very wide window has room for the facts beside the deal rather than above it. */
 @container (min-aspect-ratio: 2/1) {
   ${P}:not(.pl-phone) .hand { right: calc(var(--sx) + var(--rw) + 28px); top: 16cqh; bottom: calc(var(--db) + var(--dh) + 34px); }
@@ -290,8 +304,8 @@ ${P} .sbp-marks .pat .sbp-flame { transform-box: fill-box; transform-origin: 50%
 
 /* ---------- Index tabs on the rim: the view mode, and what you know ---------- */
 ${P} .mode { position: absolute; z-index: 6; right: calc(var(--dx) + 70px); bottom: calc(var(--db) + var(--dh) - 16px); display: flex; gap: 6px; border: 0; border-radius: 0; overflow: visible; background: none; }
-${P} .mode button, ${P} .journal-btn { position: relative; z-index: 0; height: 30px; width: auto; padding: 0 18px; border: 0; border-radius: 0; color: #f3d791;
-  font: 800 11px/1 ${CINZ}; letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 1px 2px #000; background: none;
+${P} .mode button, ${P} .journal-btn { position: relative; z-index: 0; height: 34px; width: auto; padding: 0 18px; border: 0; border-radius: 0; color: #f3d791;
+  font: 800 12.5px/1 ${CINZ}; letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 1px 2px #000; background: none;
   filter: drop-shadow(0 4px 5px rgba(0,0,0,.5)); transition: translate .3s cubic-bezier(.3,1.5,.5,1), filter .2s; cursor: pointer; }
 ${P} .mode button::after, ${P} .journal-btn::after { content: ""; position: absolute; inset: 0; z-index: -1; clip-path: ${TAB_CLIP}; background: ${TAB_EDGE} 0 0 / 100% 100%, url(${hide}) center / 160px; }
 ${P} .mode button.on { translate: 0 -4px; color: #fff3cf; filter: brightness(1.25) drop-shadow(0 0 8px rgba(255,200,110,.55)); background: none; }
@@ -318,7 +332,7 @@ ${P} .moments button::after { content: ""; position: absolute; inset: -3px; poin
   background: linear-gradient(135deg, ${GILT} 0 11px, #5a3816 11px 12.5px, transparent 13px) 0 0 / 30px 30px no-repeat, linear-gradient(225deg, ${GILT} 0 11px, #5a3816 11px 12.5px, transparent 13px) 100% 0 / 30px 30px no-repeat,
     linear-gradient(45deg, ${GILT} 0 11px, #5a3816 11px 12.5px, transparent 13px) 0 100% / 30px 30px no-repeat, linear-gradient(315deg, ${GILT} 0 11px, #5a3816 11px 12.5px, transparent 13px) 100% 100% / 30px 30px no-repeat; }
 ${P} .moments button::before { content: attr(title); position: absolute; left: 12%; right: 12%; bottom: -9px; padding: 2px 8px; pointer-events: none; z-index: 2;
-  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font: italic 400 clamp(10px, 1.2cqh, 12px)/1.35 ${FELL}; color: #f3d791; background: #2a170c; box-shadow: 0 0 0 1px ${GILT}, 0 2px 4px rgba(0,0,0,.6); }
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font: italic 400 clamp(12px, 1.3cqh, 14px)/1.35 ${FELL}; color: #f3d791; background: #2a170c; box-shadow: 0 0 0 1px ${GILT}, 0 2px 4px rgba(0,0,0,.6); }
 ${P} .moments button:nth-child(even) img { object-view-box: inset(6% 14% 22% 6%); }
 ${P} .moments button:hover, ${P} .moments button:focus-visible { rotate: 0deg; scale: 1.05; outline: none; box-shadow: 0 0 0 2px #ffd27a, 0 0 16px rgba(255,210,122,.7); }
 ${P} .moments button:hover::before, ${P} .moments button:focus-visible::before { white-space: normal; }

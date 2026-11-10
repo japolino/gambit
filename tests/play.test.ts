@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createPlay } from "../src/backend/play.js";
+import { FEATURES } from "../src/shared/features.js";
 import { fallbackFoes } from "../src/engine/card/foes.js";
 import type { BattleState } from "../src/engine/types.js";
 import type { ToFrontend } from "../src/shared/protocol.js";
@@ -29,15 +30,17 @@ const sheet = {
   kits: [],
 };
 
-function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unknown>; pictures?: unknown; spindle?: Record<string, unknown> } = {}) {
+function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unknown>; pictures?: unknown; spindle?: Record<string, unknown>; story?: "gambit" | "chat"; chatMs?: number } = {}) {
   const card = { ...sheet, ...o.sheet };
   const files = new Map<string, unknown>();
+  // Gambit's own narrator unless a test is about the chat writing the scene: no generation runs here to answer one.
+  files.set("settings.json", { storyNarrator: o.story ?? "gambit" });
   const posted: string[] = [];
   const messages: { id: string; role: string; content: string; metadata?: Record<string, unknown> }[] = [];
   const sent: ToFrontend[] = [];
   const started: BattleState[] = [];
   const known: string[] = [];
-  const talks: { castId: string; kind?: string; line?: string }[] = [];
+  const talks: { castId: string; kind?: string; line?: string; ask?: { goal: string; piece?: string } }[] = [];
   const spindle = {
     log: { info() {}, warn() {}, error() {} },
     userStorage: {
@@ -61,7 +64,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
   const cards = {
     sheetFor: async () => card as never,
     armory: async () => card as never,
-    talk: async (_u: string, _c: string, castId: string, kind?: string, _chip?: string, line?: string) => void talks.push({ castId, kind, line }),
+    talk: async (_u: string, _c: string, castId: string, kind?: string, _chip?: string, line?: string, ask?: { goal: string; piece?: string }) => void talks.push({ castId, kind, line, ...(ask ? { ask } : {}) }),
     markKnown: async (_u: string, _c: string, id: string) => void known.push(id),
     ...o.cards,
   };
@@ -79,7 +82,7 @@ function setup(o: { sheet?: Record<string, unknown>; cards?: Record<string, unkn
       return s;
     },
   };
-  const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, battles, o.pictures ? { pictures: o.pictures as never } : {});
+  const play = createPlay(spindle as never, (m) => sent.push(m), art as never, cards, battles, { ...(o.pictures ? { pictures: o.pictures as never } : {}), ...(o.chatMs ? { chatMs: o.chatMs } : {}) });
   const views = () => sent.flatMap((m) => (m.type === "scene.state" ? [m.view] : []));
   const last = (): SceneView => views()[views().length - 1]!;
   return { play, files, posted, messages, sent, started, known, talks, last, fights, reshown };
@@ -161,12 +164,80 @@ describe("play on a card", () => {
     expect(last().story[0]!.roll).toBeNull();
   });
 
+  test("warmth toward someone here does something: they like you better for it, once a day, and the page says so", async () => {
+    const { play, last, files } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I thank Mara for the tea");
+    expect(last().story[0]!.roll).toBe("Mara warms to you");
+    const npc = () => (files.get("play/chat1.json") as { memory: { npc: Record<string, { affinity: number; notes: { text: string }[] }> } }).memory.npc.mara!;
+    expect(npc().affinity).toBeGreaterThan(0);
+    expect(npc().notes.at(-1)!.text).toMatch(/kind to them/);
+    const before = npc().affinity;
+    await play.say("u", "chat1", "I hug Mara");
+    expect(last().story[1]!.roll).toBeNull();
+    expect(npc().affinity).toBe(before);
+  });
+
   test("when no narrator can write, the player reads plain words and the chat keeps only their line", async () => {
     const { play, last, posted } = setup();
     await play.open("u", "chat1");
     await play.say("u", "chat1", "I sneaked past Mara");
     expect(last().story[0]!.reply).not.toMatch(/show|consequence|they wrote/i);
     expect(posted).toEqual(["I sneaked past Mara"]);
+  });
+
+  test("under the chat's preset the chat writes the beat: the line starts a reply, the note goes last, and the reply is the story", async () => {
+    const { play, last, messages, sent } = setup({ story: "chat" });
+    await play.open("u", "chat1");
+    const saying = play.say("u", "chat1", "I sneaked past Mara");
+    await until(() => messages.some((m) => m.content === "I sneaked past Mara"));
+    const line = messages.at(-1)!;
+    expect(line.role).toBe("user");
+    // The chat's generation: the note is the last thing before the preset's prefill, and it carries the roll's result.
+    const prompt = [
+      { role: "system", content: "preset" },
+      { role: "user", content: line.content },
+      { role: "assistant", content: "Mm,", partial: true },
+    ];
+    const out = await play.intercept(prompt as never, { userId: "u", chatId: "chat1", generationType: "normal" } as never);
+    expect(out.slice(0, 2)).toEqual(prompt.slice(0, 2) as never);
+    expect(String(out.at(-2)!.content)).toMatch(/next beat of the story, at The Docks[\s\S]*Sneaking: /);
+    expect(out.at(-1)!.content).toBe("Mm,");
+    // It streams onto the page, and the finished reply is the beat: prose only, at the preset's own length.
+    play.onStreamToken("chat1", "Mara turns", false);
+    await until(() => sent.some((m) => m.type === "scene.story" && m.text === "Mara turns"));
+    const reply = `## Chapter\n\nMara turns at the sound of a loose plank. ${"She waits. ".repeat(60)}\n\n| HP | 10 |\n\n**Options:**\n1. Run`;
+    expect(await play.onGenerationEnded("chat1", reply, "m9")).toBe(true);
+    await saying;
+    const beat = last().story[0]!;
+    expect(beat.roll).toMatch(/^Sneaking: /);
+    expect(beat.reply).toMatch(/^Mara turns at the sound of a loose plank\./);
+    expect(beat.reply.split(/\s+/).length).toBeGreaterThan(100);
+    expect(beat.reply).not.toMatch(/Chapter|HP|Options|Run/);
+    // The chat already holds both lines: nothing is posted a second time.
+    expect(messages.filter((m) => m.content === "I sneaked past Mara")).toHaveLength(1);
+    expect(messages).toHaveLength(1);
+    expect(await play.onGenerationEnded("chat1", "something else", "m10")).toBe(false);
+  });
+
+  test("when the chat writes nothing, Gambit's narrator stands in and the line isn't posted twice", async () => {
+    const { play, last, messages } = setup({ story: "chat" });
+    await play.open("u", "chat1");
+    const saying = play.say("u", "chat1", "I watch the gulls for a while");
+    await until(() => messages.length > 0);
+    await play.onGenerationEnded("chat1", "", undefined, "provider error");
+    await saying;
+    expect(last().story[0]!.reply.length).toBeGreaterThan(0);
+    expect(last().busy).toBeUndefined();
+    expect(messages.filter((m) => m.role === "user")).toHaveLength(1);
+  });
+
+  test("a chat that never answers doesn't hold the scene: the wait ends and the game goes on", async () => {
+    const { play, last } = setup({ story: "chat", chatMs: 30 });
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I watch the gulls for a while");
+    expect(last().story[0]!.said).toBe("I watch the gulls for a while");
+    expect(last().busy).toBeUndefined();
   });
 
   test("pressing someone opens a Parley, with the line as the first word", async () => {
@@ -247,6 +318,15 @@ describe("play on a card", () => {
       expect(s?.history.remembers.join(" ")).toContain("refused");
       expect(s?.history.remembers.join(" ")).toContain("it ended");
     });
+
+    test("a talk can ask which theme its chat is played in, scene on screen or not", async () => {
+      const { play } = setup();
+      await play.open("u", "chat1");
+      expect(await play.themeOf("u", "chat1")).toBe("storybook");
+      await play.setTheme("u", "chat1", "command");
+      expect(await play.themeOf("u", "chat1")).toBe("command");
+      expect(await play.themeOf("u", "no-such-chat")).toBeNull();
+    });
   });
 
   test("naming someone who isn't here brings them into the scene", async () => {
@@ -307,6 +387,23 @@ describe("play on a card", () => {
     for (const l of ["I watch the gulls", "I hum a little", "I fix my boot"]) await play.say("u", "chat1", l);
     const r = files.get([...files.keys()].find((k) => k.includes("chat1"))!) as { scene: { time: number }; spent: number };
     expect([r.scene.time, r.spent]).toEqual([1, 0]);
+  });
+
+  test("what happens after the story's last beat reads under the story, where the page rests", async () => {
+    const { play, last } = setup();
+    await play.open("u", "chat1");
+    await play.say("u", "chat1", "I watch the gulls");
+    expect(last().story).toHaveLength(1);
+    // What the beat itself noted is part of the beat: nothing came after it yet.
+    expect(last().logAfter).toBeUndefined();
+    const before = last().log.at(-1);
+    await play.act("u", "chat1", "wait");
+    expect(last().story).toHaveLength(1);
+    expect(last().log.at(-1)).not.toBe(before);
+    expect(last().logAfter).toBe(true);
+    // The next line the player writes is the newest thing again.
+    await play.say("u", "chat1", "I hum a little");
+    expect(last().logAfter).toBeUndefined();
   });
 
   test("looking around from the menu runs the same clock as a written search", async () => {
@@ -382,15 +479,98 @@ describe("play on a card", () => {
     expect(last().thread).toMatchObject({ daysLeft: 0, ended: "lost" });
   });
 
-  test("searching that works turns up the next piece of the thread, once per place per day", async () => {
+  test("searching a place turns up the piece that belongs to it, and says how far that puts you", async () => {
     const { play, last, files } = setup();
     await play.open("u", "chat1");
     const key = [...files.keys()].find((k) => k.includes("chat1"))!;
-    files.set(key, { ...(files.get(key) as object), thread: { goal: "Find the warden", revelations: [{ id: "a", text: "The warden fled" }, { id: "b", text: "North" }, { id: "c", text: "By boat" }], by: "fallback" } });
+    files.set(key, { ...(files.get(key) as object), thread: { goal: "Find the warden", revelations: [{ id: "a", text: "The warden left The Docks by night" }, { id: "b", text: "Mara rowed him out" }, { id: "c", text: "A lamp was lit in the Smugglers' Caves" }], by: "fallback" } });
     for (let i = 0; i < 12 && !last().story.some((b) => b.found); i++) await play.say("u", "chat1", "I search the place");
     const beat = last().story.find((b) => b.found)!;
-    expect(beat.found).toBe("The warden fled");
-    expect(last().thread!.found).toEqual(["The warden fled"]);
+    expect(beat.found).toBe("The warden left The Docks by night (piece 1 of 3)");
+    expect(last().thread!.found).toEqual(["The warden left The Docks by night"]);
+    // What Mara knows is hers to give: no amount of searching where she stands turns it up.
+    const record = () => files.get(key) as { scene: { searched: string[] } };
+    for (let i = 0; i < 6; i++) {
+      files.set(key, { ...record(), scene: { ...record().scene, searched: [] } });
+      await play.act("u", "chat1", "search");
+    }
+    expect(last().thread!.found).toEqual(["The warden left The Docks by night"]);
+  });
+
+  test("the game never runs out of a goal: once an ending has been shown, the next thread starts from it", async () => {
+    const { play, last, files, posted } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const put = (over: Record<string, unknown>) => files.set(key, { ...(files.get(key) as object), ...over });
+    // A thread that ran out, and a night that has told how: the world's Bible has landed, so threads are its to give.
+    put({ bibleAt: 1, thread: { goal: "Find the warden", revelations: [{ id: "rev1", text: "The warden fled" }, { id: "rev2", text: "North" }], by: "fallback" }, revealed: ["rev1"], deadline: 0, threadEnd: "lost", threadTold: true });
+    await play.open("u", "chat1");
+    await until(() => last().thread?.goal !== "Find the warden" && !!last().thread);
+    const t = last().thread!;
+    expect(t.ended).toBeUndefined();
+    expect(t.found).toEqual([]);
+    expect(t.total).toBeGreaterThanOrEqual(3);
+    expect(t.daysLeft).toBe(Math.max(3, t.total + 1));
+    // Every piece of a written thread says where to look: a person, or a place.
+    expect(t.leads.length).toBeGreaterThan(0);
+    expect(t.leads.every((l) => l.castId || l.placeId)).toBe(true);
+    expect(posted.at(-1)).toMatch(/A new thread begins/);
+    const kept = (files.get(key) as { threadsDone: { goal: string; ended: string; found: number; total: number }[] }).threadsDone;
+    expect(kept).toMatchObject([{ goal: "Find the warden", ended: "lost", found: 1, total: 2 }]);
+    // A thread still running is left alone.
+    const goal = t.goal;
+    await play.open("u", "chat1");
+    await new Promise((res) => setTimeout(res, 30));
+    expect(last().thread!.goal).toBe(goal);
+  });
+
+  test("a thread says the one thing to do next, and what someone knows is won from them", async () => {
+    const { play, last, files, talks } = setup();
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const thread = { goal: "Find the warden", revelations: [{ id: "a", text: "A boat left from the Smugglers' Caves" }, { id: "b", text: "Mara was paid to look away" }, { id: "c", text: "Nobody saw the lamp go out" }], by: "fallback" };
+    files.set(key, { ...(files.get(key) as object), thread });
+    await play.open("u", "chat1");
+    // Three pieces get a day each and one to spare. A piece that names nobody is given to someone who would know.
+    expect(last().thread).toMatchObject({ daysLeft: 4, total: 3 });
+    expect(last().thread!.leads.map((l) => l.text)).toEqual(["Smugglers' Caves", "Mara, at The Docks"]);
+    expect(last().thread!.how).toMatch(/you win from them/);
+    // One next step, as an action, and one marked action in the menu: asking Mara, who is here.
+    expect(last().thread!.next).toEqual({ text: "Ask Mara what she knows", act: "ask:mara" });
+    expect(last().menu.filter((h) => h.lead).map((h) => h.id)).toEqual(["ask:mara"]);
+    expect(last().menu.find((h) => h.id === "talk:mara")).toBeDefined();
+    // Asking opens a talk with her, once a day; then the next step is somewhere else.
+    await play.act("u", "chat1", "ask:mara");
+    // The talk is told what it is about: the goal, and the piece that is hers.
+    expect(talks).toEqual([{ castId: "mara", kind: "persuade", line: undefined, ask: { goal: "Find the warden", piece: "Mara was paid to look away" } }]);
+    expect(last().menu.some((h) => h.id === "ask:mara")).toBe(false);
+    expect(last().thread!.next!.text).toMatch(/Smugglers' Caves.*search it/);
+    expect(last().menu.filter((h) => h.lead)).toHaveLength(1);
+    // Refused, she keeps it: the story's own line says so, where the player is reading.
+    await play.onParleyEnd("u", { id: "s", npc: { name: "Mara" }, contest: { kind: "persuade", stake: "her word" }, card: { cardKey: "card-0001", castId: "mara", journalKey: "chat/chat1" } } as never, { chatId: "chat1", end: { kind: "refused" }, exchanges: [] } as never);
+    expect(last().story.at(-1)?.roll).toBe("Talking with Mara: refused. Nothing given away today: try again tomorrow");
+    expect(last().thread!.found).toEqual([]);
+    // Winning her over gives the piece that is hers, not the first on the list.
+    await play.onParleyEnd("u", { id: "s", npc: { name: "Mara" }, contest: { kind: "persuade", stake: "her word" }, card: { cardKey: "card-0001", castId: "mara", journalKey: "chat/chat1" } } as never, { chatId: "chat1", end: { kind: "won" }, exchanges: [] } as never);
+    expect(last().thread!.found).toEqual(["Mara was paid to look away"]);
+    expect(last().log.at(-1)).toMatch(/Mara lets it out: Mara was paid to look away \(piece 1 of 3\)/);
+    expect(last().thread!.leads.map((l) => l.text)).toEqual(["Smugglers' Caves", "Mara, at The Docks"]);
+    // What has come out goes into the next talk, with anyone, as something the player knows.
+    expect((await play.standing("u", "chat1", "mara"))?.found).toEqual([{ id: "piece:b", text: "Mara was paid to look away" }]);
+  });
+
+  test("the day can always be ended in one step, and solving a thread pays", async () => {
+    const { play, last, files } = setup();
+    await play.open("u", "chat1");
+    // Wherever you are there is one action that ends the day: a bed, or the ground.
+    expect(last().menu.filter((h) => h.kind === "rest")).toHaveLength(1);
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    const coin = last().coin;
+    files.set(key, { ...(files.get(key) as object), thread: { goal: "Find the warden", revelations: [{ id: "a", text: "Mara rowed him out" }, { id: "b", text: "Mara was paid for it" }], by: "fallback" }, revealed: ["a"] });
+    await play.onParleyEnd("u", { id: "s", npc: { name: "Mara" }, contest: { kind: "persuade", stake: "her word" }, card: { cardKey: "card-0001", castId: "mara", journalKey: "chat/chat1" } } as never, { chatId: "chat1", end: { kind: "won" }, exchanges: [] } as never);
+    expect(last().thread).toMatchObject({ ended: "solved" });
+    expect(last().coin).toBe(coin + 30);
+    expect(last().log.at(-1)).toMatch(/You have it all: Find the warden\. It pays: \+30/);
   });
 
   test("a town opens as a lobby with tiles for the other places and a menu", async () => {
@@ -702,6 +882,27 @@ describe("play on a card", () => {
     expect(enemies[0]!.art).toStartWith("figure:");
   });
 
+  test("force is a route to what someone knows: beaten, they give it up, they live, and the others who know turn colder", async () => {
+    const ilse = { id: "ilse", name: "Ilse", role: "a net-mender, usually at the tavern", look: "", main: false, pronoun: "she", temperament: { warmth: 0.5, pride: 0.5, greed: 0.5, fear: 0.5 }, evidence: ev };
+    const { play, started, last, files } = setup({ sheet: { cast: [...sheet.cast, ilse] } });
+    await play.open("u", "chat1");
+    const key = [...files.keys()].find((k) => k.includes("chat1"))!;
+    files.set(key, { ...(files.get(key) as object), thread: { goal: "Find the warden", revelations: [{ id: "a", text: "Mara rowed him out" }, { id: "b", text: "Ilse mended the sail he left under" }], by: "fallback" } });
+    await play.say("u", "chat1", "I attack Mara");
+    await play.onBattleEnd(ended(started[0]!, "victory"), "u");
+    await until(() => last().thread?.found.length === 1);
+    expect(last().thread!.found).toEqual(["Mara rowed him out"]);
+    const record = files.get(key) as { memory: { deeds: { kind: string; target: string }[]; npc: Record<string, { affinity: number; notes: { text: string }[] }> }; story: { roll: string | null }[] };
+    // Beaten, not killed: she is still someone, and she remembers it.
+    expect(record.memory.deeds.some((d) => d.kind === "beat" && d.target === "mara")).toBe(true);
+    expect(record.memory.deeds.some((d) => d.kind === "killed")).toBe(false);
+    expect(record.memory.npc.mara!.affinity).toBeLessThan(0);
+    // Word gets round: Ilse, who holds the other piece, will be harder to talk to.
+    expect(record.memory.npc.ilse!.affinity).toBeLessThan(0);
+    expect(record.memory.npc.ilse!.notes.at(-1)!.text).toMatch(/beat Mara for what they knew/);
+    expect(record.story.at(-1)!.roll).toMatch(/Mara, beaten, gives it up: Mara rowed him out \(piece 1 of 2\)\..*harder to talk to/);
+  });
+
   test("a defeat sends the party back to the start, tired and poorer", async () => {
     const { play, started, last } = setup();
     await play.open("u", "chat1");
@@ -713,7 +914,34 @@ describe("play on a card", () => {
     expect(last().coin).toBe(40);
   });
 
+  test("the board, delves and the class panel are switched off: none is on the menu, and a delve card plays as a town", async () => {
+    const { play, last, files } = setup({ sheet: { shape: "delve" } });
+    await play.open("u", "chat1");
+    expect(last().shape).toBe("town");
+    expect(last().theme).toBe("storybook");
+    expect(last().canForge).toBe(false);
+    for (const place of ["docks", "tavern", "caves"]) {
+      if (last().place.id !== place) await play.act("u", "chat1", `go:${place}`);
+      expect(last().menu.map((h) => h.kind)).not.toContain("explore");
+      expect(last().menu.map((h) => h.kind)).not.toContain("delve");
+    }
+    // The class panel's actions do nothing while it is off.
+    const before = JSON.stringify(files.get("play/chat1.json"));
+    await play.forgeAct("u", "chat1", "open" as never);
+    expect(JSON.stringify(files.get("play/chat1.json"))).toBe(before);
+  });
+
   test("a delve: enter, walk until a fight room, win it, and the room is cleared", async () => {
+    // Delves are switched off in the game (shared/features.ts); they are kept working, so this runs switched on.
+    FEATURES.delves = true;
+    try {
+      await delveRun();
+    } finally {
+      FEATURES.delves = false;
+    }
+  });
+
+  async function delveRun(): Promise<void> {
     const { play, started, last } = setup();
     await play.open("u", "chat1");
     await play.act("u", "chat1", "go:caves");
@@ -735,5 +963,5 @@ describe("play on a card", () => {
     await play.leave("u", "chat1");
     expect(last().movement).toBe("lobby");
     expect(last().theme).toBe("storybook");
-  });
+  }
 });

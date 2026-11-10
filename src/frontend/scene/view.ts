@@ -73,9 +73,7 @@ export interface SceneHandle {
 /** The stage themes (6.3). */
 export const SCENE_THEMES: { id: ThemeId; label: string }[] = [
   { id: "storybook", label: "Storybook" },
-  { id: "diorama", label: "Diorama" },
   { id: "lobby", label: "Lobby" },
-  { id: "table", label: "Table" },
   { id: "onebit", label: "1-bit" },
   { id: "command", label: "Command" },
 ];
@@ -272,6 +270,9 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     if (got) return got;
     if (!pending.has(id)) {
       pending.add(id);
+      // Art that is already cut out and needs no dither settles before this call returns: hand it back now,
+      // and don't redraw from inside the draw that asked for it.
+      let inline = true;
       void (async () => {
         try {
           const keyed: { url: string; cutout: boolean; rough?: true; face?: PersonArt["face"] } = src.cutout ? { url: src.url, cutout: true, face: src.face } : await prepareArt(src.url, true);
@@ -281,10 +282,11 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
           ready.set(id, { url: src.url, cutout: src.cutout, keyed: false, source: src.url });
         }
         pending.delete(id);
-        if (!destroyed) renderTheme();
+        if (!destroyed && !inline) renderTheme();
       })();
+      inline = false;
     }
-    return null;
+    return ready.get(id) ?? null;
   }
 
   /* ------------------------------ Data views --------------------------- */
@@ -306,12 +308,14 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       kind: h.kind,
       label: h.label,
       group: groupOf(h.kind),
-      ...(h.target ? { target: h.target } : h.kind === "talk" ? { target: h.id.slice(5) } : {}),
+      ...(h.target ? { target: h.target } : h.kind === "talk" && h.id.startsWith("talk:") ? { target: h.id.slice(5) } : {}),
       art: h.kind === "exit" && h.target ? urlOf(tileArt.get(h.target)) : null,
+      ...(h.lead ? { lead: true } : {}),
       run: () => act(h.id),
     }));
     if (v.canFight && !v.menu.some((h) => h.kind === "fight")) items.push({ key: "fight", kind: "fight", label: fightLabel(v.skin.fight), group: "fight", run: () => a.fight() });
-    return items.sort((x, y) => order.indexOf(x.group) - order.indexOf(y.group));
+    // Within a group, what follows a lead comes first.
+    return items.sort((x, y) => order.indexOf(x.group) - order.indexOf(y.group) || Number(!!y.lead) - Number(!!x.lead));
   }
 
   function toggleJournal(): void {
@@ -319,6 +323,8 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     renderTheme();
   }
   function toggleClasses(): void {
+    // Switched off (shared/features.ts): there is no panel to open.
+    if (!view.canForge) return;
     classes.toggle();
     renderTheme();
   }
@@ -327,7 +333,39 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     const j = v.journal;
     const list = (items: string[], empty: string) => (items.length ? `<ul>${items.join("")}</ul>` : `<div class="muted">${esc(empty)}</div>`);
     const aff = (x: number) => `<span class="aff"><i class="${x < 0 ? "neg" : ""}" style="${x < 0 ? `right:50%;left:auto;width:${Math.min(50, -x * 5)}%` : `left:50%;width:${Math.min(50, x * 5)}%`}"></i></span>`;
+    // What to do about the thread comes first, in every theme: where the missing pieces are, and how one is found.
+    const t = v.thread;
+    const leads = (t?.leads ?? []).map((l) => l.text);
+    const left = !t || t.ended || t.daysLeft === undefined ? "" : t.daysLeft <= 1 ? "This is the last day." : `${t.daysLeft} days left.`;
+    const thread = !t
+      ? []
+      : t.ended
+        ? [`<h3>The thread is over</h3>`, `<div class="muted">${t.ended === "solved" ? "You found all of it." : `Time ran out with ${t.found.length} of ${t.total} pieces found. What it was about has happened without you.`}${t.next ? ` ${esc(t.next.text)}.` : ""}</div>`]
+        : [
+            // The one thing to do next, then who and where the other pieces are, then how a piece is got.
+            `<h3>What to do next</h3>`,
+            t.next ? `<ul><li><b>${esc(t.next.text)}.</b></li></ul>` : "",
+            `<h3>Who knows, and where</h3>`,
+            list(leads.map((x) => `<li>${esc(x)}</li>`), "Nothing points anywhere yet."),
+            `<div class="muted">${esc(`${t.total - t.found.length} of ${t.total} pieces are still missing. ${left} ${t.how ?? ""}`.replace(/\s+/g, " ").trim())}</div>`,
+          ];
+    // How the game works, in five lines: first in the book while it is new, and at its end after that.
+    const guide = [
+      `<h3>How this works</h3>`,
+      `<ul>${[
+        "Write what you do, in your own words. Most lines are simply the story.",
+        "A risky line or a search rolls a die. Pressing someone to give way opens a talk, where what you say moves the dice.",
+        t ? "The thread is your goal. “Next” says the one thing to do about it now, and that action is marked as the lead." : "People and places you take an interest in become quests here.",
+        "Kindness and time with someone warm them to you. Lies they catch, threats and fights do the opposite, and they remember.",
+        "Going somewhere takes a part of the day, and a search most of one; writing a line takes a little. Each night the world answers what you did.",
+      ]
+        .map((x) => `<li>${esc(x)}</li>`)
+        .join("")}</ul>`,
+    ];
+    const fresh = v.clock.day <= 2;
     return [
+      ...thread,
+      ...(fresh ? guide : []),
       `<h3>Companions</h3>`,
       list(j.companions.map((c) => `<li class="${c.bonded ? "bond" : ""}">${esc(c.name)}${c.recruit ? " (recruited)" : ""}${aff(c.affinity)}${c.bonded ? "bonded: combo skill" : ""}</li>`), "Nobody travels with you yet."),
       `<h3>Quests</h3>`,
@@ -350,6 +388,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
           ? `<div class="album">${shots.map(({ a, url }) => `<figure><img src="${esc(url!)}" alt="${esc(a.caption)}" loading="lazy" tabindex="0" role="button"><figcaption>Day ${a.day}: ${esc(a.caption)}</figcaption></figure>`).join("")}</div>`
           : `<div class="muted">${j.album.length ? "Being drawn…" : "Key moments will be drawn here."}</div>`;
       })(),
+      ...(fresh ? [] : guide),
     ].join("");
   }
 
@@ -560,7 +599,7 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
       currency: v.skin.currency || "coin",
       vigor: v.vigor,
       ...(v.board ? { supplies: { now: v.board.supplies, max: v.board.cap } } : v.hex ? { supplies: { now: v.hex.supplies, max: v.hex.max } } : {}),
-      ...(v.thread ? { thread: { found: v.thread.found, total: v.thread.total, goal: v.thread.goal, ...(v.thread.daysLeft !== undefined ? { daysLeft: v.thread.daysLeft } : {}), ...(v.thread.ended ? { ended: v.thread.ended } : {}) } } : {}),
+      ...(v.thread ? { thread: { found: v.thread.found, total: v.thread.total, goal: v.thread.goal, ...(v.thread.daysLeft !== undefined ? { daysLeft: v.thread.daysLeft } : {}), ...(v.thread.ended ? { ended: v.thread.ended } : {}), leads: [...(v.thread.next ? [v.thread.next.text] : []), ...(v.thread.leads ?? []).map((l) => l.text)], how: v.thread.how ?? "" } } : {}),
     }),
     say: (text) => a.say(text),
     box(v) {
@@ -593,6 +632,9 @@ export function mountScene(root: HTMLElement, first: SceneView, a: SceneActions)
     classes: {
       get open() {
         return classes.open;
+      },
+      get available() {
+        return view.canForge === true;
       },
       toggle: toggleClasses,
     },

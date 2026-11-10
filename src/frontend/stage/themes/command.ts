@@ -1,7 +1,7 @@
 /**
  * The Command theme's battle: a turn-based crawler fight on the scene's own CRT monitor (./command/battle.ts):
  * the view with the foes, a party roster, the turn order, a numbered command list and a scrolling combat log on
- * a blue EGA chassis, the tube's curvature and scanlines as a shader, the desk and its props around it.
+ * a blue EGA chassis, the tube's scanlines, glow and dark edge as a shader, the monitor and its desk props around it.
  * This file is the theme's own; see ./types.ts for what a battle theme may provide.
  */
 import type { BattleTheme } from "./types.js";

@@ -165,7 +165,8 @@ export class LobbyCard extends PartyCard {
     // A taller lift than the stock card's, and the DOM card follows (lift and shake).
     // (A phone's cards sit right under the foes' plates: a small lift, or it covers their poise.)
     this.pivot.y = this.lift * (currentGeom()?.portrait ? 4 : 26 * this.k);
-    this.el.style.transform = `translate3d(${this.x.toFixed(1)}px, ${(this.y - this.pivot.y).toFixed(1)}px, 0)`;
+    // Whole pixels: the card holds a name and numbers, and words on part of a pixel are soft.
+    this.el.style.transform = `translate(${Math.round(this.x)}px, ${Math.round(this.y - this.pivot.y)}px)`;
   }
 
   override get portraitCentre(): { x: number; y: number } {

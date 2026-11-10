@@ -8,13 +8,11 @@ import type { DelveMove, Facing, RoomKind } from "../engine/world/delve.js";
 import type { ShapeId } from "../engine/card/types.js";
 
 /** Stage themes (6.3): the frame around the art. */
-export type ThemeId = "storybook" | "onebit" | "lobby" | "diorama" | "table" | "command";
+export type ThemeId = "storybook" | "onebit" | "lobby" | "command";
 export const THEMES: readonly { id: ThemeId; label: string }[] = [
   { id: "storybook", label: "Storybook" },
   { id: "onebit", label: "1-bit" },
   { id: "lobby", label: "Lobby" },
-  { id: "diorama", label: "Diorama" },
-  { id: "table", label: "Table" },
   { id: "command", label: "Command" },
 ];
 
@@ -118,6 +116,8 @@ export interface Voices {
 export interface SceneView {
   chatId: string;
   cardName: string;
+  /** The class panel can be opened (shared/features.ts): without it, a theme shows no control for it. */
+  canForge?: boolean;
   theme: ThemeId;
   shape: ShapeId;
   movement: Movement;
@@ -135,10 +135,22 @@ export interface SceneView {
     wild: boolean;
   };
   /** The central thread from the World Bible, and what has come out of it so far. */
-  thread?: { goal: string; found: string[]; total: number; daysLeft?: number; ended?: "solved" | "lost" };
-  /** Facts the player knows: the hand of cards in the Table theme (6.1). */
+  thread?: {
+    goal: string;
+    found: string[];
+    total: number;
+    daysLeft?: number;
+    ended?: "solved" | "lost";
+    /** Where each missing piece can be found ("Mara, at The Docks"), never what it says. Empty once it's over. */
+    leads: { text: string; castId?: string; placeId?: string }[];
+    /** The one thing to do next about it, as an action in plain words ("Ask Mara what they know"), and the menu action that does it. */
+    next?: { text: string; act?: string };
+    /** How a piece is found, in one line for the player. */
+    how: string;
+  };
+  /** Facts the player knows, to play in a talk. */
   hand: { id: string; text: string }[];
-  /** An indoor place (a shop, inn, room): the Diorama theme builds it as a box room (6.2). */
+  /** An indoor place (a shop, inn, room). */
   indoor: boolean;
   /** The Journal (4.6): deeds, what people remember, rumours, quests, items, companions. */
   journal: {
@@ -161,6 +173,8 @@ export interface SceneView {
   vigor: number;
   /** Latest happenings, newest last. */
   log: string[];
+  /** The newest happening came after the newest beat of the story: it reads under the story, where the eye is, not over it. */
+  logAfter?: boolean;
   /** The story so far in this scene: what the player wrote, any roll, and what happened. Newest last. */
   story: StoryBeat[];
   voices: Voices;

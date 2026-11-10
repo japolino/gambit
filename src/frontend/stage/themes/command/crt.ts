@@ -1,6 +1,7 @@
 /**
- * The tube, as a pixel shader over everything drawn inside the glass: the picture bows outward (a radial barrel,
- * the same k the scene's displacement map uses, so rules near the edge curve a few pixels), each virtual pixel row
+ * The tube, as a pixel shader over everything drawn inside the glass: the picture can bow outward (a radial
+ * barrel; the theme leaves it flat, because a bowed picture is resampled between pixels and its type goes soft:
+ * the curve is drawn in the housing's opening instead), each virtual pixel row
  * ends in a dark scanline, bright phosphor bleeds a little light into its neighbours, the glass falls off to black
  * at its very edge (a superellipse, past the one cell of overscan, so no live character is darkened) and a faint
  * window reflection sits on the upper left. GLSL only, like ../../post-filter.ts.

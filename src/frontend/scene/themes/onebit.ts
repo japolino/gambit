@@ -1303,11 +1303,11 @@ export const onebit: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const short = L!.mode === "tall";
     const keys: [string, string, string, boolean, () => void][] = [
       ["F1", "JOURNAL", "fkey:journal", ctx.journal.open, () => ctx.journal.toggle()],
-      ["F2", "CLASSES", "fkey:classes", ctx.classes.open, () => ctx.classes.toggle()],
+      ...(ctx.classes.available ? [["F2", "CLASSES", "fkey:classes", ctx.classes.open, () => ctx.classes.toggle()] as [string, string, string, boolean, () => void]] : []),
       ["F3", "THEME", "fkey:theme", themeMenu, () => { themeMenu = !themeMenu; paint(); }],
     ];
     // A phone shares the strip out among the keys, in fewer letters if it must.
-    if (short && keys.reduce((n, k) => n + k[1].length * 8 + 4, 0) + 4 > r.w) { keys[0][1] = "JRNL"; keys[1][1] = "CLASS"; }
+    if (short && keys.reduce((n, k) => n + k[1].length * 8 + 4, 0) + 4 > r.w) { keys[0]![1] = "JRNL"; const cls = keys.find((k) => k[2] === "fkey:classes"); if (cls) cls[1] = "CLASS"; }
     const share = short ? Math.floor((r.w - 2 - keys.reduce((n, k) => n + k[1].length * 8, 0)) / keys.length) : 0;
     let x = r.x + (short ? 1 : 2);
     for (const [fk, label, key, open, run] of keys) {

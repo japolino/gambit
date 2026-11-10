@@ -21,6 +21,7 @@ import { normName } from "../card/names.js";
 
 export type DeedKind =
   | "killed" // foes beaten in a fight (n, method = top element)
+  | "beat" // someone from the card beaten in a fight: they live, and remember it (target = their cast id)
   | "spared" // talked into yielding
   | "recruited"
   | "bargained"
@@ -102,7 +103,7 @@ export function profileOf(t: Tally): Profile {
 }
 
 /** Deeds from a finished card battle. */
-export function deedsFromBattle(state: BattleState, day: number, place: string, foeIdOf: (monsterId: string) => string, tally?: Tally): Deed[] {
+export function deedsFromBattle(state: BattleState, day: number, place: string, foeIdOf: (monsterId: string) => string, tally?: Tally, personOf?: (monsterId: string) => string | null): Deed[] {
   const enemies = state.combatants.filter((c) => c.side === "enemy");
   const out: Deed[] = [];
   const method = tally ? (top(tally.elements) ?? undefined) : undefined;
@@ -113,9 +114,11 @@ export function deedsFromBattle(state: BattleState, day: number, place: string, 
   }
   const groups = new Map<string, Deed>();
   for (const c of enemies) {
-    const kind: DeedKind | null = c.left === "surrender" ? "spared" : c.left === "recruit" ? "recruited" : c.left === "bargain" ? "bargained" : !c.alive ? "killed" : null;
+    // Someone from the card who falls in a fight is beaten, not dead: the story still has them in it.
+    const person = personOf?.(c.defId ?? c.id) ?? null;
+    const kind: DeedKind | null = c.left === "surrender" ? "spared" : c.left === "recruit" ? "recruited" : c.left === "bargain" ? "bargained" : !c.alive ? (person ? "beat" : "killed") : null;
     if (!kind) continue;
-    const id = foeIdOf(c.defId ?? c.id);
+    const id = kind === "beat" ? person! : foeIdOf(c.defId ?? c.id);
     const key = `${kind}:${id}`;
     const g = groups.get(key);
     if (g) g.n = (g.n ?? 1) + 1;
@@ -242,6 +245,7 @@ const TONE: Partial<Record<DeedKind, { tone: -1 | 0 | 1; delta: number; text: (d
   charmed: { tone: 1, delta: 0.75, text: (d, p) => `${p} was kind to them on day ${d.day}` },
   caught: { tone: -1, delta: -1, text: (d, p) => `caught ${p} at it on day ${d.day}: ${d.method ?? "something they tried"}` },
   bribed: { tone: 0, delta: 0.25, text: (d, p) => `${p} paid them off on day ${d.day}` },
+  beat: { tone: -1, delta: -1, text: (d, p) => `${p} beat them in a fight on day ${d.day}` },
 };
 
 /** How someone's feeling about you sets where a talk with them starts. */

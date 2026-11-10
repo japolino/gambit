@@ -2,7 +2,8 @@
  * A story beat: one line the player wrote in the scene, and what code made of it.
  *
  * Writing is the input; the game's systems are where it goes. A model only reads what the line
- * attempts and how hard that is, and `routeBeat` sends it on: flavor passes a little time, a risky
+ * attempts and how hard that is, and `routeBeat` sends it on: flavor passes a little time, warmth
+ * toward someone here makes them like the player a little better (once a day each), a risky
  * line rolls, seeking rolls for something to find, pressing someone opens a Parley, violence opens
  * a fight, and going somewhere moves the scene. The player's words stand: a failed roll changes the
  * fallout, never what they wrote. No beat can grant anything by itself: a claim in the line ("and
@@ -13,7 +14,7 @@ import type { Tier } from "../card/types.js";
 import type { SocialStat } from "../parley/types.js";
 
 export type BeatTier = "crit_success" | "success" | "partial" | "fail" | "crit_fail";
-export type BeatRoute = "flavor" | "risk" | "seek" | "press" | "fight" | "travel";
+export type BeatRoute = "flavor" | "bond" | "risk" | "seek" | "press" | "fight" | "travel";
 
 /** What the judge says about a line. Out-of-range answers are cleaned up by `meaning/story.ts`. */
 export interface BeatRead {
@@ -35,6 +36,8 @@ export function routeBeat(read: BeatRead, can: { parley: boolean; encounters: bo
   if (read.route === "press" && !(can.parley && read.target)) return { ...read, route: "risk" };
   if (read.route === "fight" && !can.encounters) return { ...read, route: "risk", stat: "menace" };
   if (read.route === "travel" && !read.to) return { ...read, route: "flavor" };
+  // Warmth is toward someone: with nobody to feel it, it's a quiet moment.
+  if (read.route === "bond" && !read.target) return { ...read, route: "flavor" };
   return read;
 }
 
@@ -113,7 +116,7 @@ export const THREAD_DAYS = 3;
 /** This much writing is one step of the day (morning to afternoon, and so on). */
 export const CLOCK_STEP = 3;
 /** A walk is one cell of the overland: three are a step of the day, so a place next door costs part of one. */
-const COST: Record<BeatRoute | "walk", number> = { flavor: 1, risk: 2, seek: 2, press: 0, fight: 0, travel: 0, walk: 1 };
+const COST: Record<BeatRoute | "walk", number> = { flavor: 1, bond: 1, risk: 2, seek: 2, press: 0, fight: 0, travel: 0, walk: 1 };
 
 /** What a line or a step on the overland spends: how far the clock has run, and how many steps of the day that came to. */
 export function spendClock(spent: number, route: BeatRoute | "walk"): { spent: number; steps: number } {

@@ -141,7 +141,8 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       return;
     }
     const dw = Math.round(Math.min(W * 0.84, 1800));
-    const dh = Math.round(Math.max(196, Math.min(330, H * 0.31)));
+    // A third of the window: at the page's type size that holds a whole beat (the roll, its tell, the reply) above the pen.
+    const dh = Math.round(Math.max(Math.min(264, H * 0.4), Math.min(340, H * 0.33)));
     const db = Math.round(Math.max(14, H * 0.024));
     const dx = Math.round((W - dw) / 2);
     root.style.setProperty("--dw", `${dw}px`);
@@ -280,12 +281,25 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     if (!hand) return;
     const all = hand.querySelectorAll(".fact-card").length;
     const left = hand.querySelectorAll(".fact-card:not(.used)").length;
-    hand.dataset.tally = all ? ` · ${left} of ${all} unplayed` : "";
+    // A short window cannot hold every slip between the bookmarks and the deal: the heading says there are more,
+    // and the stack opens upward over the bookmarks while the pointer or the focus is in it (it scrolls, too).
+    if (!hand.classList.contains("sbp-open")) hand.classList.toggle("sbp-more", !isPhone(root.clientWidth, root.clientHeight) && hand.scrollHeight > hand.clientHeight + 2);
+    hand.dataset.tally = all ? ` · ${left} of ${all} unplayed${hand.classList.contains("sbp-more") ? " · hover or scroll for all" : ""}` : "";
     if (journalBtn) journalBtn.dataset.n = String(all);
   };
   const ho = new MutationObserver(tally);
-  if (hand) ho.observe(hand, { childList: true });
+  if (hand) ho.observe(hand, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+  const handRo = new ResizeObserver(tally);
+  if (hand) handRo.observe(hand);
   tally();
+  const openHand = () => {
+    if (hand?.classList.contains("sbp-more")) hand.classList.add("sbp-open");
+  };
+  const closeHand = () => {
+    if (hand && !hand.matches(":hover") && !hand.matches(":focus-within")) hand.classList.remove("sbp-open");
+  };
+  for (const ev of ["pointerenter", "focusin"]) hand?.addEventListener(ev, openHand);
+  for (const ev of ["pointerleave", "focusout"]) hand?.addEventListener(ev, () => requestAnimationFrame(closeHand));
 
   // Phone: the drawer closes when you cite a fact (the line goes to your pen) or tap outside it.
   const onDrawerTap = (e: Event) => {
@@ -294,9 +308,12 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
     if (t.closest(".fact-card") || !t.closest(".journal, .journal-btn, .hand, .mode, .moments, .moment")) journal.classList.remove("open");
   };
   root.addEventListener("click", onDrawerTap);
-  // Phone: the talk stops above the end card, however tall its reveals make it.
+  // The talk stops above the end card, however tall its reveals make it; what was said last is brought back into view.
   const endBox = root.querySelector<HTMLElement>(".foot > .end");
-  const endRo = new ResizeObserver(() => root.style.setProperty("--endh", `${Math.ceil(endBox?.offsetHeight ?? 0) + 4}px`));
+  const endRo = new ResizeObserver(() => {
+    root.style.setProperty("--endh", `${Math.ceil(endBox?.offsetHeight ?? 0) + 4}px`);
+    anchor();
+  });
   if (endBox) endRo.observe(endBox);
 
   return {
@@ -312,6 +329,7 @@ export function decorate(ctx: ParleyThemeCtx): ParleyDecor {
       mo.disconnect();
       vo.disconnect();
       ho.disconnect();
+      handRo.disconnect();
       endRo.disconnect();
       root.removeEventListener("click", onDrawerTap);
       cancelAnimationFrame(anchorRaf);

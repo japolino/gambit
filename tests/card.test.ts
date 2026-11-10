@@ -253,6 +253,24 @@ describe("contests from a card", () => {
     expect(r.exchange.leverageFacts).toContain("fines");
   });
 
+  test("a talk opened by asking what someone knows is framed on that question, and its stake says so", () => {
+    const ilse = sheet.cast[0]!.id;
+    const ask = { goal: "Find out who sank the Heron", piece: "Ilse towed the Heron out herself" };
+    const { user } = framePrompt(sheet, ilse, [{ name: "Narrator", content: "You ask about an escort through the ward." }], "persuade", undefined, { feel: "", remembers: [], thread: "Find out who sank the Heron", ask });
+    expect(user).toContain("Find out who sank the Heron");
+    expect(user).toContain('starts "what Ilse Varga knows about"');
+    expect(user).toContain("must not give it away");
+    // The yes/no about the thread is not asked: it is about the thread by construction.
+    expect(user).not.toContain("about_thread");
+    // A framer that wandered off to another stake is put back on the question; one that stayed on it is kept.
+    expect(parseFrame({ kind: "persuade", stake: "an escort through the garrison ward", stake_size: 2 }, sheet, ilse, "persuade", ask)).toMatchObject({ stake: "what Ilse Varga knows", aboutThread: true });
+    expect(parseFrame({ kind: "persuade", stake: "what Ilse Varga knows about the Heron", stake_size: 2 }, sheet, ilse, "persuade", ask)).toMatchObject({ stake: "what Ilse Varga knows about the Heron", aboutThread: true });
+    // With no model at all the talk is still that talk, and an old line of theirs is not its opening.
+    expect(fallbackFrame(sheet, ilse, [{ name: "Ilse Varga", content: "Half your cut, or swim.", isUser: false }], "persuade", ask)).toMatchObject({ stake: "what Ilse Varga knows", opening: "", aboutThread: true });
+    // An ordinary talk is unchanged.
+    expect(parseFrame({ kind: "persuade", stake: "an escort through the garrison ward", stake_size: 2 }, sheet, ilse).aboutThread).toBeUndefined();
+  });
+
   test("fallback framing uses their last line as the opening", () => {
     const f = fallbackFrame(sheet, sheet.cast[0]!.id, [{ name: "Ilse Varga", content: "Half your cut, or swim.", isUser: false }], "haggle");
     expect(f).toMatchObject({ kind: "haggle", opening: "Half your cut, or swim.", by: "fallback" });

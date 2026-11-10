@@ -154,6 +154,21 @@ export function monsterFromFoe(foe: SheetFoe, level = LEVEL): MonsterDef {
   return def;
 }
 
+/**
+ * The card's foes, each tied to the person on the sheet it is: a card reader often lists a named character among the
+ * foes without saying they are one of the cast, and then a random fight deals them out like any creature.
+ */
+export function linkFoes(foes: readonly SheetFoe[], cast: readonly Pick<CastMember, "id" | "name">[]): SheetFoe[] {
+  const key = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const byName = new Map(cast.map((c) => [key(c.name), c.id]));
+  const ids = new Set(cast.map((c) => c.id));
+  return foes.map((f) => {
+    if (f.castId) return f;
+    const castId = byName.get(key(f.name)) ?? (ids.has(f.id) ? f.id : undefined);
+    return castId ? { ...f, castId } : f;
+  });
+}
+
 /** A foe for a fight with someone on the sheet ("Fight the rival?"): their stance sizes them. */
 export function foeFromCast(m: CastMember, skinFight = "fight"): SheetFoe {
   const t = m.temperament;
@@ -197,12 +212,18 @@ const hash = (s: string): number => {
  * An encounter from the card's foes: one lead and up to two others, or a
  * boss with one escort. `lead` forces a foe (a chip that named it).
  */
-export function encounterFrom(foes: readonly SheetFoe[], opts: { seed: string; boss?: boolean; lead?: string; level?: number; name?: string; party?: number; kin?: boolean }): CardEncounter | null {
+export function encounterFrom(foes: readonly SheetFoe[], opts: { seed: string; boss?: boolean; lead?: string; level?: number; name?: string; party?: number; kin?: boolean; friends?: ReadonlySet<string> }): CardEncounter | null {
   if (!foes.length) return null;
   const h = hash(opts.seed);
-  const bosses = foes.filter((f) => f.role === "boss");
-  const rank = foes.filter((f) => f.role !== "boss");
   const forced = opts.lead ? foes.find((f) => f.id === opts.lead || f.castId === opts.lead) : undefined;
+  // Someone from the card fights when the story says so (`lead`), never as a stranger a fight happened to deal: a
+  // fight nobody named is with the card's nameless foes when it has any. `friends`: people who are on the player's
+  // side now (won over, recruited, fond of them) don't stand against them even as the boss of a place.
+  const stranger = (f: SheetFoe) => !f.castId;
+  const notFriend = (f: SheetFoe) => !f.castId || !opts.friends?.has(f.castId);
+  const prefer = (list: SheetFoe[], ok: (f: SheetFoe) => boolean) => (list.some(ok) ? list.filter(ok) : list);
+  const bosses = prefer(foes.filter((f) => f.role === "boss"), notFriend);
+  const rank = prefer(prefer(foes.filter((f) => f.role !== "boss"), notFriend), stranger);
   const lead = forced ?? (opts.boss && bosses.length ? pick(bosses, h, 0) : rank.length ? pick(rank, h, 1) : foes[0]!);
   const boss = lead.role === "boss";
   // `kin`: the player went for this foe by name, so what's with it is more of the same, not a stranger off the card's list. Someone from the card comes alone.

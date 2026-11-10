@@ -11,6 +11,7 @@ import { canonOf, fixName, freshNames, sheetNames } from "../engine/card/naming.
 import { normName } from "../engine/card/names.js";
 import { fallbackPlaces, fallbackThread, placeNameFrom } from "./fallbacks.js";
 import { slug } from "./card-reader.js";
+import { restates } from "../engine/parley/similarity.js";
 import type { Questions } from "./referee.js";
 
 export interface BiblePlace extends SheetPlace {
@@ -57,6 +58,16 @@ const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const nameKey = (s: string) => normName(s).replace(/^the /, "");
 const DELVE_WORDS = /\b(ruin|ruins|dungeon|cave|caves|crypt|wreck|derelict|tunnel|tunnels|catacombs?|mine|labyrinth|maze|tomb|vault|basement|sewers?|undercroft|haunted|cellar|hull)\b/i;
 
+/** What the player knows of the card's secrets before anything is played, plus whatever `found` they have turned up since. */
+export const playerKnows = (sheet: Pick<CardSheet, "facts">, found: readonly string[] = []): string[] => sheet.facts.filter((f) => f.known || found.includes(f.id)).map((f) => f.text);
+
+/** The pieces that tell the player something: none says again what they know, or what an earlier piece says. */
+export function newToPlayer(pieces: readonly string[], knows: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const p of pieces) if (!knows.some((k) => restates(p, k)) && !out.some((o) => restates(p, o))) out.push(p);
+  return out;
+}
+
 /** What the Bible must add for this sheet: places to reach the shape's count, a delve when the shape needs one. */
 export function gaps(sheet: Pick<CardSheet, "shape" | "places" | "modules">): { places: number; delve: boolean } {
   const want = sheet.modules.places || sheet.shape !== "scene" ? SHAPE_PLACES[sheet.shape] : 1;
@@ -78,6 +89,7 @@ const unused = (candidates: readonly string[], names: readonly string[]): string
 export function biblePrompt(sheet: CardSheet, sourceText: string): { system: string; user: string } {
   const g = gaps(sheet);
   const names = bibleNames(sheet);
+  const knows = playerKnows(sheet).slice(0, 10);
   const system = [
     "You extend a roleplay card into a small game world, only where the card is silent.",
     "Keep everything the card says. Add only what is asked. Reply with one JSON object, nothing else.",
@@ -89,6 +101,7 @@ export function biblePrompt(sheet: CardSheet, sourceText: string): { system: str
     `People: ${sheet.cast.map((c) => `${c.id} = ${c.name} (${clip(c.role, 80)})`).join("; ") || "none"}`,
     `Places already on the card: ${sheet.places.map((p) => `${p.id} = ${p.name}`).join("; ") || "none"}`,
     `Secrets already known to the game: ${sheet.facts.length}`,
+    ...(knows.length ? ["The player already knows:", ...knows.map((k) => `- ${clip(k, 160)}`)] : []),
     "",
     "SOURCES:",
     clip(sourceText, 8000),
@@ -97,7 +110,8 @@ export function biblePrompt(sheet: CardSheet, sourceText: string): { system: str
     "{",
     `  "places": [ exactly ${g.places} new places${g.delve ? ", the first one somewhere explored room by room (a ruin, cave, crypt, wreck, tunnels)" : ""}. Prefer places the sources mention in passing; invent only to fill the shape.`,
     `    Each: { "name": "2-5 words: the sources' own name for it; a new place is named with plain words and one of these real place names: ${names.places.join(", ")} (such as 'The Mill at ${names.places[0]}' or '${names.places[1]} Crossing'), never a made-up name", "description": "one line a painter could paint", "near": "id of the card place it is next to", "quote": "the source text it comes from, copied exactly, or empty if invented" } ],`,
-    '  "thread": null if the card already gives a clear goal or mystery; otherwise { "goal": "one line, what the player is after", "revelations": [4-6 short facts, in the order they come out, each true in this world] },',
+    // Each piece names who or where it is found, so the player can be told where to look (engine/story/thread.ts).
+    '  "thread": null if the card already gives a clear goal or mystery; otherwise { "goal": "one line, what the player is after", "revelations": [4-6 short facts, in the order they come out, each true in this world. Each names exactly one of the people or places above (or one of the new places), by name: that piece is found by winning that person over, or by searching that place. Each is news to the player: none says again, in other words or in more detail, something the player already knows] },',
     `  "factions": [ 0-4 groups the card has or implies: { "name": "what the sources call it; a group they never name gets plain words, with one of these surnames if it needs a name (such as 'the ${names.groups[0]} family'): ${names.groups.join(", ")}", "want": "one line", "members": [ids of people above who belong] } ]`,
     "}",
   ].join("\n");
@@ -145,7 +159,9 @@ export function parseBible(raw: Record<string, unknown>, sheet: CardSheet, verif
       .map((x) => str(x, 200))
       .filter(Boolean)
       .slice(0, 6);
-    if (goal && revs.length >= 3) thread = { goal, revelations: revs.map((text, i) => ({ id: `rev${i + 1}`, text })), by: "architect" };
+    // A piece that says again what the player knows from the start is no find: it is left out, and a thread of them is no thread.
+    const fresh = newToPlayer(revs, playerKnows(sheet));
+    if (goal && revs.length >= 3 && fresh.length >= 2) thread = { goal, revelations: fresh.map((text, i) => ({ id: `rev${i + 1}`, text })), by: "architect" };
   }
 
   const castIds = new Set(sheet.cast.map((c) => c.id));

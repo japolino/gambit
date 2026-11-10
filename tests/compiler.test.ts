@@ -5,7 +5,9 @@ import { createPlay } from "../src/backend/play.js";
 import { fallbackFoes } from "../src/engine/card/foes.js";
 import { addHexPlace, buildHex, cellOf, hexDist, hexKey, hexPath, newHex, passable, stepHex } from "../src/engine/world/hex.js";
 import { addPlace, buildWorld } from "../src/engine/world/places.js";
-import { bibleNames, fallbackBible, gaps, parseBible, parsePlaceFromChat, fallbackPlaceFromChat, whereQuestion } from "../src/meaning/bible.js";
+import { bibleNames, biblePrompt, fallbackBible, gaps, newToPlayer, parseBible, parsePlaceFromChat, fallbackPlaceFromChat, whereQuestion } from "../src/meaning/bible.js";
+import { nextThreadPrompt, parseNextThread } from "../src/meaning/thread-next.js";
+import { restates } from "../src/engine/parley/similarity.js";
 import { fallbackPlaces, placeNameFrom } from "../src/meaning/fallbacks.js";
 import type { ToFrontend } from "../src/shared/protocol.js";
 import type { SceneView } from "../src/shared/scene-view.js";
@@ -245,4 +247,41 @@ describe("the compiler in play", () => {
     expect(last().place.name).toBe("The Rusted Anchor");
   });
 
+});
+
+describe("a piece of the thread is news to the player", () => {
+  const knew = { id: "ash_debt", text: "Ash owes the Hollow Road smugglers a season of unpaid tolls", claim: "", about: ["ash"], weight: 2, keywords: [], known: true, evidence: ev };
+  const hidden = { id: "pell_map", text: "Pell sold a false map of the Bone Hills", claim: "", about: ["pell"], weight: 2, keywords: [], known: false, evidence: ev };
+  const sheet = () => ({ ...base(), facts: [knew, hidden] });
+
+  test("the same thing in other words counts as said again; a shared name alone does not", () => {
+    expect(restates("Ash owes unpaid tolls to the smugglers of the Hollow Road", knew.text)).toBe(true);
+    expect(restates("Ash was seen leaving Lastlight the night the keep burned", knew.text)).toBe(false);
+    expect(restates("Ash lied to the wardens", "Ash lied to the wardens about the fire")).toBe(true);
+    expect(newToPlayer(["Pell keeps a second ledger", "Pell keeps a second ledger in the stockade", "Ash burned the keep"], [])).toEqual(["Pell keeps a second ledger", "Ash burned the keep"]);
+  });
+
+  test("the first thread is told what the player knows, and a piece that repeats it is left out", () => {
+    const { user } = biblePrompt(sheet() as never, "");
+    expect(user).toContain("The player already knows:\n- Ash owes the Hollow Road smugglers");
+    expect(user).not.toContain("false map");
+    const places = [1, 2, 3, 4].map((n) => ({ name: `Hollow Road ${n}`, description: "A road through a ravine", quote: "" }));
+    const thread = { goal: "Find who burned the old keep", revelations: ["Ash owes the smugglers of the Hollow Road their unpaid tolls", "Pell sold a false map of the Bone Hills", "Ash was at the keep that night", "The fire began in the Lastlight granary"] };
+    const b = parseBible({ places, thread }, sheet() as never, () => false)!;
+    // What the player has not met yet may be a piece: only what they know is left out.
+    expect(b.thread!.revelations.map((x) => x.text)).toEqual(thread.revelations.slice(1));
+    expect(b.thread!.revelations.map((x) => x.id)).toEqual(["rev1", "rev2", "rev3"]);
+    // A thread that is nearly all old news is no thread: the game writes a new one once play begins.
+    const stale = { goal: "g", revelations: ["Ash owes the smugglers of the Hollow Road their unpaid tolls", "Ash owes a season of tolls to smugglers", "The unpaid tolls Ash owes the smugglers", "The fire began in the Lastlight granary"] };
+    expect(parseBible({ places, thread: stale }, sheet() as never, () => false)!.thread).toBeNull();
+  });
+
+  test("the thread after it is told too, and never repeats what was found or known", () => {
+    const input = { cardName: "Greyreach", genre: "low fantasy", tone: "", premise: "A frontier.", player: "Wren", people: [{ name: "Ash", role: "the warden" }], places: ["Lastlight"], last: null, lately: [], knows: [knew.text] };
+    expect(nextThreadPrompt(input).user).toContain("The player already knows:\n- Ash owes the Hollow Road smugglers");
+    expect(nextThreadPrompt({ ...input, knows: [] }).user).not.toContain("already knows:");
+    const raw = { goal: "Find who pays the smugglers", revelations: ["Ash owes the smugglers of the Hollow Road their unpaid tolls", "Pell carries their coin to Lastlight", "Ash has a key to the granary"] };
+    expect(parseNextThread(raw, input.knows)!.revelations).toEqual(raw.revelations.slice(1));
+    expect(parseNextThread(raw)!.revelations).toHaveLength(3);
+  });
 });

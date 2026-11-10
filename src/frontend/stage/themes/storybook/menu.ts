@@ -2,9 +2,12 @@
  * Storybook battle: the command window is the book itself. The acting member's skills hang as silk ribbons
  * with brass medallions on the right, under "What will … do?" (as the scene's choices do): a blue silk for
  * a skill, crimson brocade for the signature, grey iron silk for one you cannot use yet (its reason written
- * on it). The page's right half tells the tale: the skill under the pointer (its lore, its cost) with a
- * woodcut drop cap, the hint while you choose a target, and the last blows while the fight plays out. The
- * acting member's name rides the page's rim on the brass nameplate.
+ * on it). The heading sits straight on top of its ribbons and the page's right half, straight under them,
+ * tells the tale in large type: the skill under the pointer (its lore, its cost) with a woodcut drop cap, the
+ * hint while you choose a target, the blow just struck while the fight plays out; the earlier blows run
+ * quietly under the party. The acting member's name rides the page's rim on the brass nameplate.
+ * A ribbon is flat cloth and brass the moment it is offered, and its silk and medallion are laid over that when
+ * their pictures are ready: a choice never waits on a picture to be read.
  * Keyboard: number keys pick, arrows move, Enter takes, Escape goes back (wired by ./decor.ts).
  * On a phone (GEO.compact) all of that is a plain page: flat ribbons drawn at once (no picture to wait for), each
  * a full tap target with its cost or its reason written on it; choosing a skill tells its lore and lists the targets.
@@ -149,7 +152,7 @@ export class BookMenu extends ActionMenu {
 
   /** A gilt-ruled ink stamp centred on y; returns its right edge. */
   private stamp(text: string, x: number, y: number, k: number, ink: number): number {
-    const size = Math.round(Math.max(10, 12 * k));
+    const size = Math.round(Math.max(13, 15 * k));
     const t = new Text({ text: text.toUpperCase(), style: st({ fontFamily: CINZEL, fontWeight: "700", fontSize: size, fill: ink, letterSpacing: 1.6 }) });
     const px = 8 * k, ph = size + 9 * k;
     const g = new Graphics();
@@ -166,15 +169,11 @@ export class BookMenu extends ActionMenu {
     if (GEO.compact) return this.tellCompact(kind, skill, hint);
     const r = GEO.text;
     const k = this.k;
-    const size = Math.round(Math.max(17, 24 * k));
-    let y = r.y + 4 * k;
-    // Two columns, as on the scene's page: the story now, and "Earlier" in the margin.
-    const margin = r.w > 560 * k;
-    const mw = margin ? Math.round(r.w * 0.36) : 0;
-    const main = r.w - (margin ? mw + 34 * k : 0);
-    const pw = Math.min(main, 40 * size);
+    const size = Math.round(Math.max(19, 26 * k));
+    let y = r.y + 2 * k;
+    const pw = Math.min(r.w, 40 * size);
     if (kind === "lore" && skill) {
-      const head = this.line(skill.name, r.x, y, Math.round(size * 1.08), 0x7a1c1c, { weight: "400" });
+      const head = this.line(skill.name, r.x, y, Math.round(size * 1.12), 0x7a1c1c, { weight: "400" });
       // Ink stamps beside the heading: what it costs, and whether it is the signature art.
       let sx = r.x + head.width + 16 * k;
       sx = this.stamp(skill.usable ? `Cost · ${skill.cost}` : "Not yet", sx, y + head.height / 2, k, skill.usable ? 0x7a4c1c : 0x8b1a1a);
@@ -182,33 +181,38 @@ export class BookMenu extends ActionMenu {
       y += head.height + 6 * k;
       const whose = `${this.mode.kind === "skills" ? this.mode.actor : "the party"}'s`;
       const body = skill.usable ? skill.flavor || `${skill.signature ? `${whose[0]!.toUpperCase()}${whose.slice(1)} signature art` : `One of ${whose} skills`}${skill.cost && skill.cost !== "Basic" && skill.cost !== "Free" ? `, at the cost of ${skill.cost.toLowerCase()}` : ", free to use"}.` : skill.reason ?? "Not now.";
-      this.paragraph(body, r.x, y, pw, size, skill.usable ? INK : 0x5a2a1a, !skill.usable);
+      y += this.paragraph(body, r.x, y, pw, size, skill.usable ? INK : 0x5a2a1a, !skill.usable);
+      // How to choose, said once, quietly, at the foot of the words (the keys are ./decor.ts's).
+      const n = this.mode.kind === "skills" ? this.mode.skills.length : 0;
+      const hs = Math.round(Math.max(16, size * 0.68));
+      if (n && r.y + r.h - hs * 1.3 > y + 4 * k) this.line(`Click a ribbon or press 1 to ${n}. Arrows move, Enter takes.`, r.x, r.y + r.h - hs * 1.3, hs, 0x6b4a2a, { italic: true });
     } else if (kind === "target" && skill) {
       y += this.paragraph(`${hint ?? "Choose."}`, r.x, y, pw, size);
-      this.line("Click a foe in the picture, or press its number. Escape to choose again.", r.x, y + 6 * k, Math.round(size * 0.7), 0x6b4a2a, { italic: true, maxW: pw });
+      this.line("Click a foe in the picture, or press its number. Escape to choose again.", r.x, y + 6 * k, Math.round(Math.max(16, size * 0.74)), 0x5a3a20, { italic: true, maxW: pw });
     } else if (!this.tale.length) {
       this.line(this.mode.kind === "wait" && this.mode.text ? this.mode.text : "The page turns…", r.x, y, size, 0x4a2511, { italic: true });
     } else {
       this.paragraph(this.tale.at(-1)!, r.x, y, pw, size);
     }
-    if (!margin) return;
-    // The margin: a gilt quill-spindle, then the last few lines of the tale.
-    const mx = r.x + r.w - mw;
+    // The margin, under the party: the last few lines of the tale, the latest first, behind a gilt quill-spindle
+    // that parts it from the words.
+    const m = GEO.margin;
+    const small = Math.round(Math.max(15, 18 * k));
+    const label = Math.round(Math.max(11, 13 * k));
+    if (m.w < 12 * small || m.h < label + small * 2.6) return;
     const dv = new Graphics();
-    const dx = mx - 18 * k;
-    dv.poly([dx, r.y + 4, dx + 4 * k, r.y + r.h * 0.5, dx, r.y + r.h - 4, dx - 4 * k, r.y + r.h * 0.5]).fill({ color: 0xc99a52 }).stroke({ width: 0.8, color: 0x6e481f });
-    dv.moveTo(dx - 9 * k, r.y + 14).lineTo(dx - 9 * k, r.y + r.h - 14).stroke({ width: 0.8, color: 0x8a5a2a, alpha: 0.5 });
-    dv.moveTo(dx + 9 * k, r.y + 14).lineTo(dx + 9 * k, r.y + r.h - 14).stroke({ width: 0.8, color: 0x8a5a2a, alpha: 0.5 });
-    dv.circle(dx, r.y + r.h * 0.5, 4.5 * k).fill({ color: 0x8c2a1c }).stroke({ width: 1, color: 0xe9c57a });
+    const dx = m.x + m.w + 24 * Math.max(0.6, GEO.s);
+    const y0 = m.y, y1 = m.y + m.h;
+    dv.poly([dx, y0 + 4, dx + 4 * k, (y0 + y1) / 2, dx, y1 - 4, dx - 4 * k, (y0 + y1) / 2]).fill({ color: 0xc99a52 }).stroke({ width: 0.8, color: 0x6e481f });
+    dv.circle(dx, (y0 + y1) / 2, 4.5 * k).fill({ color: 0x8c2a1c }).stroke({ width: 1, color: 0xe9c57a });
     this.textBox.addChild(dv);
-    this.line("EARLIER", mx, r.y + 2 * k, Math.round(Math.max(10, 12 * k)), 0x8a5a2a, { font: CINZEL, weight: "800", spacing: 3 });
-    let my = r.y + 24 * k;
-    const small = Math.round(Math.max(13, 17 * k));
+    this.line("EARLIER", m.x, m.y, label, 0x8a5a2a, { font: CINZEL, weight: "800", spacing: 3 });
+    let my = m.y + label + 8 * k;
     const earlier = (kind === "tale" ? this.tale.slice(0, -1) : this.tale).slice(-5).reverse();
-    if (!earlier.length) this.line("Nothing yet: the first page of the fight.", mx, my, small, 0x8a6a4a, { italic: true, maxW: mw });
+    if (!earlier.length) this.line("Nothing yet: the first page of the fight.", m.x, my, small, 0x7a5a3a, { italic: true, maxW: m.w });
     for (const o of earlier) {
-      const t = this.line(`❧ ${o}`, mx, my, small, 0x52341e, { italic: true, maxW: mw });
-      if (my + t.height > r.y + r.h) {
+      const t = this.line(`❧ ${o}`, m.x, my, small, 0x52341e, { italic: true, maxW: m.w });
+      if (my + t.height > m.y + m.h + 2) {
         t.destroy();
         break;
       }
@@ -350,9 +354,10 @@ export class BookMenu extends ActionMenu {
     return Array.from({ length: n }, (_, i) => ({ x: r.x + (i % 2) * (cw + gap), y: y0 + Math.floor(i / 2) * (rh + gap), w: cw, h: rh }));
   }
 
+  /** The heading over a column of ribbons; returns how tall it is, so the ribbons can hang straight under it. */
   private rubric(text: string, x: number, y: number, w: number): number {
     const k = this.k;
-    const size = Math.round(Math.max(18, 28 * k));
+    const size = Math.round(Math.max(20, 30 * k));
     const g = new Graphics();
     const t = new Text({ text, style: st({ fontFamily: FELL, fontStyle: "italic", fontSize: size, fill: 0xfbe8bf, dropShadow: { color: 0x000000, alpha: 1, blur: 8, distance: 0, angle: 0 } }) });
     if (t.width > w * 0.84) t.scale.set((w * 0.84) / t.width);
@@ -360,7 +365,7 @@ export class BookMenu extends ActionMenu {
     t.anchor.set(0.5, 0);
     t.position.set(cx, y);
     // A soft dark pool behind it, and gilt rules either side ending in a lozenge.
-    g.ellipse(cx, y + t.height / 2, t.width * 0.62, t.height * 0.8).fill({ color: 0x0c0603, alpha: 0.5 });
+    g.ellipse(cx, y + t.height / 2, t.width * 0.66, t.height * 0.85).fill({ color: 0x0c0603, alpha: 0.62 });
     const half = t.width / 2 + 10 * k;
     for (const sgn of [-1, 1]) {
       const x0 = cx + sgn * half;
@@ -370,7 +375,13 @@ export class BookMenu extends ActionMenu {
       g.poly([x1, yy - 3.5 * k, x1 + sgn * 5 * k, yy, x1, yy + 3.5 * k, x1 - sgn * 5 * k, yy]).fill({ color: 0x9c3b26 }).stroke({ width: 1, color: 0xe0b36a });
     }
     this.content.addChild(g, t);
-    return t.height + 8 * k;
+    return this.rubricH();
+  }
+
+  /** The heading's height (./rubric), known before it is drawn. */
+  private rubricH(): number {
+    const size = Math.round(Math.max(20, 30 * this.k));
+    return Math.round(size * 1.24 + 10 * this.k);
   }
 
   private ribbon(i: number, x: number, y: number, w: number, h: number, label: string, sub: string, pat: string, icon: string, enabled: boolean, take: () => void, lore: () => void, reason = false): void {
@@ -378,29 +389,36 @@ export class BookMenu extends ActionMenu {
     const c = new Container();
     c.position.set(x, y);
     const md = Math.round(h * (GEO.portrait ? 0.98 : 1.14));
-    const art = new ArtSprite(`rib-${pat}`, () => ribbonArt(pat)).draw(w - md * 0.45, h);
-    art.position.set(md * 0.45, 0);
+    const ax = md * 0.45, aw = w - ax;
+    const art = new ArtSprite(`rib-${pat}`, () => ribbonArt(pat)).draw(aw, h);
+    art.position.set(ax, 0);
+    // There at once, under the pictures: the ribbon's cloth with its gilt edge, and the medallion's brass.
     const shade = new Graphics();
+    const px = (u: number) => ax + (aw * u) / 360, py = (v: number) => (h * v) / 50;
+    shade.poly([px(20), py(3), px(356), py(3), px(341), py(25), px(356), py(47), px(20), py(47), px(3), py(25)]).fill({ color: CLOTH[pat] ?? CLOTH["sb-pat-do"]! }).stroke({ width: 1.5, color: enabled ? 0xe0b36a : 0x9a8468 });
+    shade.circle(md / 2 - 4, h / 2, md * 0.44).fill({ color: enabled ? 0xc99a52 : 0x8a7a64 }).stroke({ width: 1, color: 0x3a1a08 });
+    shade.circle(md / 2 - 4, h / 2, md * 0.34).fill({ color: 0x241006 });
     const med = new ArtSprite(`med-${icon}`, () => medal(icon)).draw(md, md);
     med.position.set(-4, (h - md) / 2);
-    const lsz = Math.round(Math.max(14, Math.min(h * 0.4, 21 * k)));
+    const lsz = Math.round(Math.max(17, Math.min(h * 0.42, 24 * k)));
     const name = new Text({ text: label, style: st({ fontFamily: GARAMOND, fontWeight: "600", fontSize: lsz, fill: enabled ? 0xfdf0d5 : 0xd8cbb4, dropShadow: { color: 0x000000, alpha: 0.85, blur: 1, distance: 2, angle: Math.PI / 2 } }) });
     const numW = i >= 0 ? Math.round(34 * k) : 0;
     const room = w - md - 8 - numW - (i >= 0 ? 26 : 16) * k;
     if (name.width > room) name.scale.set(room / name.width);
     const twoLine = !!sub && h >= 40;
-    name.position.set(md + 4, twoLine ? h / 2 - name.height * 0.92 : (h - name.height) / 2);
-    c.addChild(art, shade, med, name);
+    name.position.set(md + 4, twoLine ? h / 2 - name.height * 0.86 : (h - name.height) / 2);
+    c.addChild(shade, art, med, name);
     if (sub) {
-      const s = new Text({ text: reason ? sub : sub.toUpperCase(), style: reason ? st({ fontFamily: GARAMOND, fontStyle: "italic", fontSize: Math.round(lsz * 0.68), fill: 0xf1c9a8 }) : st({ fontFamily: CINZEL, fontWeight: "700", fontSize: Math.round(Math.max(9, lsz * 0.52)), fill: 0xe8c372, letterSpacing: 1.2 }) });
+      // What it costs, or why not: a line you can read from the chair, not a footnote.
+      const s = new Text({ text: reason ? sub : sub.toUpperCase(), style: reason ? st({ fontFamily: GARAMOND, fontStyle: "italic", fontWeight: "600", fontSize: Math.round(Math.max(15, lsz * 0.74)), fill: 0xffd9b8 }) : st({ fontFamily: CINZEL, fontWeight: "700", fontSize: Math.round(Math.max(12, lsz * 0.6)), fill: 0xf0cf80, letterSpacing: 1.2 }) });
       if (s.width > room) s.scale.set(room / s.width);
-      s.position.set(md + 5, twoLine ? h / 2 + 1 : (h - s.height) / 2);
+      s.position.set(md + 5, twoLine ? h / 2 + 3 : (h - s.height) / 2);
       if (!twoLine) s.visible = false;
       c.addChild(s);
     }
     if (i >= 0) {
-      const n = new Text({ text: ROMAN[i] ?? `${i + 1}`, style: st({ fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(Math.max(10, 12 * k)), fill: 0xe0b36a }) });
-      n.alpha = 0.8;
+      const n = new Text({ text: ROMAN[i] ?? `${i + 1}`, style: st({ fontFamily: CINZEL, fontWeight: "800", fontSize: Math.round(Math.max(12, 14 * k)), fill: 0xe0b36a }) });
+      n.alpha = 0.9;
       const nx = w - 26 * k - numW;
       n.position.set(nx + 8 * k, (h - n.height) / 2);
       const dots = new Graphics();
@@ -413,10 +431,10 @@ export class BookMenu extends ActionMenu {
     ptr.visible = false;
     ptr.label = "ptr";
     c.addChild(ptr);
-    c.alpha = enabled ? 1 : 0.78;
+    c.alpha = enabled ? 1 : 0.86;
     c.eventMode = "static";
     c.cursor = enabled ? "pointer" : "default";
-    c.hitArea = { contains: (px: number, py: number) => px >= -6 && py >= 0 && px <= w && py <= h };
+    c.hitArea = { contains: (qx: number, qy: number) => qx >= -6 && qy >= 0 && qx <= w && qy <= h };
     const rib: Rib = { c, art, base: x, enabled, take, lore, x };
     const idx = this.ribs.length;
     c.on("pointerover", () => this.focus(idx));
@@ -501,8 +519,10 @@ export class BookMenu extends ActionMenu {
         const b = cell();
         this.flat(b.x, b.y, b.w, b.h, "Choose again", "", "sb-pat-iron", "back", true, back, () => {});
       } else {
-        const rh = Math.round(Math.max(38, Math.min(54, 52 * k)));
-        let y = r.y;
+        // At the foot of the column, where the skills hung: the way back is under the pointer that chose.
+        const rh = Math.round(Math.max(44, Math.min(62, 58 * k)));
+        const count = m.confirm ? 2 : 1;
+        let y = r.y + r.h - count * rh - (count - 1) * 8 * k - this.rubricH();
         y += this.rubric("Upon whom?", r.x, y, r.w);
         if (m.confirm) {
           this.ribbon(0, r.x + 24 * k, y, r.w - 24 * k, rh, "Confirm", "", "sb-pat-fight", "check", true, conf, () => {});
@@ -526,14 +546,14 @@ export class BookMenu extends ActionMenu {
       this.tell("lore");
       return;
     }
-    let y = r.y;
-    y += this.rubric(`What will ${m.actor} do?`, r.x, y, r.w);
     const gap = Math.round(8 * k);
-    const avail = r.y + r.h - y;
+    const avail = r.h - this.rubricH();
     const rh = Math.round(Math.max(36, Math.min(58 * k + 4, (avail - gap * (skills.length - 1)) / Math.max(1, skills.length))));
-    // Stacked from the bottom of the column up, like the scene's choices sitting over the page.
+    // Stacked from the bottom of the column up, like the scene's choices sitting over the page, the heading
+    // straight on top of them: the question and its answers read as one thing.
     const total = skills.length * rh + (skills.length - 1) * gap;
-    y = Math.max(y, r.y + r.h - total);
+    let y = Math.max(r.y, r.y + r.h - total - this.rubricH());
+    y += this.rubric(`What will ${m.actor} do?`, r.x, y, r.w);
     skills.forEach((s, i) => {
       this.ribbon(i, r.x + 24 * k, y + i * (rh + gap), r.w - 24 * k, rh, s.name, s.usable ? s.cost : s.reason ?? "", s.signature ? "sb-pat-fight" : s.usable ? "sb-pat-do" : "sb-pat-iron", iconOf(s), s.usable, () => this.onPick(s.id), () => this.tell("lore", s), !s.usable);
     });

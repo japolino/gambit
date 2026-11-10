@@ -145,16 +145,23 @@ function verdict(scenario: ParleyScenario, state: ParleyState, ex: Exchange): st
   const { npc, contest: c } = scenario;
   const not = npc.pronoun === "they" ? "they do not" : `${npc.pronoun} does not`;
   if (ex.ended?.kind === "final_offer") return `${npc.name} is out of patience and makes a FINAL offer at ${formatValue(scenario, state.value)}: take it or leave it.`;
-  if (ex.ended?.kind === "won") return `${npc.name} gives in: the player gets ${c.stake}.`;
-  if (ex.ended?.kind === "refused") return `${npc.name} is out of patience and refuses for good: the answer is no, and the talk is over. Whatever softened along the way, ${not} agree, help, or tell the player what to do next.`;
-  return `${npc.name} has NOT given in: ${not} agree, promise, or go along with anything, and the player does not get ${c.stake} yet. Softening is fine if the dice allow it; a yes is not.`;
+  const gives = scenario.card?.gives;
+  // What they know is the prize: said plainly on a win, and not a word of it (or of anything made up in its place) before.
+  const kept = gives ? ` What ${npc.name} knows stays unsaid: no facts about it come out, true or invented, and the player is not sent to anyone or anywhere else for it.` : "";
+  if (ex.ended?.kind === "won")
+    return gives
+      ? `${npc.name} gives in and tells the player what ${npc.pronoun === "they" ? "they know" : `${npc.pronoun} knows`}. In ${npc.name}'s own words, plainly and in full, this comes out: <<<${gives}>>> Nothing in the reply contradicts it or swaps it for something else.`
+      : `${npc.name} gives in: the player gets ${c.stake}.`;
+  if (ex.ended?.kind === "refused") return `${npc.name} is out of patience and refuses for good: the answer is no, and the talk is over. Whatever softened along the way, ${not} agree, help, or tell the player what to do next.${kept}`;
+  return `${npc.name} has NOT given in: ${not} agree, promise, or go along with anything, and the player does not get ${c.stake} yet. Softening is fine if the dice allow it; a yes is not.${kept}`;
 }
 
 /**
  * The block the interceptor injects before the narrator writes. Everything
- * in it is already decided; the narrator only voices it.
+ * in it is already decided; the narrator only voices it. `lore`: the writer has the card's whole lore in front of it
+ * (the chat's own model), so what is being held back is named, or it cannot tell which of the things it knows to keep out.
  */
-export function outcomeBlock(scenario: ParleyScenario, state: ParleyState, ex: Exchange): string {
+export function outcomeBlock(scenario: ParleyScenario, state: ParleyState, ex: Exchange, lore = false): string {
   const npc = scenario.npc;
   const c = scenario.contest;
   const lines: string[] = [];
@@ -177,6 +184,12 @@ export function outcomeBlock(scenario: ParleyScenario, state: ParleyState, ex: E
   if (!ex.ended) lines.push(`The negotiation continues; ${npc.name} has ${state.patience} of ${npc.stance.patience} patience left. End on a line that invites the player's next move.`);
   if (npc.voice) lines.push(`Voice: ${npc.voice}`);
   lines.push(...REPLY_RULES(npc.name));
+  const gives = scenario.card?.gives;
+  // Last, where it weighs most: a reply that tells it anyway says the opposite of what the game just decided.
+  if (lore && gives && ex.ended?.kind !== "won")
+    lines.push(
+      `HARD RULE for this reply, above every other instruction: ${npc.name} has not been won over, so this stays secret: <<<${gives}>>> Neither ${npc.name}'s words nor the narration state it, confirm it, or give away any detail of it. ${npc.name} may make it plain that something is being held back, and deflects, stalls or ends the talk instead.`,
+    );
   return lines.join("\n");
 }
 

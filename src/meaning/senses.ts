@@ -233,13 +233,15 @@ export interface CompanionLike {
 }
 
 /** Deeds a companion could feel something about (the rest are bookkeeping). */
-export const moralDeeds = (deeds: readonly Deed[]) => deeds.filter((d) => d.kind === "killed" || d.kind === "spared" || d.kind === "recruited" || d.kind === "bargained");
+export const moralDeeds = (deeds: readonly Deed[]) => deeds.filter((d) => d.kind === "killed" || d.kind === "beat" || d.kind === "spared" || d.kind === "recruited" || d.kind === "bargained");
 
 const deedLine = (d: Deed): string => {
   const n = d.n && d.n > 1 ? `${d.n} ` : "";
   switch (d.kind) {
     case "killed":
       return `The party killed ${n}${d.name}${d.method ? ` (mostly with ${d.method})` : ""}.`;
+    case "beat":
+      return `The party beat ${d.name} in a fight. ${d.name} is alive.`;
     case "spared":
       return `The party spared ${n}${d.name} when they yielded.`;
     case "recruited":

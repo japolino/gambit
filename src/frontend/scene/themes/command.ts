@@ -1,23 +1,19 @@
 /**
- * The Command theme: a 1980s home-computer crawler on a CRT on a desk.
+ * The Command theme: a 1980s home-computer crawler on a CRT that fills the window.
  *
- * Inside the tube everything sits on a fixed character grid (48 x 32 cells
- * of 8 x 8 virtual pixels on a wide window, 24-ish columns on a phone) in
- * the EGA palette: a royal blue chassis with black windows cut into it,
- * each rimmed by double white rules that end in chevron caps around inline
- * labels. Left: the first-person viewport (the place art posterised and
- * Bayer-dithered to the palette at the grid's own resolution, or a raycast
- * brick corridor in a delve), with whoever is here docked along its bottom
- * in framed encounter boxes. Right: the roster (one row each, the talk key
- * right-aligned), the automap / overland when there is one, a packed
- * two-row status block, and one scrolling terminal where the log, the
- * narration, the numbered commands and the blinking prompt live together.
+ * Inside the tube everything sits on a coarse character grid (about 46 x 27 cells of 8 x 8 virtual pixels on a
+ * wide window, so a cell is 32px at 1080p; 24-ish columns on a phone) in the EGA palette: a royal blue chassis
+ * with black windows cut into it, each rimmed by a white rule that breaks around a label between chevron caps.
+ * Left: the first-person viewport (the place art posterised and Bayer-dithered to the palette at the grid's own
+ * resolution, or a raycast brick corridor in a delve) with whoever is here docked along its bottom in framed
+ * encounter boxes, and under it the narration window, where the log and the place's description (or the story
+ * you are writing) are read whole. Right, top to bottom: the roster (one row each: talk key, name, how they
+ * feel), the status strip, and the command list with its prompt. The last row of the screen is the key bar
+ * (Journal, Classes, Disks, Colour), so every key the bezel has is also on the screen at the screen's own size.
  *
- * Around the tube (on a wide window) is the physical object: the monitor's
- * moulded housing with its bezel keys (Journal, Classes, Disks, Colour), a
- * disk file box whose floppies switch themes, the external drive whose lamp
- * is the busy light, a taped quick-reference card and a desk lamp, all on a
- * walnut desk in a dark room lit by the screen.
+ * Around the tube is the physical object (../../stage/themes/command/shell.ts has its geometry): the monitor's
+ * moulded housing with the same keys on its chin, and, where the window leaves room beside it, a disk file box
+ * whose floppies switch themes, the external drive whose lamp is the busy light, a taped key card and a desk lamp.
  *
  * On a phone (geo.phone, either way up) there is no tube: the picture with one label line, a blue status band and
  * the terminal, flat and unframed, its commands rows a thumb can hit and the whole of it scrolling by touch.
@@ -28,83 +24,30 @@ import { drawCorridor } from "./command/corridor.js";
 import { canvas, coverDraw, cursorUrl, frameSvg, loadImage, mangaToPalette, PALETTE_LABEL, PALETTES, registerOf, scanTile, type PaletteId, type Rgb } from "./command/pixels.js";
 import { diskBoxSvg, driveSvg, drawRoom, floppySvg, lampSvg, monitorSvg, refCardSvg } from "./command/props.js";
 import { commandCss } from "./command/style.js";
+import { cardRect, computeGeo, keyCapSvg, keysOrigin, propsGeo, silkSize, type Geo, type Rect } from "../../stage/themes/command/shell.js";
 import { beatsHtml, canWrite, isWriting, wireWrite, writeFormHtml } from "./write.js";
 
 /* --------------------------------- Grid --------------------------------- */
 
-interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-/** Where everything is, in screen pixels and in cells. */
-interface Geo {
-  tall: boolean;
-  /** A phone in either orientation (the same test as Parley's .pl-phone). */
-  phone: boolean;
-  W: number;
-  H: number;
-  /** One cell, in screen pixels (a multiple of 8 when it can be: crisp 8x8 glyphs). */
-  c: number;
-  cols: number;
-  rows: number;
-  /** The glass (screen) inside the root, and the grid's offset in it. */
-  glass: Rect;
-  ox: number;
-  oy: number;
-  /** The monitor housing (wide only), its recessed well and side plastic. */
-  mon: Rect | null;
-  well: number;
-  side: number;
-}
-
-const WIDE_COLS = 48;
-const WIDE_ROWS = 30;
-const VP_COLS = 27;
-/** Bezel sizes in cells: plastic at the sides, top and chin, and the recessed well inside it. */
-const BEZ = { s: 2, t: 1, b: 2.6, well: 0.75 };
-
-function computeGeo(W: number, H: number): Geo {
-  const phone = W <= 760 || H <= 480;
-  const tall = phone || W < 720 || W / Math.max(1, H) < 0.95;
-  if (phone) {
-    const c = W >= 600 && H > 480 ? 24 : W >= 352 ? 16 : 12;
-    const cols = Math.floor(W / c);
-    const rows = Math.floor(H / c);
-    return { tall, phone, W, H, c, cols, rows, glass: { x: 0, y: 0, w: W, h: H }, ox: Math.floor((W - cols * c) / 2), oy: Math.floor((H - rows * c) / 2), mon: null, well: 0, side: 0 };
-  }
-  if (tall) {
-    const c = W >= 600 ? 24 : W >= 352 ? 16 : 12;
-    const cols = Math.max(20, Math.floor((W - 4) / c));
-    const rows = Math.max(30, Math.floor((H - 4) / c));
-    return { tall, phone, W, H, c, cols, rows, glass: { x: 0, y: 0, w: W, h: H }, ox: Math.max(0, Math.floor((W - cols * c) / 2)), oy: Math.max(0, Math.floor((H - rows * c) / 2)), mon: null, well: 0, side: 0 };
-  }
-  const cols = WIDE_COLS;
-  const rows = WIDE_ROWS;
-  // One whole cell of overscan all round: nothing live sits under the tube's dark edge.
-  const fits = (c: number) => (rows + 2) * c + c * (BEZ.t + BEZ.b + 2 * BEZ.well) <= H * 0.985 && (cols + 2) * c + 2 * (BEZ.s + BEZ.well) * c <= W * 0.97;
-  let c = 0;
-  for (let k = 64; k >= 16; k -= 8) {
-    if (fits(k)) {
-      c = k;
-      break;
+/** Word-wrap to n columns, as the screen does (a word longer than the line breaks anywhere). */
+function wrapRows(s: string, n: number): number {
+  let rows = 0;
+  let line = 0;
+  for (const word of s.split(/\s+/)) {
+    if (!word) continue;
+    let w = word.length;
+    if (line && line + 1 + w <= n) {
+      line += 1 + w;
+      continue;
     }
+    if (line) rows++;
+    while (w > n) {
+      rows++;
+      w -= n;
+    }
+    line = w;
   }
-  if (!c) c = Math.max(8, Math.floor(Math.min((H * 0.985) / (rows + 2 + BEZ.t + BEZ.b + 2 * BEZ.well), (W * 0.97) / (cols + 2 + 2 * (BEZ.s + BEZ.well)))));
-  const gw = (cols + 2) * c;
-  const gh = (rows + 2) * c;
-  const well = Math.round(BEZ.well * c);
-  const s = Math.round(BEZ.s * c);
-  // Spare height goes into a deeper brow and chin, so the set fills the window.
-  const spare = Math.max(0, H * 0.985 - (gh + 2 * well + (BEZ.t + BEZ.b) * c));
-  const t = Math.round(BEZ.t * c + Math.min(spare * 0.35, c * 1.4));
-  const b = Math.round(BEZ.b * c + Math.min(spare * 0.65, c * 2.2));
-  const mw = gw + 2 * (s + well);
-  const mh = gh + 2 * well + t + b;
-  const mon = { x: Math.round((W - mw) / 2), y: Math.max(0, Math.round(H - mh - H * 0.012)), w: mw, h: mh };
-  return { tall, phone, W, H, c, cols, rows, glass: { x: mon.x + s + well, y: mon.y + t + well, w: gw, h: gh }, ox: c, oy: c, mon, well, side: s };
+  return rows + (line ? 1 : 0);
 }
 
 /** Truncate to n cells. */
@@ -141,7 +84,6 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     <div class="mon">
       <div class="glass">
         <div class="scr"><div class="grid"></div></div>
-        <svg class="defs" aria-hidden="true"><filter id="cmdBarrel" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feImage class="bmap" x="0" y="0" preserveAspectRatio="none" result="m"/><feDisplacementMap in="SourceGraphic" in2="m" scale="31.875" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
         <div class="crt scan"></div><div class="crt vig"></div><div class="crt refl"></div>
       </div>
       <div class="housing-host"></div>
@@ -231,6 +173,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const map = makeWin("map");
   const st = makeWin("st");
   const term = makeWin("term");
+  const narr = makeWin("narr");
   vp.body.remove();
   vp.el.insertAdjacentHTML("beforeend", `<div class="art"><canvas class="place"></canvas></div><div class="enc"></div><div class="focusbox"></div><div class="jr"><div class="in"></div></div>`);
   const artBox = $(".art", vp.el);
@@ -249,6 +192,18 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const txIn = $(".in", tx);
   const upMark = $(".scrollmark.up", term.body);
   const dnMark = $(".scrollmark.dn", term.body);
+  // The narration window (a monitor only): the log, the place and the story, read whole, apart from the commands.
+  narr.body.innerHTML = `<div class="tx" role="log" aria-live="polite"><div class="in"></div></div><div class="scrollmark up" style="top:0">^</div><div class="scrollmark dn" style="bottom:0">v</div>`;
+  const nx = $(".tx", narr.body);
+  const nxIn = $(".in", nx);
+  const nUp = $(".scrollmark.up", narr.body);
+  const nDn = $(".scrollmark.dn", narr.body);
+  // The key bar: the last row of the screen, on the blue.
+  const hints = document.createElement("div");
+  hints.className = "hints";
+  hints.setAttribute("role", "toolbar");
+  hints.setAttribute("aria-label", "Keys");
+  grid.append(hints);
   // The commands are its letters and digits, so the line you write is a row of its own, always in sight under the scroll.
   const write = wireWrite(ctx, $<HTMLFormElement>("form.wr", term.body), {
     maxRows: 6,
@@ -258,6 +213,11 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     },
   });
   let seenStory = "";
+  /** Beats seen, and whether the newest was still arriving: a reply that streams in is followed word by word. */
+  let seenBeats = 0;
+  let wasLive = false;
+  /** The reader moved the story themselves while it streamed: it is theirs until the next beat. */
+  let heldStory = false;
   map.body.innerHTML = `<canvas class="auto"></canvas><svg class="hex" role="group" aria-label="Overland map"></svg>`;
   const autoCv = $<HTMLCanvasElement>("canvas.auto", map.body);
   const hexSvg = $<SVGSVGElement>("svg.hex", map.body);
@@ -271,9 +231,11 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   let diskMenu = false;
   let focusId: string | null = null;
   let destroyed = false;
-  let layoutKey = "";
   let roomKey = "";
   let followTerm = true;
+  let followNarr = true;
+  /** Who the roster lists (their talk commands are its rows, so the command list leaves them out). */
+  let rostered = new Set<string>();
   const ARTM = 4; // parallax margin around the place art, virtual pixels
 
   /* ----------------------------- Art cache ------------------------------ */
@@ -416,31 +378,117 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   /* ------------------------------ Layout -------------------------------- */
 
-  /** The window rectangles for this view, in cells. */
-  function windows(v: SceneView): { vp: Rect; ros: Rect | null; map: Rect | null; st: Rect; term: Rect } {
+  interface Wins {
+    vp: Rect;
+    ros: Rect | null;
+    map: Rect | null;
+    st: Rect;
+    term: Rect;
+    /** The narration window (a monitor); without it the terminal carries the narration too. */
+    narr: Rect | null;
+  }
+
+  /** "Next: <where the thread's next piece is>", or null when there is no thread, it is over, or nothing is known. */
+  function nextLead(v: SceneView): string | null {
+    const t = ctx.status(v).thread;
+    return t && !t.ended && t.leads.length ? `Next: ${t.leads[0]}` : null;
+  }
+  /** The status window's rows for that line (two at most: it wraps, it is never cut to a stub). */
+  const nextRows = (v: SceneView, cols: number): number => {
+    const n = nextLead(v);
+    return n ? Math.min(2, wrapRows(n, cols)) : 0;
+  };
+
+  /**
+   * Keep a beat in view in its scroller. One that arrives whole is read from its first line; one that streams in
+   * keeps its newest words on the last row (a reply can run to pages), until the reader scrolls it themselves.
+   */
+  /** The newest log line when it came after the story's last beat: it is shown under the story, not over it. */
+  const tailOf = (v: SceneView, log: readonly string[]): string => (v.logAfter && isWriting(v) ? (log[log.length - 1] ?? "") : "");
+  /** The log's lines, the newest marked; with a `tail` that one is left for under the story. */
+  const logLines = (log: readonly string[], tail: string, into: string[]): void => {
+    const n = tail ? log.length - 1 : log.length;
+    for (let i = 0; i < n; i++) into.push(`<div class="l log ch${!tail && i === n - 1 ? " last" : ""}">${esc(log[i]!)}</div>`);
+  };
+  let narrTail = "";
+  let termTail = "";
+
+  function followBeat(sc: HTMLElement, inner: HTMLElement, v: SceneView, changed: boolean, grid: number, pad = 0): boolean {
+    const n = isWriting(v) ? v.story.length : 0;
+    const live = n > 0 && !!v.story[n - 1]!.live;
+    const fresh = n > seenBeats;
+    const story = n ? JSON.stringify(v.story) : "";
+    const moved = story !== seenStory;
+    seenStory = story;
+    seenBeats = n;
+    if (fresh) heldStory = false;
+    const beat = n && changed && (fresh || moved || live) ? [...inner.querySelectorAll<HTMLElement>(".beat")].at(-1) : null;
+    const was = wasLive;
+    wasLive = live;
+    if (!beat || heldStory) return false;
+    const top = beat.offsetTop - inner.offsetTop;
+    const snap = (y: number) => (grid ? Math.round(y / grid) * grid : Math.max(0, y - 4));
+    // `pad`: what lies over the scroller's last rows (a phone's "more" band), so the newest line clears it.
+    if (live || (was && !fresh)) sc.scrollTop = Math.max(snap(top), Math.ceil(top + beat.offsetHeight - sc.clientHeight + pad));
+    else sc.scrollTop = snap(top);
+    return true;
+  }
+
+  /** The rows the narration needs to show what just happened, and where you are, whole. */
+  function narrationRows(v: SceneView, cols: number): number {
+    const b = ctx.box(v);
+    if (isWriting(v)) {
+      // The newest beat: a row over it, its lines, and a row between the reply's paragraphs.
+      const x = v.story[v.story.length - 1]!;
+      const rowsOf = (t: string | null | undefined, gap: number) => Math.max(0, (t ? t.split(/\n+/).filter((p) => p.trim()) : []).reduce((n, p) => n + wrapRows(p, cols) + gap, 0) - gap);
+      const tail = tailOf(v, b.log);
+      return 1 + rowsOf(x.said, 0) + rowsOf(x.roll, 0) + rowsOf(x.found, 0) + rowsOf(x.reply, 1) + (tail ? wrapRows(tail, cols - 1) : 0);
+    }
+    const lastLog = b.log[b.log.length - 1];
+    return (lastLog ? wrapRows(lastLog, cols - 1) : 0) + (b.desc ? wrapRows(`${b.isNew ? "NEW " : ""}${b.desc}`, cols) : 0);
+  }
+
+  /**
+   * The window rectangles for this view, in cells. A monitor: the viewport over the narration at the left; the
+   * roster, the status strip and the commands down the right, which has half the screen so a command's label
+   * fits on its row; the key bar on the last row. The narration is as tall as what it has to say (in steps, so
+   * the picture does not twitch), and the picture gives it the room.
+   */
+  function windows(v: SceneView): Wins {
     const n = people.length;
     const hasMap = !!v.delve || !!v.hex;
     if (geo.phone) return phoneWindows(v, hasMap);
-    // Who is here; with nobody, the same box reads the surroundings instead (not in a delve: the map has that).
-    // A fixed-size window, like a VRAM region: four rows whether one person is here or four.
-    const rosRows = v.delve ? 0 : 4;
     if (!geo.tall) {
-      const rx = VP_COLS;
-      const rw = geo.cols - VP_COLS;
+      const wr = geo.rows - 1;
+      const rw = Math.min(23, Math.max(20, Math.ceil(geo.cols / 2)));
+      const lw = geo.cols - rw;
+      // The overland is where you walk: it sits under the picture, at the picture's width (a delve's automap is small, and goes right).
+      const hexH = v.hex && !v.delve ? 8 : 0;
+      const need = narrationRows(v, lw - 2);
+      // A long reply is a page to read: the picture gives way to a strip (the people stay in the roster).
+      const minVp = hexH ? 9 : isWriting(v) && need > 12 ? 8 : 11;
+      const narrH = Math.max(6, Math.min(wr - hexH - minVp, 2 + Math.ceil(need / 2) * 2));
+      const vpH = wr - hexH - narrH;
       let y = 0;
-      const rosR = rosRows ? { x: rx, y, w: rw, h: 2 + rosRows } : null;
+      const rosR = v.delve ? null : { x: lw, y, w: rw, h: 2 + Math.max(3, Math.min(6, n)) };
       if (rosR) y += rosR.h;
-      const mapR = hasMap ? { x: rx, y, w: rw, h: v.delve ? 12 : 9 } : null;
-      if (mapR) y += mapR.h;
-      const stR = { x: rx, y, w: rw, h: 4 };
-      y += 4;
-      return { vp: { x: 0, y: 0, w: VP_COLS, h: geo.rows }, ros: rosR, map: mapR, st: stR, term: { x: rx, y, w: rw, h: geo.rows - y } };
+      const autoR = v.delve ? { x: lw, y, w: rw, h: Math.min(10, wr - 15) } : null;
+      if (autoR) y += autoR.h;
+      const stR = { x: lw, y, w: rw, h: 4 + nextRows(v, rw - 2) };
+      y += stR.h;
+      const term = { x: lw, y, w: rw, h: wr - y };
+      // The journal, open, takes the left column: it is a page to read, and the commands stay beside it.
+      if (ctx.journal.open) return { vp: { x: 0, y: 0, w: lw, h: wr }, ros: rosR, map: autoR, st: stR, term, narr: null };
+      return { vp: { x: 0, y: 0, w: lw, h: vpH }, ros: rosR, map: hexH ? { x: 0, y: vpH, w: lw, h: hexH } : autoR, st: stR, term, narr: { x: 0, y: vpH + hexH, w: lw, h: narrH } };
     }
+    // A tall window that is not a phone: one column, the terminal carrying the narration and the commands.
+    const rosRows = v.delve ? 0 : 4;
     const cols = geo.cols;
     let vpH = Math.max(12, Math.min(20, Math.round(geo.rows * 0.34)));
     let mapH = hasMap ? 10 : 0;
     const rosH = rosRows ? 2 + rosRows : 0;
-    const spare = geo.rows - vpH - mapH - rosH - 5;
+    const stH = 5 + nextRows(v, cols - 2);
+    const spare = geo.rows - vpH - mapH - rosH - stH;
     if (spare < 10) {
       const cut = 10 - spare;
       mapH = hasMap ? Math.max(7, mapH - cut) : 0;
@@ -453,37 +501,40 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     y += rosH;
     const mapR = hasMap ? { x: 0, y, w: cols, h: mapH } : null;
     y += mapH;
-    const stR = { x: 0, y, w: cols, h: 5 };
-    y += 5;
-    return { vp: vpR, ros: rosR, map: mapR, st: stR, term: { x: 0, y, w: cols, h: Math.max(6, geo.rows - y) } };
+    const stR = { x: 0, y, w: cols, h: stH };
+    y += stH;
+    return { vp: vpR, ros: rosR, map: mapR, st: stR, term: { x: 0, y, w: cols, h: Math.max(6, geo.rows - y) }, narr: null };
   }
 
   /**
    * A phone: the picture is a strip, the terminal gets the screen. No "Here" window: whoever is here is on the
    * picture and in the commands. The journal, open, takes the whole screen. Landscape puts the terminal at the right.
    */
-  function phoneWindows(v: SceneView, hasMap: boolean): { vp: Rect; ros: Rect | null; map: Rect | null; st: Rect; term: Rect } {
+  function phoneWindows(v: SceneView, hasMap: boolean): Wins {
     const { cols, rows } = geo;
-    const ST = 5;
-    let out: { vp: Rect; ros: Rect | null; map: Rect | null; st: Rect; term: Rect };
-    if (geo.W > geo.H) {
+    // Two rows of numbers, the thread's next lead, the keys.
+    const ST = 5 + nextRows(v, cols - 1);
+    let out: Wins;
+    // Side by side only where both halves keep a line's width (a portrait phone with its keyboard up is wider than it is tall, and is not that).
+    if (geo.W > geo.H * 1.3 && cols >= 36) {
       const lw = Math.max(18, Math.round(cols * 0.42));
       const free = rows - ST;
       const mapH = hasMap ? Math.floor(free / 2) : 0;
       const vpH = free - mapH;
-      out = { vp: { x: 0, y: 0, w: lw, h: vpH }, ros: null, map: mapH ? { x: 0, y: vpH, w: lw, h: mapH } : null, st: { x: 0, y: free, w: lw, h: ST }, term: { x: lw, y: 0, w: cols - lw, h: rows } };
+      out = { vp: { x: 0, y: 0, w: lw, h: vpH }, ros: null, map: mapH ? { x: 0, y: vpH, w: lw, h: mapH } : null, st: { x: 0, y: free, w: lw, h: ST }, term: { x: lw, y: 0, w: cols - lw, h: rows }, narr: null };
     } else if (v.delve) {
       // The corridor and its map side by side: walking needs both, and the commands the height.
       const lw = Math.ceil(cols / 2);
       const top = Math.max(7, Math.min(10, Math.round(rows * 0.22)));
-      out = { vp: { x: 0, y: 0, w: lw, h: top }, ros: null, map: { x: lw, y: 0, w: cols - lw, h: top }, st: { x: 0, y: top, w: cols, h: ST }, term: { x: 0, y: top + ST, w: cols, h: rows - top - ST } };
+      out = { vp: { x: 0, y: 0, w: lw, h: top }, ros: null, map: { x: lw, y: 0, w: cols - lw, h: top }, st: { x: 0, y: top, w: cols, h: ST }, term: { x: 0, y: top + ST, w: cols, h: rows - top - ST }, narr: null };
     } else {
-      const vpH = hasMap ? 5 : Math.max(6, Math.min(10, Math.round(rows * 0.2)));
+      // A short screen (the keyboard is up) keeps the place's name and gives the picture's rows to the words.
+      const vpH = geo.H < 480 ? 1 : hasMap ? 5 : Math.max(6, Math.min(10, Math.round(rows * 0.2)));
       const mapH = hasMap ? Math.max(8, Math.min(12, Math.round(rows * 0.28))) : 0;
       let y = vpH;
       const mapR = mapH ? { x: 0, y, w: cols, h: mapH } : null;
       y += mapH;
-      out = { vp: { x: 0, y: 0, w: cols, h: vpH }, ros: null, map: mapR, st: { x: 0, y, w: cols, h: ST }, term: { x: 0, y: y + ST, w: cols, h: rows - y - ST } };
+      out = { vp: { x: 0, y: 0, w: cols, h: vpH }, ros: null, map: mapR, st: { x: 0, y, w: cols, h: ST }, term: { x: 0, y: y + ST, w: cols, h: rows - y - ST }, narr: null };
     }
     if (ctx.journal.open) out.vp = { x: 0, y: 0, w: cols, h: rows };
     return out;
@@ -494,6 +545,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const W = Math.max(1, root.clientWidth);
     const H = Math.max(1, root.clientHeight);
     geo = computeGeo(W, H);
+    rootBox = null;
     const { c, glass } = geo;
     const v8 = c / 8;
     cmd.classList.toggle("tall", geo.tall);
@@ -516,75 +568,34 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       keys.innerHTML = "";
     }
     cmd.style.setProperty("--vig", `url("${vignette(glass.w, glass.h)}")`);
-    barrel(glass.w, glass.h);
     refl.innerHTML = `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs>
       <radialGradient id="cmdRf" cx=".18" cy=".1" r=".55"><stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".6" stop-color="#fff" stop-opacity=".03"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
       <linearGradient id="cmdRb" x1="0" y1="0" x2="1" y2="1"><stop offset=".3" stop-color="#fff" stop-opacity="0"/><stop offset=".42" stop-color="#fff" stop-opacity=".035"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
       <path d="M0,0 H70 Q30,8 8,40 L0,62Z" fill="url(#cmdRf)"/><rect width="100" height="100" fill="url(#cmdRb)"/></svg>`;
     placeProps();
-    // The host's overlays (class panel, "Meanwhile…") follow the screen.
+    // The host's overlays follow the screen: the class panel takes every window (it is a page of its own, and at
+    // this cell size it needs the columns) and leaves the key bar under it; the montage takes the tube.
     if (gs) {
-      const vpR = last ? windows(last).vp : { x: 0, y: 0, w: geo.tall ? geo.cols : VP_COLS, h: geo.rows };
-      const full = geo.tall;
-      const gx = glass.x + geo.ox;
-      const gy = glass.y + geo.oy;
       const set = (k: string, val: number) => gs.style.setProperty(k, `${Math.round(val)}px`);
       set("--cmd-c", c);
       set("--cmd-v", v8);
-      set("--cmd-vp-l", full ? gx : gx + vpR.x * c);
-      set("--cmd-vp-t", full ? gy : gy + vpR.y * c);
-      set("--cmd-vp-w", full ? geo.cols * c : vpR.w * c);
-      set("--cmd-vp-h", full ? geo.rows * c : vpR.h * c);
+      set("--cmd-vp-l", glass.x + geo.ox);
+      set("--cmd-vp-t", glass.y + geo.oy);
+      set("--cmd-vp-w", geo.cols * c);
+      set("--cmd-vp-h", (geo.tall ? geo.rows : geo.rows - 1) * c);
       set("--cmd-tube-l", glass.x);
       set("--cmd-tube-t", glass.y);
       set("--cmd-tube-w", glass.w);
       set("--cmd-tube-h", glass.h);
     }
-    layoutKey = "";
     scheduleRoom();
   }
 
   /**
-   * The tube's curvature: the whole screen goes through a displacement map
-   * that bows it outward (radial, k = 0.008: about 3px at the middle of each
-   * edge, twice that at the corners). Offsets are whole pixels, so the 8x8
-   * glyphs stay hard-edged; they step, as rasters on curved glass do.
-   * Phones get a flat screen (no bezel, and touch targets must not move).
+   * The tube's dark edges: a superellipse falloff, drawn small and stretched. The curve of the glass is in the
+   * housing's bowed opening and this falloff, not in the picture: the screen used to go through a displacement
+   * map, which dropped a pixel row out of some lines of type and put every word on a filtered layer.
    */
-  function barrel(w: number, h: number): void {
-    const scr = $(".scr", glassEl);
-    const img = $<SVGFEImageElement>("feImage.bmap", glassEl);
-    if (geo.tall || w < 8 || h < 8) {
-      scr.style.filter = "";
-      return;
-    }
-    const c = canvas(w, h);
-    const g = c.getContext("2d")!;
-    const im = g.createImageData(w, h);
-    const cx = w / 2, cy = h / 2, k = 0.008;
-    for (let y = 0; y < h; y++) {
-      const v = (y + 0.5 - cy) / cy;
-      for (let x = 0; x < w; x++) {
-        const u = (x + 0.5 - cx) / cx;
-        const r2 = u * u + v * v;
-        // Sample from nearer the centre: the picture swells toward the glass edge.
-        const dx = Math.round(-(x + 0.5 - cx) * k * r2);
-        const dy = Math.round(-(y + 0.5 - cy) * k * r2);
-        const i = (y * w + x) * 4;
-        im.data[i] = 128 + dx * 8;
-        im.data[i + 1] = 128 + dy * 8;
-        im.data[i + 2] = 128;
-        im.data[i + 3] = 255;
-      }
-    }
-    g.putImageData(im, 0, 0);
-    img.setAttribute("width", String(w));
-    img.setAttribute("height", String(h));
-    img.setAttribute("href", c.toDataURL());
-    scr.style.filter = "url(#cmdBarrel)";
-  }
-
-  /** The tube's dark edges: a superellipse falloff, drawn small and stretched. */
   function vignette(w: number, h: number): string {
     const cw = Math.max(8, Math.round(w / 8));
     const ch = Math.max(8, Math.round(h / 8));
@@ -606,90 +617,56 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     return c.toDataURL();
   }
 
-  /** The bezel keys: Journal, Classes, Disks, Colour. */
+  /**
+   * The bezel keys: Journal, Classes (while the class panel is on), Disks, Colour, each cap printed with its letter and its word at a size that
+   * reads. They are for the mouse: the same four are on the screen's key bar, which is where Tab goes.
+   */
+  let keysWithClasses: boolean | null = null;
   function buildKeys(): void {
-    const m = geo.mon!;
     const c = geo.c;
-    const kw = Math.round(c * 2.6);
-    const kh = Math.round(c * 1.5);
-    const bezelTop = geo.glass.y - m.y + geo.glass.h + geo.well;
-    const bh = m.h - bezelTop;
-    const lab = c >= 24 ? 16 : 8;
-    const cap = (letter: string, word: string, act: string, aria: string) => `<button class="kc" data-a="${act}" aria-label="${aria}">
-      <svg viewBox="0 0 ${kw} ${kh}" width="${kw}" height="${kh}" aria-hidden="true">
-        <rect x="0" y="3" width="${kw}" height="${kh - 3}" rx="3" fill="#060607"/>
-        <rect x="2" y="0" width="${kw - 4}" height="${kh - 6}" rx="3" class="cap" stroke="#000" stroke-width="1"/>
-        <path d="M5,1.5 H${kw - 5}" stroke="#7a7e86" stroke-width="1" stroke-opacity=".8"/>
-        <path d="M4,${kh - 7} H${kw - 4}" stroke="#000" stroke-width="1" stroke-opacity=".6"/>
-        <rect x="${kw - 14}" y="${(kh - 6) / 2 - 3}" width="8" height="6" rx="1" class="lamp2" fill="#2a1a0a" stroke="#000" stroke-width=".6"/>
-        <text x="${Math.round(kw * 0.34)}" y="${Math.round((kh - 6) / 2 + lab * 0.45)}" text-anchor="middle" font-family="Gambit 8bit" font-size="${lab}" fill="#e2e5ea">${letter}</text>
-      </svg><span class="silk">${word}</span></button>`;
-    keys.innerHTML = cap("J", "JOURNAL", "jr", "Journal (J)") + cap("C", "CLASSES", "cls", "Classes (C)") + cap("T", "DISKS", "disks", "Change disk: theme (T)") + cap("M", PALETTE_LABEL[pal], "pal", "Colour mode (M)");
-    const total = 4 * kw + 3 * c * 0.5;
-    const kTop = Math.round(bezelTop + (bh - kh - 11) / 2 + c * 0.1);
-    Object.assign(keys.style, { left: `${Math.round(m.w / 2 - total / 2 + c * 1.5)}px`, top: `${kTop}px` });
+    keysWithClasses = ctx.classes.available;
+    const gap = Math.round(silkSize(c) * 0.9);
+    const defs: [string, string, string, string][] = [["J", "JOURNAL", "jr", "Journal (J)"], ...(keysWithClasses ? [["C", "CLASSES", "cls", "Classes (C)"] as [string, string, string, string]] : []), ["T", "DISKS", "disks", "Change disk: theme (T)"], ["M", PALETTE_LABEL[pal], "pal", "Colour mode (M)"]];
+    const caps = defs.map(([letter, word]) => keyCapSvg(c, letter, word));
+    keys.innerHTML = defs.map(([, , act, aria], i) => `<button class="kc" tabindex="-1" data-a="${act}" aria-label="${aria}">${caps[i]!.svg}</button>`).join("");
+    const at = keysOrigin(geo, caps.reduce((s, k) => s + k.w, 0) + gap * (caps.length - 1), caps[0]!.h);
+    Object.assign(keys.style, { left: `${at.left}px`, top: `${at.top}px`, gap: `${gap}px` });
   }
 
   let lampX = 0;
   /**
-   * Desk props at foreground scale: they are nearer the eye than the screen,
-   * so they are big, cropped by the window's bottom edge, and tucked against
-   * the monitor's sides (over its plastic, never over the glass).
+   * The desk props, where the window leaves room beside the tube (shell.ts propsGeo): the disk file box whose
+   * floppies switch themes, the drive with the disk in use, the key card and the lamp. The card lies flat: its
+   * lines are to be read, and type on a tilted layer goes soft.
    */
   function placeProps(): void {
-    const m = geo.mon;
-    const c = geo.c;
-    const wing = m ? m.x : 0;
-    const show = !!m && wing > c * 5;
-    for (const el of [dbox, drive, card, lamp]) el.style.display = show ? "" : "none";
-    if (!show || !m) return;
-    const H = geo.H;
-    // Tucked in front of the monitor's plastic, short of the well and the glass.
-    const overlap = Math.round(geo.side * 1.15);
-    // Disk file box, left, in three-quarter view.
-    const right = m.x + overlap;
-    const bw = Math.round(Math.min(c * 19, right - c * 0.5));
-    const bh = Math.round(bw * 0.62);
-    const box = { w: bw, h: bh, fw: Math.round(bw * 0.8), dx: Math.round(bw * 0.2), dy: Math.round(bh * 0.22), ft: Math.round(bh * 0.38) };
-    const dw = Math.round(box.fw * 0.84);
-    const others = ctx.themes.filter((t) => t.id !== last?.theme);
-    const n = others.length;
-    const step = Math.round(dw * 0.14);
-    const rise = Math.round(dw * 0.3 + step * (n - 1));
-    const totalH = bh + rise;
-    const bx = right - bw;
-    const by = H + Math.round(c * 1.2) - bh;
-    Object.assign(dbox.style, { left: `${bx}px`, top: `${by - rise}px`, width: `${bw}px`, height: `${totalH}px` });
     // The disk in use is in the drive, not in the box; the rest stand staggered back to front.
-    const disks = others
-      .map((t, i) => {
-        const k = n > 1 ? 1 - i / (n - 1) : 0;
-        const x = Math.round(box.fw * 0.08 + box.dx * k * 0.8);
-        const y = Math.round(rise + box.ft - dw * 0.3 - (n - 1 - i) * step - box.dy * k * 0.15);
-        const idx = ctx.themes.indexOf(t);
-        return `<button class="disk" data-a="disk" data-theme="${t.id}" aria-label="Insert the ${esc(t.label)} disk (theme)" style="left:${x}px;top:${y}px;z-index:${i + 2}">${floppySvg(dw, dw, t.label, idx)}</button>`;
-      })
-      .join("");
-    dbox.innerHTML = `<div style="position:absolute;left:0;top:${rise}px">${diskBoxSvg(box, "back")}</div>${disks}<div class="front" style="position:absolute;left:0;top:${rise}px">${diskBoxSvg(box, "front")}</div>`;
-    // External drive, right, its top receding toward the monitor; the printout propped behind it.
-    const dvx = m.x + m.w - overlap;
-    const dvw = Math.round(Math.min(c * 20, geo.W - dvx - c * 0.5));
-    const dvh = Math.round(dvw * 0.42);
-    const dvy = H + Math.round(c * 0.9) - dvh;
-    Object.assign(drive.style, { left: `${dvx}px`, top: `${dvy}px` });
-    drive.innerHTML = driveSvg(dvw, dvh, ctx.themes.find((t) => t.id === last?.theme)?.label ?? "");
-    const cw = Math.round(dvw * 0.62);
-    const chh = Math.round(cw * 1.02);
-    Object.assign(card.style, { left: `${dvx + Math.round(dvw * 0.22)}px`, top: `${dvy - chh + Math.round(dvh * 0.2)}px`, transform: "perspective(900px) rotateX(16deg) rotateZ(2deg)" });
-    card.innerHTML = refCardSvg(cw, chh, [["1-0", "commands"], ["J", "journal"], ["C", "classes"], ["T", "change disk"], ["/", "write"], ["M", "colour"], ["ARROWS", "walk"], ["ESC", "close"]]);
-    // The lamp stands behind the disk box, leaning in, cropped by the window.
-    const lw = Math.round(Math.min(c * 13, Math.max(c * 7, bx + bw * 0.5)));
-    const lh = Math.round(lw * 1.9);
-    const lx = Math.round(bx - lw * 0.62);
-    lamp.style.display = "";
-    Object.assign(lamp.style, { left: `${lx}px`, top: `${H - lh + Math.round(c * 0.4)}px` });
-    lamp.innerHTML = lampSvg(lw, lh);
-    lampX = lx + lw * 0.35;
+    const others = ctx.themes.filter((t) => t.id !== last?.theme);
+    const p = propsGeo(geo, others.length);
+    const put = (el: HTMLElement, r: Rect | null) => {
+      el.style.display = r ? "" : "none";
+      if (r) Object.assign(el.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+    };
+    put(dbox, p.box);
+    if (p.box) {
+      const b = p.box;
+      const disks = others
+        .map((t, i) => `<button class="disk" data-a="disk" data-theme="${t.id}" aria-label="Insert the ${esc(t.label)} disk (theme)" title="Theme: ${esc(t.label)}" style="left:${b.disks[i]!.x}px;top:${b.disks[i]!.y}px;z-index:${i + 2}">${floppySvg(b.disk, b.disk, t.label, ctx.themes.indexOf(t))}</button>`)
+        .join("");
+      dbox.innerHTML = `<div style="position:absolute;left:0;top:${b.rise}px">${diskBoxSvg(b.geom, "back")}</div>${disks}<div class="front" style="position:absolute;left:0;top:${b.rise}px">${diskBoxSvg(b.geom, "front")}</div>`;
+    }
+    put(drive, p.drive);
+    if (p.drive) drive.innerHTML = driveSvg(p.drive.w, p.drive.h, ctx.themes.find((t) => t.id === last?.theme)?.label ?? "");
+    const lines: [string, string][] = [["1-0", "command"], ["J", "journal"], ...(ctx.classes.available ? [["C", "classes"] as [string, string]] : []), ["T", "disks"], ["/", "write"], ["M", "colour"], ["ARROWS", "walk"], ["ESC", "close"]];
+    const cr = cardRect(p, lines);
+    put(card, cr);
+    if (cr) card.innerHTML = refCardSvg(cr.w, cr.h, lines, cr.font);
+    put(lamp, p.lamp);
+    lampX = 0;
+    if (p.lamp) {
+      lamp.innerHTML = lampSvg(p.lamp.w, p.lamp.h);
+      lampX = p.lamp.x + p.lamp.w * 0.35;
+    }
   }
 
   let roomTimer = 0;
@@ -717,12 +694,8 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const s = ctx.status(v);
     const b = ctx.box(v);
     cmd.classList.toggle("busy", !!b.busy);
+    syncSpinner(!!b.busy);
     const r = windows(v);
-    const lk = JSON.stringify([geo.c, geo.cols, geo.rows, r]);
-    if (lk !== layoutKey) {
-      layoutKey = lk;
-      relayoutOverlaysOnly(r.vp);
-    }
     const d = v.delve;
     const dayLine = d ? `Dir: ${DIRS[d.facing] ?? "North"}` : `Day ${s.day} ${TIME_SHORT[s.time] ?? s.time}`;
     const isNew = b.isNew && !d;
@@ -742,28 +715,47 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     } else
     setWin(vp, r.vp, ctx.journal.open ? "Journal" : title, ctx.journal.open ? "" : dayLine, newHtml);
     renderViewport(v, r.vp);
-    setWin(ros, r.ros, "Here");
+    // The roster's rows are the talk commands: its label says so.
+    setWin(ros, r.ros, people.some((p) => p.talkable) ? "Talk to" : "Here");
+    rostered = new Set();
     if (r.ros) renderRoster(v, r.ros);
     setWin(map, r.map, d ? (geo.phone ? `Map ${(DIRS[d.facing] ?? "North").charAt(0)}` : "Map") : "Overland", d ? `Keys: ${d.keys}` : "");
     if (r.map) renderMap(v, r.map);
     setWin(st, r.st);
     renderStatus(v, r.st);
-    setWin(term, r.term, diskMenu && !geo.phone ? "Disk" : "");
-    renderTerminal(v, r.term);
+    setWin(narr, r.narr);
+    if (r.narr) renderNarration(v);
+    setWin(term, r.term, diskMenu && !geo.phone ? "Disk" : geo.tall ? "" : "Command");
+    renderTerminal(v, !geo.tall);
+    renderHints();
     // Bezel lamps show what is open; the disk box shows what is in the drive.
+    if (geo.mon && keysWithClasses !== ctx.classes.available) buildKeys();
     keys.querySelector('[data-a="jr"]')?.classList.toggle("on", ctx.journal.open);
     keys.querySelector('[data-a="cls"]')?.classList.toggle("on", ctx.classes.open);
     keys.querySelector('[data-a="disks"]')?.classList.toggle("on", diskMenu);
   }
 
-  /** Keep the class panel's box on the viewport window. */
-  function relayoutOverlaysOnly(vpR: Rect): void {
-    if (!gs || geo.tall) return;
+  /**
+   * The key bar on the screen's last row: the bezel's four keys again, in the screen's own type, so they read
+   * at any window size and Tab reaches them. A lit key is the panel that is open.
+   */
+  function renderHints(): void {
+    hints.style.display = geo.tall ? "none" : "";
+    if (geo.tall) return;
     const c = geo.c;
-    gs.style.setProperty("--cmd-vp-l", `${Math.round(geo.glass.x + geo.ox + vpR.x * c)}px`);
-    gs.style.setProperty("--cmd-vp-t", `${Math.round(geo.glass.y + geo.oy + vpR.y * c)}px`);
-    gs.style.setProperty("--cmd-vp-w", `${vpR.w * c}px`);
-    gs.style.setProperty("--cmd-vp-h", `${vpR.h * c}px`);
+    Object.assign(hints.style, { left: "0px", top: `${(geo.rows - 1) * c}px`, width: `${geo.cols * c}px`, height: `${c}px` });
+    const hk = (k: string, word: string, act: string, on: boolean, aria = word): [number, string] => [k.length + 1 + word.length, `<button class="hk${on ? " on" : ""}" data-a="${act}" aria-label="${aria} (${k})" aria-pressed="${on}"><b>${k}</b> ${word}</button>`];
+    // In a delve the arrows walk: that is said here, where the colour key otherwise is (it stays on the bezel and in the disk menu).
+    const parts: [number, string][] = [
+      ...(last?.delve ? [[11, `<span class="hk note"><b>Arrows</b> Walk</span>`] as [number, string]] : []),
+      hk("J", "Journal", "jr", ctx.journal.open),
+      ...(ctx.classes.available ? [hk("C", "Classes", "cls", ctx.classes.open)] : []),
+      hk("T", "Disks", "disks", diskMenu, "Change disk: theme"),
+      ...(last?.delve ? [] : [hk("M", PALETTE_LABEL[pal], "pal", false, "Colour mode")]),
+    ];
+    const used = parts.reduce((n, p) => n + p[0], 0);
+    hints.style.gap = `${Math.max(1, Math.min(2, Math.floor((geo.cols - used) / (parts.length - 1)))) * c}px`;
+    setHtml(hints, parts.map((p) => p[1]).join(""));
   }
 
   /* Viewport: place / corridor, encounter boxes, focus box, journal. */
@@ -805,13 +797,15 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       blit(artCv, url ? placePic(url, W, H) : null, W, H);
     }
     // Who is here: framed encounter boxes docked along the bottom.
-    const shown = people.slice(0, 3);
+    // Under five cells a face is a smudge: on a strip of a picture the roster alone says who is here.
+    const shown = ch >= (geo.phone ? 3 : 7) ? people.slice(0, 3) : [];
     const n = shown.length;
     if (!n) {
       setHtml(enc, "");
     } else {
       // Small picture-in-picture sprite windows docked on the bottom rule, the talk key set into each top rule.
-      const bw = Math.min(n === 1 ? 9 : n === 2 ? 8 : 7, Math.floor((cw - (n - 1)) / n), geo.phone ? ch : 99);
+      // Never the picture's whole height: on a monitor two rows of the place show over them.
+      const bw = Math.min(n === 1 ? 9 : n === 2 ? 8 : 7, Math.floor((cw - (n - 1)) / n), geo.phone ? ch : Math.max(4, ch - 2));
       const bh = bw;
       const gap = 1;
       const x0 = geo.phone ? cw - n * bw - (n - 1) * gap : 1 + Math.floor((cw - n * bw - (n - 1) * gap) / 2);
@@ -823,7 +817,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
           .map((p, i) => {
             const x = x0 + i * (bw + gap);
             const k = keyOf(items.findIndex((m) => m.key === `talk:${p.id}`));
-            return `<button class="eb" data-a="talk" data-id="${esc(p.id)}" data-person="${esc(p.id)}" ${p.talkable ? "" : 'aria-disabled="true"'} aria-label="${p.talkable ? `Talk to ${esc(p.name)}` : esc(p.name)}" title="${esc(p.name)}" style="left:${x * c}px;top:${y0 * c}px;width:${bw * c}px;height:${bh * c}px">
+            return `<button class="eb" ${geo.phone ? "" : 'tabindex="-1" '}data-a="talk" data-id="${esc(p.id)}" data-person="${esc(p.id)}" ${p.talkable ? "" : 'aria-disabled="true"'} aria-label="${p.talkable ? `Talk to ${esc(p.name)}` : esc(p.name)}" title="${esc(p.name)}" style="left:${x * c}px;top:${y0 * c}px;width:${bw * c}px;height:${bh * c}px">
               <div style="position:absolute;left:0;top:0;width:${bw * c}px;height:${bh * c}px">${frameSvg(bw, bh, { mat: BLUE, ...(k ? { top: 1, topX: 2 } : {}) })}</div>
               <canvas width="${(bw - 2) * 8}" height="${(bh - 2) * 8}" style="width:${(bw - 2) * c}px;height:${(bh - 2) * c}px"></canvas>
               <span class="ld">...</span>
@@ -893,7 +887,7 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   function renderJournal(v: SceneView, r: Rect): void {
     const t = v.thread;
     const thread = t
-      ? `<h3>The thread ${t.found.length}/${t.total}</h3><div class="goal">${esc(t.goal)}</div>${t.found.length ? `<ul>${t.found.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : `<div class="muted">Nothing found yet.</div>`}`
+      ? `<h3>The thread ${t.found.length}/${t.total}${t.ended ? `: ${t.ended === "solved" ? "solved" : "out of time"}` : ""}</h3><div class="goal">${esc(t.goal)}</div>${t.found.length ? `<ul>${t.found.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : `<div class="muted">Nothing found yet.</div>`}`
       : "";
     setHtml(jrIn, thread + ctx.journal.html(v));
     const label = geo.phone ? "Close" : "J:Close";
@@ -920,14 +914,19 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       return;
     }
     const known = new Map(v.journal.people.map((p) => [p.id, p.feel]));
-    const rows = people.map((p) => {
+    // On a monitor these rows are the talk commands (the list beside them starts at the next key); whoever does not fit stays a command.
+    const shown = geo.tall ? people : people.slice(0, r.h - 2);
+    if (!geo.tall) rostered = new Set(shown.filter((p) => p.talkable).map((p) => p.id));
+    const rows = shown.map((p) => {
       const i = items.findIndex((m) => m.key === `talk:${p.id}`);
       const k = keyOf(i);
       const feel = known.get(p.id);
-      const tag = `[${fit((feel ?? "new").toUpperCase(), 5).replace(/\.$/, "")}]`;
+      // Someone the thread points at says so in place of how they feel (that stays in the row's tooltip).
+      const isLead = items.some((m) => m.lead && m.key === `ask:${p.id}`);
+      const tag = isLead ? "[LEAD]" : `[${fit((feel ?? "new").toUpperCase(), 5).replace(/\.$/, "")}]`;
       const name = fit(`${k ? `${k} ` : "  "}${p.name}`, w - tag.length - 2);
       const hot = p.id === focusId;
-      return `<button class="row${p.talkable ? "" : " mute"}${hot ? " hot" : ""}" data-a="talk" data-id="${esc(p.id)}" data-person="${esc(p.id)}" title="${esc(p.role)}" aria-label="${p.talkable ? `Talk to ${esc(p.name)}` : esc(p.name)}, ${esc(p.role)}${feel ? `, ${esc(feel)}` : ""}">${lead(name, tag, w)}</button>`;
+      return `<button class="row${p.talkable ? "" : " mute"}${hot ? " hot" : ""}" data-a="talk" data-id="${esc(p.id)}" data-person="${esc(p.id)}" title="${esc(p.role)}" aria-label="${p.talkable ? `Talk to ${esc(p.name)}` : esc(p.name)}, ${esc(p.role)}${feel ? `, ${esc(feel)}` : ""}${isLead ? ", a lead of the thread" : ""}">${lead(name, tag, w)}</button>`;
     });
     setHtml(ros.body, rows.join(""));
   }
@@ -970,25 +969,69 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const w = r.w - 2;
     const vig = Math.round(Math.max(0, Math.min(1, s.vigor)) * 100);
     const pair = (label: string, value: string, cls = "num") => `<span class="dim">${esc(label)}:</span><span class="${cls}">${esc(value)}</span>`;
-    const left1 = `Vig:${vig}%`;
+    const vigWord = w >= 20 ? "Vigor" : "Vig";
+    const left1 = `${vigWord}:${vig}%`;
     let cur = s.currency;
     if (left1.length + 1 + String(s.coin).length + 1 + cur.length > w) cur = cur.slice(0, 2);
-    const row1 = `<span title="Vigor">${pair("Vig", `${vig}%`, vig <= 30 ? "lo" : "num")}</span><span class="sp"></span><span class="num" title="${esc(`${s.coin} ${s.currency}`)}">${esc(`${s.coin} ${cur}`)}</span>`;
-    const left = s.thread ? `<span title="${esc(s.thread.goal)}" aria-label="Thread ${s.thread.found.length} of ${s.thread.total}: ${esc(s.thread.goal)}">${pair("Thread", `${s.thread.found.length}/${s.thread.total}`)}</span>` : `<span>${pair("Day", String(s.day))}</span>`;
-    const right = s.supplies ? `<span title="Supplies">${pair("Food", `${s.supplies.now}/${s.supplies.max}`, s.supplies.now <= 1 ? "lo" : "num")}</span>` : s.thread ? `<span>${pair("Day", String(s.day))}</span>` : "";
+    const row1 = `<span title="Vigor">${pair(vigWord, `${vig}%`, vig <= 30 ? "lo" : "num")}</span><span class="sp"></span><span class="num" title="${esc(`${s.coin} ${s.currency}`)}">${esc(`${s.coin} ${cur}`)}</span>`;
+    // The thread: how far along it is (or, plainly, that it is over), and under it where its next piece is.
+    const th = s.thread;
+    const over = th?.ended ? (th.ended === "solved" ? "Solved" : "Out of time") : "";
+    const count = th ? over || `${th.found.length}/${th.total}` : "";
+    const where = th && th.leads.length ? ` Where to look next: ${th.leads.join("; ")}. ${th.how}` : "";
+    const left = th ? `<span title="${esc(`${th.goal}.${where}`)}" aria-label="Thread ${esc(over || `${th.found.length} of ${th.total}`)}: ${esc(th.goal)}">${pair("Thread", count)}</span>` : `<span>${pair("Day", String(s.day))}</span>`;
+    const day = `Day:${s.day}`;
+    const food = s.supplies ? `Food:${s.supplies.now}/${s.supplies.max}` : "";
+    const used = `Thread:${count}`.length + 1;
+    const right = s.supplies && used + food.length <= w ? `<span title="Supplies">${pair("Food", `${s.supplies.now}/${s.supplies.max}`, s.supplies.now <= 1 ? "lo" : "num")}</span>` : th && used + day.length <= w ? `<span>${pair("Day", String(s.day))}</span>` : "";
     const rows = [`<div class="r">${row1}</div>`, `<div class="r">${left}<span class="sp"></span>${right}</div>`];
+    const next = nextLead(v);
+    if (next && th) {
+      // The line opens the journal, whose first section lists every lead and how a piece is found.
+      const more = th.leads.length > 1 ? `, and ${th.leads.length - 1} more` : "";
+      rows.push(`<button class="next" data-a="jr" title="${esc(`Where to look next: ${th.leads.join("; ")}. ${th.how}`)}" aria-label="${esc(`${next}${more}. ${th.how} Opens the journal.`)}" style="max-height:calc(var(--c) * 2)"><span class="dim">Next:</span> ${esc(next.slice(6))}</button>`);
+    }
     // A phone has no bezel: its keys live on a third row.
     if (geo.phone) {
       const hk = (k: string, word: string, act: string, on: boolean) => `<button class="hk${on ? " on" : ""}" data-a="${act}" aria-label="${word} (${k})">${word}</button>`;
-      rows.push(`<div class="r keysrow">${hk("J", "Journal", "jr", ctx.journal.open)}${hk("C", "Class", "cls", ctx.classes.open)}${hk("T", "Disk", "disks", diskMenu)}</div>`);
+      rows.push(`<div class="r keysrow">${hk("J", "Journal", "jr", ctx.journal.open)}${ctx.classes.available ? hk("C", "Class", "cls", ctx.classes.open) : ""}${hk("T", "Disk", "disks", diskMenu)}</div>`);
     } else if (geo.tall) {
       const hk = (k: string, word: string, act: string, on: boolean) => `<button class="hk${on ? " on" : ""}" data-a="${act}" aria-label="${word} (${k})">${k} ${word}</button>`;
-      rows.push(`<div class="r keysrow">${hk("J", "Jrnl", "jr", ctx.journal.open)}<span class="sp"></span>${hk("C", "Class", "cls", ctx.classes.open)}<span class="sp"></span>${hk("T", "Disk", "disks", diskMenu)}</div>`);
+      rows.push(`<div class="r keysrow">${hk("J", "Jrnl", "jr", ctx.journal.open)}<span class="sp"></span>${ctx.classes.available ? `${hk("C", "Class", "cls", ctx.classes.open)}<span class="sp"></span>` : ""}${hk("T", "Disk", "disks", diskMenu)}</div>`);
     }
     setHtml(st.body, rows.join(""));
   }
 
-  function renderTerminal(v: SceneView, r: Rect): void {
+  /** The log and the place (and the story being written): the newest thing that happened and where you are, whole. */
+  function renderNarration(v: SceneView): void {
+    const b = ctx.box(v);
+    const lines: string[] = [];
+    const tail = tailOf(v, b.log);
+    logLines(b.log, tail, lines);
+    if (b.desc) lines.push(`<div class="l desc">${b.isNew ? `<span class="new">NEW</span> ` : ""}${esc(b.desc)}</div>`);
+    if (isWriting(v)) lines.push(beatsHtml(v.story, v.voices, false));
+    if (tail) lines.push(`<div class="l log ch last">${esc(tail)}</div>`);
+    const changed = setHtml(nxIn, lines.join(""));
+    const newTail = !!tail && tail !== narrTail;
+    narrTail = tail;
+    // A beat is followed (from its first line, or word by word while it streams in); otherwise the window rests on
+    // its last lines (the newest log line and the place) until the wheel moves it, through late fonts and resizes too.
+    if (followBeat(nx, nxIn, v, changed, geo.c)) followNarr = false;
+    // What happened after the story's last beat is under it: the window goes down to it.
+    else if (newTail) nx.scrollTop = nx.scrollHeight;
+    else if (!isWriting(v)) {
+      if (changed) followNarr = true;
+      if (followNarr) nx.scrollTop = nx.scrollHeight;
+    }
+    syncMarks();
+  }
+
+  /**
+   * The commands and the prompt. With the narration in its own window (`split`), this is the list alone: the
+   * talk commands are the roster's rows, the exits come under a "Go to" heading as bare place names, so a label
+   * fits its row. Otherwise (a tall window, a phone) it is the one stream it was: log, place, commands.
+   */
+  function renderTerminal(v: SceneView, split: boolean): void {
     const b = ctx.box(v);
     const lines: string[] = [];
     if (diskMenu) {
@@ -1000,14 +1043,25 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       lines.push(`<button class="l ch cmdi g-go" data-a="pal" aria-label="Colour mode"><span class="n">M</span>Colour: ${PALETTE_LABEL[pal]}</button>`);
       lines.push(`<button class="l ch cmdi g-go" data-a="disks" aria-label="Back"><span class="n">0</span>Back</button>`);
     } else {
-      b.log.forEach((l, i) => lines.push(`<div class="l log ch${i === b.log.length - 1 ? " last" : ""}">${esc(l)}</div>`));
-      if (b.desc) lines.push(`<div class="l desc">${b.isNew ? `<span class="new">NEW</span> ` : ""}${esc(b.desc)}</div>`);
-      if (isWriting(v)) lines.push(beatsHtml(v.story, v.voices, false));
-      lines.push(`<div class="l hd"></div>`);
+      if (!split) {
+        const tail = tailOf(v, b.log);
+        logLines(b.log, tail, lines);
+        if (b.desc) lines.push(`<div class="l desc">${b.isNew ? `<span class="new">NEW</span> ` : ""}${esc(b.desc)}</div>`);
+        if (isWriting(v)) lines.push(beatsHtml(v.story, v.voices, false));
+        if (tail) lines.push(`<div class="l log ch last">${esc(tail)}</div>`);
+        lines.push(`<div class="l hd"></div>`);
+      }
+      let going = false;
       items.forEach((m, i) => {
+        if (split && m.group === "talk" && m.target && rostered.has(m.target)) return;
         const k = keyOf(i);
         const person = m.group === "talk" && m.target ? ` data-person="${esc(m.target)}"` : "";
-        lines.push(`<button class="l ch cmdi g-${m.group}" data-a="cmd" data-i="${i}"${person} aria-label="${esc(m.label)}${k ? ` (${k})` : ""}"><span class="n">${k}</span>${esc(m.label)}</button>`);
+        // An exit is "Go to <place>": under the heading it is the place alone.
+        const exit = split && m.kind === "exit" && m.label.startsWith("Go to ");
+        if (exit && !going) lines.push(`<div class="l gh">Go to</div>`);
+        going = going || exit;
+        // What follows a lead of the thread is set in the key colour, and says so to a pointer or a screen reader.
+        lines.push(`<button class="l ch cmdi g-${m.group}${m.lead ? " lead" : ""}" data-a="cmd" data-i="${i}"${person}${m.lead ? ' title="A lead: this follows the thread"' : ""} aria-label="${esc(m.label)}${m.lead ? ", a lead of the thread" : ""}${k ? ` (${k})` : ""}"><span class="n">${k}</span>${esc(exit ? m.label.slice(6) : m.label)}</button>`);
       });
     }
     // With the box up, the prompt is the box.
@@ -1015,13 +1069,23 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     else if (diskMenu || !canWrite(v)) lines.push(`<div class="l pr ch"><span class="echo"></span><span class="cu"></span></div>`);
     write.sync(v, diskMenu);
     const changed = setHtml(txIn, lines.join(""));
-    const story = isWriting(v) && !diskMenu ? JSON.stringify(v.story) : "";
-    const newBeat = changed && story && story !== seenStory ? [...txIn.querySelectorAll<HTMLElement>(".beat")].at(-1) : null;
-    seenStory = story;
-    if (newBeat) {
-      // The newest beat is what they came for, from its first line: there may be more of it than the window shows.
-      tx.scrollTop = geo.phone ? Math.max(0, newBeat.offsetTop - txIn.offsetTop - 4) : Math.round((newBeat.offsetTop - txIn.offsetTop) / geo.c) * geo.c;
+    if (split) {
+      // The list starts at its top: its first commands are the ones most used.
+      if (changed) tx.scrollTop = b.busy ? tx.scrollHeight : 0;
+      syncMarks();
+      return;
+    }
+    const tail = diskMenu ? "" : tailOf(v, b.log);
+    const newTail = !!tail && tail !== termTail;
+    termTail = tail;
+    if (!diskMenu && followBeat(tx, txIn, v, changed, geo.phone ? 0 : geo.c, geo.phone ? geo.c + 8 : 0)) {
+      // The newest beat is what they came for: there may be more of it than the window shows.
       followTerm = false;
+    } else if (isWriting(v) && !diskMenu) {
+      // A story on screen and nothing new in it: the reader's place is left alone, unless something has happened
+      // since its last beat. That line is under the story, and the window opens on it.
+      const at = newTail ? txIn.querySelector<HTMLElement>(".log.last") : null;
+      if (at) tx.scrollTop = Math.max(0, at.offsetTop - txIn.offsetTop - 4);
     } else if (geo.phone) {
       // Open at what just happened, to be read down from; a render with nothing new leaves the finger's place alone.
       if (changed) {
@@ -1033,12 +1097,13 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       if (followTerm) tx.scrollTop = tx.scrollHeight;
     }
     syncMarks();
-    void r;
   }
 
   function syncMarks(): void {
     upMark.style.display = tx.scrollTop > 0 ? "" : "none";
     dnMark.style.display = tx.scrollTop + tx.clientHeight < tx.scrollHeight - 2 ? "" : "none";
+    nUp.style.display = nx.scrollTop > 0 ? "" : "none";
+    nDn.style.display = nx.scrollTop + nx.clientHeight < nx.scrollHeight - 2 ? "" : "none";
     // A phone's More band sits over the last row: at the end of the list it has gone, so nothing stays under it.
   }
 
@@ -1107,11 +1172,24 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     }
   }
   const onTxWheel = (e: WheelEvent) => wheel(tx, e);
+  const onNxWheel = (e: WheelEvent) => {
+    wheel(nx, e);
+    followNarr = nx.scrollTop + nx.clientHeight >= nx.scrollHeight - 2;
+    heldStory = true;
+    syncMarks();
+  };
+  const holdStory = () => {
+    heldStory = true;
+  };
+  tx.addEventListener("wheel", holdStory, { passive: true });
+  tx.addEventListener("touchmove", holdStory, { passive: true });
   const onJrWheel = (e: WheelEvent) => wheel(jr, e);
   // Touch scrolling still works natively on a phone.
   tx.style.overflowY = geo.tall ? "auto" : "hidden";
   jr.style.overflowY = geo.tall ? "auto" : "hidden";
   tx.addEventListener("scroll", syncMarks);
+  nx.addEventListener("scroll", syncMarks);
+  nx.addEventListener("wheel", onNxWheel, { passive: false });
 
   root.addEventListener("click", onClick);
   root.addEventListener("pointerover", overPerson);
@@ -1123,35 +1201,56 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   /* ------------------------------ Motion -------------------------------- */
 
-  let px = NaN, py = NaN;
-  let spinT = 0;
+  /**
+   * The busy spinner on the prompt line. The frame loop is asked for only while something is being prepared: at
+   * rest the theme runs nothing per frame.
+   */
   const SPIN = ["|", "/", "-", "\\"];
-  const stopFrame = ctx.onFrame((t) => {
-    // The busy spinner on the prompt line.
-    if (last?.busy && !ctx.reducedMotion && t - spinT > 110) {
-      spinT = t;
-      const sp = txIn.querySelector(".spin");
-      if (sp) sp.textContent = SPIN[Math.floor(t / 110) % 4]!;
+  let spinT = 0;
+  let stopFrame: (() => void) | null = null;
+  function syncSpinner(busy: boolean): void {
+    if (busy && !stopFrame && !ctx.reducedMotion) {
+      stopFrame = ctx.onFrame((t) => {
+        if (t - spinT < 110) return;
+        spinT = t;
+        const sp = txIn.querySelector(".spin");
+        if (sp) sp.textContent = SPIN[Math.floor(t / 110) % 4]!;
+      });
+    } else if (!busy && stopFrame) {
+      stopFrame();
+      stopFrame = null;
     }
-    if (ctx.reducedMotion || geo.phone) return;
-    const p = ctx.pointer();
-    const qx = Math.round(p.x * 100) / 100;
-    const qy = Math.round(p.y * 100) / 100;
+  }
+
+  /**
+   * Parallax, straight from the pointer's own events: no easing to wait out, whole pixels, and nothing at all while
+   * the pointer rests. The monitor is the still plane, and so is everything with words on it (the screen, the keys,
+   * the disks' labels, the card). Behind it the wall and the lamp drift; inside the viewport the picture shifts
+   * under its frame; the glass's reflection slides.
+   */
+  let px = NaN, py = NaN;
+  let rootBox: DOMRect | null = null;
+  const forgetBox = () => {
+    rootBox = null;
+  };
+  const onParallax = (e: PointerEvent) => {
+    if (ctx.reducedMotion || geo.phone || e.pointerType === "touch") return;
+    rootBox ??= root.getBoundingClientRect();
+    if (!rootBox.width || !rootBox.height) return;
+    const qx = Math.round(Math.max(-1, Math.min(1, ((e.clientX - rootBox.left) / rootBox.width) * 2 - 1)) * 50) / 50;
+    const qy = Math.round(Math.max(-1, Math.min(1, ((e.clientY - rootBox.top) / rootBox.height) * 2 - 1)) * 50) / 50;
     if (qx === px && qy === py) return;
     px = qx;
     py = qy;
     const v8 = geo.c / 8;
     const m = (k: number) => `translate3d(${Math.round(-qx * k)}px, ${Math.round(-qy * k * 0.6)}px, 0)`;
-    // The monitor is the still plane. Behind it the wall drifts with the pointer;
-    // in front of it the desk props swing the other way, twice as far.
     roomCv.style.transform = m(-8);
     lamp.style.transform = m(-4);
     artCv.style.transform = `translate3d(${Math.round(-qx * ARTM * v8 * 0.8)}px, ${Math.round(-qy * ARTM * v8 * 0.6)}px, 0)`;
     refl.style.transform = `translate3d(${Math.round(qx * 14)}px, ${Math.round(qy * 8)}px, 0)`;
-    dbox.style.transform = m(18);
-    drive.style.transform = m(18);
-    card.style.translate = `${Math.round(-qx * 16)}px ${Math.round(-qy * 9)}px`;
-  });
+  };
+  root.addEventListener("pointermove", onParallax);
+  root.addEventListener("pointerenter", forgetBox);
 
   /* --------------------------- "Meanwhile…" ----------------------------- */
 
@@ -1196,6 +1295,10 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   });
   ro.observe(root);
   relayout();
+  // The face lands after the first layout on a cold page: lines wrap again, so what follows the text is placed again.
+  void document.fonts?.ready.then(() => {
+    if (!destroyed && last) render(last);
+  });
 
   return {
     boardSkin: BOARD_SKINS.command,
@@ -1219,9 +1322,11 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       }
       if (k === "m") return cyclePalette(), true;
       if (k === "pageup" || k === "pagedown") {
-        const el = ctx.journal.open ? jr : tx;
+        const el = ctx.journal.open ? jr : narr.rect ? nx : tx;
         el.scrollTop += (k === "pageup" ? -1 : 1) * Math.max(geo.c, el.clientHeight - geo.c);
         if (el === tx) followTerm = false;
+        if (el === nx) followNarr = nx.scrollTop + nx.clientHeight >= nx.scrollHeight - 2;
+        heldStory = true;
         syncMarks();
         return true;
       }
@@ -1246,7 +1351,9 @@ export const command: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     },
     destroy() {
       destroyed = true;
-      stopFrame();
+      stopFrame?.();
+      root.removeEventListener("pointermove", onParallax);
+      root.removeEventListener("pointerenter", forgetBox);
       ro.disconnect();
       mo.disconnect();
       gs?.removeEventListener("click", syncClassKey);

@@ -265,7 +265,8 @@ export function createForge(d: ForgeDeps) {
   }
 
   /** After a card battle: ranks, catalysts, and skills ready to awaken. Lines for the chat. */
-  function afterBattle(r: PlayRecord, state: BattleState, boss: boolean): string[] {
+  /** `quiet`: the class panel is switched off, so only the kit's rank is told: nothing of fusing, catalysts or awakening (they are still counted). */
+  function afterBattle(r: PlayRecord, state: BattleState, boss: boolean, quiet = false): string[] {
     const book = bookOf(r);
     const lines: string[] = [];
     const ready = countUses(book, state.meta?.tally?.uses ?? {});
@@ -275,15 +276,15 @@ export function createForge(d: ForgeDeps) {
         const before = rankOf(o.wins);
         o.wins++;
         const after = rankOf(o.wins);
-        if (after > before) lines.push(`${o.origin === "card" ? "Your card kit" : defOf(o).name} reaches rank ${after}${after >= FUSE_RANK ? " and can be fused" : ""}.`);
+        if (after > before) lines.push(`${o.origin === "card" ? "Your card kit" : defOf(o).name} reaches rank ${after}${after >= FUSE_RANK && !quiet ? " and can be fused" : ""}.`);
       }
       if (boss) {
         book.catalysts++;
-        lines.push("Something glints where the fight ended: a catalyst.");
+        if (!quiet) lines.push("Something glints where the fight ended: a catalyst.");
       }
     }
     const names = new Map((book.classes[book.active] ? defOf(book.classes[book.active]!).skills : []).map((s) => [s.id, s.name]));
-    for (const id of ready) lines.push(`${names.get(id) ?? "A skill"} has been used ${AWAKEN_AT} times and can awaken.`);
+    if (!quiet) for (const id of ready) lines.push(`${names.get(id) ?? "A skill"} has been used ${AWAKEN_AT} times and can awaken.`);
     return lines;
   }
 

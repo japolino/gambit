@@ -84,6 +84,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       <header class="sb-head"></header>
       <div class="sb-marks"></div>
       <nav class="sb-choices" aria-label="What will you do?"></nav>
+      <button class="sb-more" tabindex="-1" aria-hidden="true">More<svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1,1 L6,7 L11,1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <div class="sb-skirt"></div>
       <div class="sb-tags"></div>
       <section class="sb-dlg" aria-label="The story">
@@ -94,8 +95,11 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         </div>
         <div class="frame back"></div><div class="vellum"></div><div class="frame front"></div>
         <div class="plate"><span class="cap">${plateCap(false)}</span><span class="band">${PLATE_BAND}<span class="nm"></span></span><span class="cap">${plateCap(true)}</span><span class="seal" hidden></span></div>
-        <div class="page" aria-live="polite"><div class="sb-goal" hidden></div><div class="txt"></div></div>
-        ${writeFormHtml("sb-say")}
+        <div class="body">
+          <div class="sb-goal" hidden></div>
+          <div class="page" aria-live="polite"><div class="txt"></div></div>
+          ${writeFormHtml("sb-say")}
+        </div>
         <div class="nib">${NIB}</div>
       </section>
     </div>
@@ -124,7 +128,8 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   const pageEl = $<HTMLDivElement>(".sb-dlg .page");
   const txt = $<HTMLDivElement>(".sb-dlg .txt");
   const fol = $<HTMLDivElement>(".sb-folio");
-  const write = wireWrite(ctx, $<HTMLFormElement>(".sb-say"), { maxRows: 4 });
+  // A taller writing box takes its lines from the page: the page is measured again so the narration keeps its room.
+  const write = wireWrite(ctx, $<HTMLFormElement>(".sb-say"), { maxRows: 4, onGrow: () => fitPage() });
   const skirtEl = $<HTMLDivElement>(".sb-skirt");
   const tags = $<HTMLDivElement>(".sb-tags");
   const apFrame = $<HTMLDivElement>(".sb-ap .fr");
@@ -137,7 +142,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
   let people: PersonView[] = [];
   let slip: HTMLDivElement | null = null;
   let jr: HTMLDivElement | null = null;
-  const seen = { head: "", marks: "", plate: "", txt: "", choices: "", cast: "", folio: "", jr: "" };
+  const seen = { head: "", marks: "", goal: "", plate: "", txt: "", choices: "", cast: "", folio: "", jr: "" };
   let lastLog: string[] = [];
 
   /* --------------------------- Events (delegated) --------------------------- */
@@ -145,6 +150,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const t = e.target as Element;
     // On a phone a tap beside the open slip only closes it (it covers the page: the tap can't have been meant for what's under it).
     if (slip && plainPage() && !t.closest(".sb-slip, [data-sys=theme]")) return closeSlip();
+    if (t.closest(".sb-more")) return choices.scrollBy({ top: choices.clientHeight * 0.7, behavior: ctx.reducedMotion ? "auto" : "smooth" });
     const act = t.closest<HTMLElement>("[data-act]");
     if (act) return void menu.find((m) => m.key === act.dataset.act)?.run();
     const talk = t.closest<HTMLElement>("[data-talk]");
@@ -206,6 +212,51 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     tabT.setAttribute("aria-expanded", "false");
   }
 
+  /* --------------------------- What scrolls says so -------------------------- */
+  /** Mark a scroller with where there is more of it (.up, .down): the stylesheet fades that edge and shows a cue. */
+  function cue(el: HTMLElement): () => void {
+    const upd = () => {
+      el.classList.toggle("up", el.scrollTop > 2);
+      el.classList.toggle("down", el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+    };
+    el.addEventListener("scroll", upd, { passive: true });
+    return upd;
+  }
+  const cuePage = cue(pageEl);
+  const cueChoices = cue(choices);
+  let cueLog = () => {};
+  /**
+   * The narration and the newest happening are never clipped: on the framed page, when they need more lines than
+   * the page has, the page grows by that much (--grow; the stylesheet caps it). Once a story is being written the
+   * page is already tall and follows its newest beat instead. The margin's height (--ph) is the page's.
+   */
+  function fitPage(): void {
+    const main = txt.querySelector<HTMLElement>(".main");
+    // A phone held upright grows its page the same way (a small one would show the narration and nothing of what
+    // just happened); a short window (the keyboard is up, or landscape) has no height to give.
+    const framed = !plainPage();
+    if (!main || !(framed || ui.clientHeight > 480)) sb.style.removeProperty("--grow");
+    else {
+      sb.style.setProperty("--grow", "0px");
+      const short = view && isWriting(view) ? 0 : Math.ceil(main.offsetHeight + (framed ? 6 : 14) - pageEl.clientHeight);
+      sb.style.setProperty("--grow", `${Math.max(0, short)}px`);
+    }
+    txt.style.setProperty("--ph", `${pageEl.clientHeight}px`);
+    cuePage();
+    cueLog();
+    cueChoices();
+  }
+  // Whatever resizes a scroller (the writing box, the window, a ribbon more), its cues follow.
+  const cueRo = new ResizeObserver(() => {
+    txt.style.setProperty("--ph", `${pageEl.clientHeight}px`);
+    cuePage();
+    cueLog();
+    cueChoices();
+  });
+  cueRo.observe(pageEl);
+  cueRo.observe(txt);
+  cueRo.observe(choices);
+
   /* --------------------------- Dialogue frame size -------------------------- */
   let fw = 0, fh = 0;
   /** Phone or short window: the stylesheet drops the page's frame and the skirt, so don't draw them. */
@@ -227,6 +278,9 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     }
     vellum.style.clipPath = `path("${fr.page}")`;
     sizeArt();
+    txt.style.setProperty("--ph", `${pageEl.clientHeight}px`);
+    cuePage();
+    cueLog();
   });
   ro.observe(dlg);
   let skirtKey = "", apKey = "";
@@ -254,6 +308,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     sizeMotes();
     if (ctx.reducedMotion) drawMotes(0, 0);
     if (view) render(view);
+    fitPage();
   });
   stageRo.observe(ui);
 
@@ -313,7 +368,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       bg.style.transform = `translate3d(${(-p.x * 12).toFixed(2)}px, ${(-p.y * 7).toFixed(2)}px, 0)`;
       castBack.style.transform = `translate3d(${(-p.x * 16).toFixed(2)}px, ${(-p.y * 9).toFixed(2)}px, 0)`;
       castFront.style.transform = `translate3d(${(-p.x * 26).toFixed(2)}px, ${(-p.y * 14).toFixed(2)}px, 0)`;
-      ui.style.transform = `translate3d(${(p.x * 6).toFixed(2)}px, ${(p.y * 4).toFixed(2)}px, 0)`;
+      // The words stay still: a layer of text moved by part of a pixel is drawn soft until the pointer rests.
       corners.style.transform = `translate3d(${(p.x * 9).toFixed(2)}px, ${(p.y * 6).toFixed(2)}px, 0)`;
     }
     rays.style.transform = `translate3d(${(-p.x * 20).toFixed(2)}px, ${(-p.y * 8).toFixed(2)}px, 0)`;
@@ -328,20 +383,40 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const key = `${s.card}|${s.day}|${s.time}`;
     if (key === seen.head) return;
     seen.head = key;
+    seen.goal = "";
     head.innerHTML = `<div class="astro" title="${esc(`Day ${s.day}, ${s.time}`)}">${astrolabe(s.time)}</div>
       <div class="scroll">${SCROLL_BAND.replace("<svg ", '<svg class="band" ')}${SCROLL_END.replace("<svg ", '<svg class="end" ')}
         <div class="kick">Chapter ${roman(s.day)}<i>❦</i>${esc(s.time)}</div>
         <div class="ttl">${esc(s.card)}</div>
-      </div>`;
+      </div>
+      <button class="sb-aim" data-sys="journal" hidden></button>`;
   }
 
-  /** What you're after and how long you have: always in view, because that's what makes a line matter. */
+  /**
+   * What you're after and how long you have: always in view, because that's what makes a line matter. On the
+   * framed stage it is a plaque beside the chapter scroll, with the rest of the status and clear of the page's
+   * words; on a phone it is the page's own first row (above the scrolling text, never over it).
+   */
   function renderGoal(v: SceneView): void {
     const th = ctx.status(v).thread;
-    goalEl.hidden = !th || !!v.delve || !!v.board;
+    const show = !!th && !v.delve && !v.board;
+    const left = !th ? "" : th.ended === "solved" ? "Solved" : th.ended === "lost" ? "Out of time" : th.daysLeft === undefined ? "" : th.daysLeft === 1 ? "Last day" : `${th.daysLeft} days left`;
+    // Where the next piece is: what to do about the goal, said on the plaque itself.
+    const lead = th ? (th.leads[0] ?? "") : "";
+    const key = JSON.stringify([show, th?.goal, left, th?.found.length, th?.total, lead]);
+    if (key === seen.goal) return;
+    seen.goal = key;
+    const aim = head.querySelector<HTMLButtonElement>(".sb-aim");
+    goalEl.hidden = !show;
+    if (aim) aim.hidden = !show;
     if (!th) return;
-    const left = th.ended === "solved" ? "Solved" : th.ended === "lost" ? "Out of time" : th.daysLeft === undefined ? "" : th.daysLeft === 1 ? "Last day" : `${th.daysLeft} days left`;
-    goalEl.innerHTML = `<span class="g">${esc(th.goal)}</span><span class="c">${left ? `<b>${left}</b> · ` : ""}${th.found.length}/${th.total}</span>`;
+    const next = lead ? `<span class="n">Next: ${esc(lead)}</span>` : "";
+    goalEl.innerHTML = `<span class="g">${esc(th.goal)}</span><span class="c">${left ? `<b>${left}</b> · ` : ""}${th.found.length}/${th.total}</span>${next}`;
+    if (!aim) return;
+    const tip = `The thread: ${th.goal} (${th.found.length} of ${th.total} found).${th.leads.length ? ` Where to look: ${th.leads.join("; ")}.` : ""} ${th.ended ? "" : th.how} Open the journal.`.replace(/\s+/g, " ");
+    aim.title = tip;
+    aim.setAttribute("aria-label", tip);
+    aim.innerHTML = `<span class="g">${esc(th.goal)}</span>${left ? `<b>${left}</b>` : ""}<span class="c">${th.found.length} of ${th.total} found</span>${next}`;
   }
 
   function renderMarks(v: SceneView): void {
@@ -361,6 +436,8 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     if (s.supplies) out.push(`<div class="bm" role="img" aria-label="Supplies ${s.supplies.now} of ${s.supplies.max}" title="Supplies ${s.supplies.now} of ${s.supplies.max}">${bookmark("sb-pat-moss", 112, SATCHEL, `${s.supplies.now}/${s.supplies.max}`, "supplies")}</div>`);
     if (v.delve) out.push(`<div class="bm" role="img" aria-label="${v.delve.keys} keys" title="${v.delve.keys} keys">${bookmark("sb-pat-iron", 106, IRONKEY, String(v.delve.keys), "keys")}</div>`);
     marks.innerHTML = out.join("");
+    // How many bookmarks hang: the chapter header stops short of them.
+    sb.style.setProperty("--mk", String(out.length));
   }
 
   function renderPlate(v: SceneView): void {
@@ -376,7 +453,8 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   function renderText(v: SceneView): void {
     const b = ctx.box(v);
-    const key = JSON.stringify([b.desc, b.log, b.busy, v.story]);
+    const phone = plainPage();
+    const key = JSON.stringify([b.desc, b.log, b.busy, v.story, phone]);
     write.sync(v);
     sb.classList.toggle("writing", isWriting(v));
     if (key === seen.txt) return;
@@ -387,24 +465,30 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const descHtml = m
       ? `<p class="desc${m[3] ? "" : " lone"}">${esc(m[1]!)}${dropCap(esc(m[2]!.toUpperCase()))}<span class="fw"><span class="vh">${esc(m[2]!)}</span>${esc(m[3]!)}</span>${esc(desc.slice(m[0].length))}</p>`
       : `<p class="desc">${esc(desc)}</p>`;
-    // The newest happening is set big under the narration; the earlier ones
-    // run down the page's margin, oldest first. Lines new since last time ink in.
+    // The newest happening is set big under the narration, or under the story when it came after the story's last
+    // beat: the page rests on its foot then, and a line over a long reply would not be seen. The earlier ones are quieter: down the page's margin,
+    // the latest first (the margin scrolls for the rest); on a phone above the narration, oldest first, a scroll
+    // up away. Lines new since last time ink in.
     const firstNew = b.log.length - countNew(lastLog, b.log);
     lastLog = b.log.slice();
     const last = b.log.length - 1;
     const now = last >= 0 ? `<p class="now${last >= firstNew ? " fresh" : ""}">${esc(b.log[last]!)}</p>` : "";
-    const earlier = b.log.slice(0, Math.max(0, last)).map((l, i) => `<li class="${i >= firstNew ? "fresh" : ""}">${esc(l)}</li>`).join("");
+    const older = b.log.slice(0, Math.max(0, last)).map((l, i) => `<li class="${i >= firstNew ? "fresh" : ""}">${esc(l)}</li>`);
+    const earlier = (phone ? older : older.reverse()).join("");
     const busy = b.busy ? `<div class="busy" role="status">${QUILL}<span>${esc(b.busy)}</span><span class="dots"><i></i><i></i><i></i></span></div>` : "";
     const beats = beatsHtml(v.story, v.voices);
     txt.classList.toggle("two", !!earlier);
-    txt.innerHTML = `<div class="main">${descHtml}${now}${beats}${busy}</div>${earlier ? `<aside class="margin" aria-label="Earlier">${DIVIDER}${DIVIDER_KNOT}<div class="mh">Earlier</div><ol class="log">${earlier}</ol></aside>` : ""}`;
+    txt.innerHTML = `<div class="main">${descHtml}${v.logAfter && beats ? `${beats}${now}` : `${now}${beats}`}${busy}</div>${earlier ? `<aside class="margin" aria-label="Earlier">${DIVIDER}${DIVIDER_KNOT}<div class="mh">Earlier</div><ol class="log">${earlier}</ol></aside>` : ""}`;
+    const logEl = txt.querySelector<HTMLElement>(".log");
+    cueLog = logEl ? cue(logEl) : () => {};
+    fitPage();
     requestAnimationFrame(() => {
-      pageEl.scrollTop = pageEl.scrollHeight;
-      // On a phone the page opens on the narration's first line, however long it is; what came before is above it.
-      // Once the player is writing, the newest beat is what they came for.
-      if (plainPage() && !v.story.length) pageEl.scrollTop = Math.max(0, (txt.querySelector<HTMLElement>(".main")?.offsetTop ?? 0) - 4);
-      const mg = txt.querySelector(".margin");
-      if (mg) mg.scrollTop = mg.scrollHeight;
+      // Once the player is writing, the newest beat is what they came for. Before that the page opens on the
+      // narration's first line, however long it is (on a phone what came before is above it).
+      if (v.story.length) pageEl.scrollTop = pageEl.scrollHeight;
+      else pageEl.scrollTop = plainPage() ? Math.max(0, (txt.querySelector<HTMLElement>(".main")?.offsetTop ?? 0) - 4) : 0;
+      cuePage();
+      cueLog();
     });
   }
   /** How many lines at the end of `next` were not in `prev` (lines are appended, the oldest dropped). */
@@ -428,7 +512,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
 
   function renderChoices(v: SceneView, onStage: Set<string>): void {
     const items = menu.filter((m) => !(m.group === "talk" && m.target && onStage.has(m.target)));
-    const key = JSON.stringify([!!v.delve, items.map((m) => [m.key, m.label, m.art])]);
+    const key = JSON.stringify([!!v.delve, items.map((m) => [m.key, m.label, m.art, !!m.lead])]);
     if (key === seen.choices) return;
     const active = (root.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
     const focusKey = active && choices.contains(active) ? active.dataset.act : undefined;
@@ -448,11 +532,19 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     const list = v.delve ? items.filter((m) => m.group !== "move") : items;
     const keep = new Map<string, HTMLElement>();
     list.forEach((m, i) => {
-      const id = `${m.key}|${m.label}|${m.art ?? ""}|${i}`;
+      // A ribbon is kept by what it is, not where it hangs: one more above it (someone's art landing) does not unfurl the rest again.
+      const id = `${m.key}|${m.label}|${m.art ?? ""}|${m.lead ? "lead" : ""}`;
       let b = ribCache.get(id);
       if (b) b.classList.remove("enter");
       else
-        b = el(`<button class="rib enter k-${m.group}" data-act="${esc(m.key)}" style="--i:${i}" title="${esc(m.label)}">${ribbon(PATTERN[m.group])}<span class="sheen"></span>${POINTER}${medallion(iconFor(m), m.art ?? null, `r${seedOf(id)}`)}<span class="lb">${esc(m.label)}</span>${i < 9 ? `<span class="n" aria-hidden="true">${roman(i + 1)}</span>` : ""}</button>`);
+        // A ribbon that follows a lead of the thread says so: of nine choices, these are the ones the goal is behind.
+        b = el(`<button class="rib enter k-${m.group}${m.lead ? " lead" : ""}" data-act="${esc(m.key)}" style="--i:${i}" title="${esc(m.label)}${m.lead ? ". A lead: this follows the thread." : ""}"${m.lead ? ` aria-label="${esc(m.label)} (a lead)"` : ""}>${ribbon(PATTERN[m.group])}<span class="sheen"></span>${POINTER}${medallion(iconFor(m), m.art ?? null, `r${seedOf(id)}`)}<span class="lb">${esc(m.label)}</span>${m.lead ? `<span class="ld" aria-hidden="true">lead</span>` : ""}<span class="n" aria-hidden="true"></span></button>`);
+      // Its number is the key that takes it (1 to 9).
+      const num = b.querySelector<HTMLElement>(".n");
+      if (num) {
+        num.textContent = i < 9 ? roman(i + 1) : "";
+        num.hidden = i >= 9;
+      }
       // Hand-placed bookmarks: each row sits a little off the straight, along an arc.
       b.style.setProperty("--dx", `${-Math.round(14 * Math.sin((Math.PI * (i + 0.5)) / Math.max(1, list.length)))}px`);
       keep.set(id, b);
@@ -463,6 +555,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     choices.replaceChildren(...nodes);
     // How many rows of two a phone needs; the stylesheet gives the list its height (and the page the rest) from this.
     sb.style.setProperty("--rows", String(Math.max(1, Math.ceil(list.length / 2))));
+    requestAnimationFrame(cueChoices);
     if (focusKey) (choices.querySelector(`[data-act="${CSS.escape(focusKey)}"]`) as HTMLElement | null)?.focus();
   }
 
@@ -511,7 +604,9 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     });
     const rest = slots.filter((s): s is { x: number; s: number } => !!s).sort((a, b) => b.s - a.s);
     stand.forEach((c, i) => place.set(c, { x: rest[i]?.x ?? 40 + i * 12, s: rest[i]?.s ?? 0.8, front: i === 0 }));
-    const key = JSON.stringify([phone, !!v.hex, shown.map((s) => [s.p.id, s.p.name, s.url, s.cameo, s.p.talkable, place.get(s)])]);
+    // Who the thread points at: their name scroll says so, since talking to them is on the scroll and not in the list.
+    const leads = new Set(menu.filter((m) => m.lead && m.key.startsWith("ask:")).map((m) => m.key.slice(4)));
+    const key = JSON.stringify([phone, !!v.hex, shown.map((s) => [s.p.id, s.p.name, s.url, s.cameo, s.p.talkable, place.get(s), leads.has(s.p.id)])]);
     if (key === seen.cast) return on;
     seen.cast = key;
     const back: HTMLElement[] = [], front: HTMLElement[] = [];
@@ -523,7 +618,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
         const fit = phone && s.p.name.length > 11 ? { label: s.p.name.split(/\s+/)[0]!, size: 15 } : fitScroll(s.p.name);
         const art = nameScroll(esc(fit.label), fit.size, s.p.talkable, `t${seedOf(s.p.id)}`);
         return s.p.talkable
-          ? `<button class="tag" data-talk="${esc(s.p.id)}" style="--x:${at.x}" aria-label="Talk to ${esc(s.p.name)}" title="Talk to ${esc(s.p.name)}, ${esc(s.p.role)}">${art}</button>`
+          ? `<button class="tag${leads.has(s.p.id) ? " lead" : ""}" data-talk="${esc(s.p.id)}" style="--x:${at.x}" aria-label="Talk to ${esc(s.p.name)}${leads.has(s.p.id) ? " (a lead)" : ""}" title="Talk to ${esc(s.p.name)}, ${esc(s.p.role)}${leads.has(s.p.id) ? ". The thread points at them: ask what they know, in the list." : ""}">${art}${leads.has(s.p.id) ? `<span class="ld" aria-hidden="true">lead</span>` : ""}</button>`
           : `<span class="tag mute" data-talk="${esc(s.p.id)}" style="--x:${at.x}" title="${esc(`${s.p.name}, ${s.p.role}`)}">${art}</span>`;
       })
       .join("");
@@ -650,6 +745,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
     renderJournal(v);
     tabJ.setAttribute("aria-pressed", String(ctx.journal.open));
     tabC.setAttribute("aria-pressed", String(ctx.classes.open));
+    tabC.hidden = !ctx.classes.available;
   }
 
   return {
@@ -676,6 +772,7 @@ export const storybook: ThemeFactory = (ctx: ThemeCtx): ThemeRenderer => {
       stopFrame();
       ro.disconnect();
       stageRo.disconnect();
+      cueRo.disconnect();
       sb.removeEventListener("click", onClick);
       sb.removeEventListener("pointerover", onOver);
       closeSlip();

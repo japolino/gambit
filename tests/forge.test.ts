@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { FEATURES } from "../src/shared/features.js";
 import { createPlay } from "../src/backend/play.js";
 import { fallbackFoes } from "../src/engine/card/foes.js";
 import { CLASSES } from "../src/engine/content/classes.js";
@@ -215,6 +216,9 @@ const sheet = {
 };
 
 describe("classes in play", () => {
+  // The class panel is switched off in the game (shared/features.ts); it is kept working, so it is tested switched on.
+  beforeAll(() => void (FEATURES.forge = true));
+  afterAll(() => void (FEATURES.forge = false));
   function setup() {
     const files = new Map<string, unknown>();
     const posted: string[] = [];

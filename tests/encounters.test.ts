@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { act, advance, createBattle, talkOptions } from "../src/engine/battle.js";
 import { chooseAction } from "../src/engine/ai.js";
 import { CLASSES } from "../src/engine/content/index.js";
-import { baseClassFor, encounterFrom, fallbackFoes, foeFromCast, monsterFromFoe, parseFoe, partyFromSheet, type SheetFoe } from "../src/engine/card/foes.js";
+import { baseClassFor, encounterFrom, fallbackFoes, foeFromCast, linkFoes, monsterFromFoe, parseFoe, partyFromSheet, type SheetFoe } from "../src/engine/card/foes.js";
 import type { BattleState } from "../src/engine/types.js";
 
 const ev = { source: "card" as const, quote: "", verified: false };
@@ -117,5 +117,36 @@ describe("combat Talk", () => {
     const s = battleOf([foe({ talks: false })]);
     const t = s.combatants.find((c) => c.side === "enemy" && c.alive)!;
     expect(() => act(s, { actor: s.active!, skill: "talk:bargain", targets: [t.id] })).toThrow();
+  });
+});
+
+describe("people from the card in fights", () => {
+  const cast = [{ id: "orla", name: "Sister Orla Venn" }, { id: "dov", name: "Dov" }];
+  const listed = [foe({ id: "imp", name: "Butcher Imp" }), foe({ id: "sister_orla", name: "Sister Orla Venn", role: "caster" }), foe({ id: "dov", name: "Old Dov", role: "boss", tier: 3 }), foe({ id: "hound", name: "Ash Hound", role: "boss", tier: 3 })];
+
+  test("a foe the card lists by a cast member's name is that person", () => {
+    const linked = linkFoes(listed, cast);
+    expect(linked.map((f) => f.castId)).toEqual([undefined, "orla", "dov", undefined]);
+  });
+
+  test("a fight nobody named is with strangers: someone from the card is never dealt in, as the lead or beside it", () => {
+    const linked = linkFoes(listed, cast);
+    for (let i = 0; i < 40; i++) {
+      const enc = encounterFrom(linked, { seed: `s${i}`, party: 3 })!;
+      expect(enc.foes.some((f) => f.foe.castId)).toBe(false);
+    }
+  });
+
+  test("naming them is how they fight; a friend is never the boss of a place, and a rival still can be", () => {
+    const linked = linkFoes(listed, cast);
+    expect(encounterFrom(linked, { seed: "a", lead: "orla", kin: true })!.foes[0]!.foe.castId).toBe("orla");
+    for (let i = 0; i < 20; i++) expect(encounterFrom(linked, { seed: `b${i}`, boss: true, friends: new Set(["dov"]) })!.foes[0]!.foe.id).toBe("hound");
+    const leads = new Set(Array.from({ length: 30 }, (_, i) => encounterFrom(linked, { seed: `c${i}`, boss: true })!.foes[0]!.foe.id));
+    expect(leads.has("dov")).toBe(true);
+  });
+
+  test("a card whose only foes are its people still has a fight", () => {
+    const only = linkFoes([foe({ id: "sister_orla", name: "Sister Orla Venn", role: "caster" })], cast);
+    expect(encounterFrom(only, { seed: "z" })!.foes[0]!.foe.castId).toBe("orla");
   });
 });

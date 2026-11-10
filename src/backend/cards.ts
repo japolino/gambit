@@ -14,7 +14,7 @@
  * the card, its lorebooks, or the persona.
  */
 import type { DecisionAnswer, DecisionQuestion, SpindleAPI, WorldBookEntryDTO } from "lumiverse-spindle-types";
-import { scenarioFromSheet } from "../engine/card/sizing.js";
+import { scenarioFromSheet, withPieces } from "../engine/card/sizing.js";
 import { DEMO_CARD, DEMO_LORE } from "../engine/content/saltgate-card.js";
 import type { CardSheet, CardSources, CastMember, ContestChip, ModuleId, SourceLore } from "../engine/card/types.js";
 import type { ContestKind, SocialStat } from "../engine/parley/types.js";
@@ -29,6 +29,7 @@ import {
   detectorState,
   fallbackFrame,
   fallbackSheet,
+  type FrameAsk,
   framePrompt,
   mergeEdits,
   parseFrame,
@@ -96,7 +97,7 @@ export interface PlaceHook {
   /** People the chat's world promoted (4.6): they can be talked to like the card's own cast. */
   extraCast?(userId: string, chatId: string): Promise<CardSheet["cast"]>;
   /** What someone already has with the player, the player's money and the story's thread: a talk starts from here. */
-  standing?(userId: string, chatId: string, castId: string): Promise<{ history: NonNullable<ParleyScenarioHistory>; purse: number; thread?: string } | null>;
+  standing?(userId: string, chatId: string, castId: string): Promise<{ history: NonNullable<ParleyScenarioHistory>; purse: number; thread?: string; found?: { id: string; text: string }[] } | null>;
 }
 const chatPath = (chatId: string) => `cards/chat/${encodeURIComponent(chatId)}.json`;
 const DEMO = "cards/demo.json";
@@ -641,7 +642,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     }
   }
 
-  async function frame(userId: string, sheet: CardSheet, lines: { name: string; content: string; isUser: boolean }[], castId: string, kind?: ContestKind, line?: string, carried?: { feel: string; remembers: string[]; thread?: string }) {
+  async function frame(userId: string, sheet: CardSheet, lines: { name: string; content: string; isUser: boolean }[], castId: string, kind?: ContestKind, line?: string, carried?: { feel: string; remembers: string[]; thread?: string; ask?: FrameAsk }) {
     const { system, user } = framePrompt(sheet, castId, lines, kind, line, carried);
     try {
       const res = await models.quiet(userId, roleForKind("frame"), {
@@ -653,11 +654,11 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
         signal: AbortSignal.timeout(FRAME_MS),
       });
       const raw = firstJson(stripThink(res));
-      if (raw) return parseFrame(raw, sheet, castId, kind);
+      if (raw) return parseFrame(raw, sheet, castId, kind, carried?.ask);
     } catch (err) {
       log(`framing failed (${errText(err).slice(0, 120)}); using the fallback`);
     }
-    return fallbackFrame(sheet, castId, lines, kind);
+    return fallbackFrame(sheet, castId, lines, kind, carried?.ask);
   }
 
   /**
@@ -889,7 +890,7 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
     },
 
     /** Start a Parley with someone in the cast (from the drawer or a chip). */
-    async talk(userId: string, chatId: string, castId: string, kind?: ContestKind, chipId?: string, firstLine?: string) {
+    async talk(userId: string, chatId: string, castId: string, kind?: ContestKind, chipId?: string, firstLine?: string, ask?: FrameAsk) {
       const chip = chipId ? chips.get(chipId) : undefined;
       const base = await sheetFor(userId, chatId);
       const extra = base && placeHook?.extraCast ? await placeHook.extraCast(userId, chatId).catch(() => []) : [];
@@ -899,10 +900,14 @@ export function createCards(spindle: SpindleAPI, send: Send, parleys: ParleysPor
       send({ type: "card.starting", chatId, castName: who.name }, userId);
       const lines = await recent(userId, chatId, 8);
       const standing = (await placeHook?.standing?.(userId, chatId, castId).catch(() => null)) ?? null;
-      const f = await frame(userId, sheet, lines, castId, chip?.kind ?? kind, firstLine, standing ? { feel: standing.history.feel, remembers: standing.history.remembers, ...(standing.thread ? { thread: standing.thread } : {}) } : undefined);
-      const scenario = scenarioFromSheet(sheet, f, chatId, `card:${chatId.slice(0, 8)}:${castId}:${Date.now().toString(36)}`, []);
-      if (!scenario) return send({ type: "parley.error", error: "Could not set that scene up.", chatId }, userId);
+      // Asked what they know of the thread: that question is the talk, whatever the chat was last about.
+      const carried = standing || ask ? { feel: standing?.history.feel ?? "", remembers: standing?.history.remembers ?? [], ...(standing?.thread ? { thread: standing.thread } : {}), ...(ask ? { ask } : {}) } : undefined;
+      const f = await frame(userId, sheet, lines, castId, chip?.kind ?? kind, firstLine, carried);
+      const framed = scenarioFromSheet(sheet, f, chatId, `card:${chatId.slice(0, 8)}:${castId}:${Date.now().toString(36)}`, []);
+      if (!framed) return send({ type: "parley.error", error: "Could not set that scene up.", chatId }, userId);
+      const scenario = withPieces(framed, standing?.found ?? []);
       scenario.story = storySoFar(lines);
+      if (ask?.piece && scenario.card) scenario.card.gives = ask.piece;
       if (standing) {
         scenario.history = standing.history;
         scenario.purse = standing.purse;

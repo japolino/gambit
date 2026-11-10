@@ -10,8 +10,6 @@
  *   storybook  vellum page in a mahogany cradle, gilt scallops, crimson scroll
  *   onebit     1-bit windows on a dot-matrix desktop, dithered art, 8x8 type
  *   lobby      obsidian glass with brass hairlines over the hall, gold leaf
- *   diorama    paper on an oak counter under a hanging lamp, a shop's price tag
- *   table      candle-lit walnut, green baize, chalk slate and woodcut cards
  *   command    EGA screen: blue chassis, black windows, double rules, scanlines
  *
  * Fonts are declared on the page by view.ts.
@@ -133,7 +131,9 @@ canvas.face:not([hidden]) { display: block; }
 .prose em { color: var(--p-em); }
 .pl:not([class*="th-"]) { ${speakerVars("#ecd3a0", "#9fd8c8", ["#8cc8f0", "#f2a1a1", "#b6de8c", "#cfaaf2", "#f5b26b", "#f08ab8"])} }
 .npc .prose { font-size: 16px; font-family: var(--p-prose); }
+.npc .prose.waiting { color: var(--p-dim); font-style: italic; }
 .npc .prose.waiting .dots { display: inline-block; animation: dots 1.2s steps(4) infinite; color: var(--p-dim); }
+.npc .prose.waiting .slow { display: block; margin-top: 4px; font-size: .82em; }
 @keyframes dots { 0% { opacity: .2; } 50% { opacity: 1; } 100% { opacity: .2; } }
 .you { align-self: flex-end; max-width: 88%; background: var(--p-bubble); border: 1px solid var(--p-edge); border-radius: var(--p-bubble-radius); padding: 8px 12px; }
 .you .speaker { text-align: right; color: var(--p-accent); }
@@ -162,13 +162,6 @@ canvas.face:not([hidden]) { display: block; }
 .foot { padding: 12px 20px 16px; border-top: 1px solid var(--p-rule); display: grid; gap: 8px; }
 .status { min-height: 1.2em; font-style: italic; color: var(--p-dim); font-size: 14px; }
 .hand { display: none; }
-.pl.table .hand { display: flex; justify-content: center; gap: 0; padding: 4px 0 2px; min-height: 0; flex-wrap: nowrap; overflow-x: auto; }
-.pl.table .fact-card { flex: 0 0 auto; width: 132px; min-height: 92px; margin: 0 -10px; padding: 10px 10px 8px; text-align: left; font: 12px/1.3 Georgia, serif; color: #2a1f14; background: linear-gradient(#f3e6c8, #e2cfa3); border: 1px solid #8a6d3f; border-radius: 8px; box-shadow: 0 6px 14px #0008; transform: rotate(var(--tilt, 0deg)) translateY(6px); transition: transform .15s ease, margin .15s ease; cursor: pointer; }
-.pl.table .fact-card:hover, .pl.table .fact-card:focus-visible { transform: rotate(0deg) translateY(-10px) scale(1.06); margin: 0 4px; z-index: 2; }
-.pl.table .fact-card.used { opacity: .45; }
-.pl.table .scene { background: radial-gradient(ellipse at 50% 110%, #6b3d16 0%, #2a170b 45%, #0c0805 75%); }
-.pl.table .scene::after { content: ""; position: absolute; left: -10%; right: -10%; bottom: -2%; height: 22%; background: linear-gradient(#5a3a1e, #2b1a0c); border-top: 3px solid #7a532c; border-radius: 50% 50% 0 0 / 30% 30% 0 0; box-shadow: 0 -30px 60px #ffb35a22 inset; pointer-events: none; }
-.pl.table .foot { background: linear-gradient(#1a110a, #120c07); }
 .composer { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .composer textarea { resize: none; background: var(--p-well); border: 1px solid var(--p-edge); border-radius: var(--p-radius); padding: 9px 12px; font-size: 16px; line-height: 1.35; }
 .composer textarea:focus { outline: none; border-color: var(--p-accent); }

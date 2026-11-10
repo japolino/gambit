@@ -16,7 +16,7 @@ A [Lumiverse](https://lumiverse.chat) extension.
 [![PixiJS](https://img.shields.io/badge/PixiJS-v8-e72264)](https://pixijs.com)
 [![three.js](https://img.shields.io/badge/three.js-r171-black?logo=threedotjs)](https://threejs.org)
 
-<img src="docs/media/table-battle.jpg" alt="A battle at the card table: two hooded foes across the table, the party's cards on a rack, skills fanned as cards, turn order chalked on a slate" width="100%">
+<img src="docs/media/storybook-battle.jpg" alt="A battle in the Storybook theme: the party under gilt arches, the foes across the page, skills as ribbons, turn order on a scroll" width="100%">
 
 </div>
 
@@ -27,19 +27,18 @@ You roleplay in Lumiverse the way you always do; underneath sits a real game. Ga
 - **Models judge, code decides.** Models design skills, read your arguments and draw the world. Every number comes from seeded dice and formulas in code, so nothing a model says can save you from a bad roll or cheat you out of a good one.
 - **Your words are a stat.** In a Parley (a talk, a haggle, a bluff) what you actually type is scored into a bounded dice modifier, and you see the roll.
 - **Real fights.** A turn-based timeline engine with focus, class resources, statuses, signature skills and full-screen cut-ins.
-- **Classes you shape.** Fuse two classes, or forge one from a sentence; every new signature skill gets its own illustrated cut-in.
+- **Classes from the card.** Each fighter's kit is read from the card, with a base class behind it; signature skills get their own illustrated cut-ins.
 - **Art that moves.** Portraits, figures, places and moments are generated per card and animated as puppets on the stage. The game never waits for art.
-- **Six interfaces.** Each scene theme is its own game interface, down to how a fight and a talk look.
+- **Four interfaces.** Each scene theme is its own game interface, down to how a fight and a talk look.
 
 ## Themes
 
-Every theme carries its look through the scene, the battle and the Parley. Table and Diorama are real three.js rooms, and their fights and talks happen inside them.
+Every theme carries its look through the scene, the battle and the Parley.
 
 | | |
 |:-:|:-:|
-| <img src="docs/media/diorama-battle.jpg" alt="Diorama battle: paper foes on oak bases on a lit shop counter"><br>**Diorama**: the fight on the shop counter | <img src="docs/media/storybook-battle.jpg" alt="Storybook battle: gilt arches for the party and a turn order of heraldic shields"><br>**Storybook**: a battle told on the book's pages |
-| <img src="docs/media/lobby-battle.jpg" alt="Lobby battle: ornate brass cards and engraved skill medallions"><br>**Lobby**: brass cards and skill medallions | <img src="docs/media/command-battle.jpg" alt="Command battle: a crawler fight on a CRT monitor"><br>**Command**: a crawler fight on the monitor |
-| <img src="docs/media/onebit-battle.jpg" alt="1-bit battle: a two-colour console with a WHAT NOW? command list"><br>**1-bit**: two colours, one grid | <img src="docs/media/table-parley.jpg" alt="Table Parley: facts held as cards, patience as candles"><br>**Table Parley**: facts in hand, patience as candles |
+| <img src="docs/media/storybook-battle.jpg" alt="Storybook battle: gilt arches for the party and a turn order of heraldic shields"><br>**Storybook**: a battle told on the book's pages | <img src="docs/media/lobby-battle.jpg" alt="Lobby battle: ornate brass cards and engraved skill medallions"><br>**Lobby**: brass cards and skill medallions |
+| <img src="docs/media/command-battle.jpg" alt="Command battle: a crawler fight on a CRT monitor"><br>**Command**: a crawler fight on the monitor | <img src="docs/media/onebit-battle.jpg" alt="1-bit battle: a two-colour console with a WHAT NOW? command list"><br>**1-bit**: two colours, one grid |
 | <img src="docs/media/storybook-parley.jpg" alt="Storybook Parley: a visual-novel talk with banners for fare and patience"><br>**Storybook Parley**: a visual-novel talk | <img src="docs/media/lobby-parley.jpg" alt="Lobby Parley: a brass balance for the deal"><br>**Lobby Parley**: the deal on a brass balance |
 
 *Screenshots use the preview's code-drawn stand-in art; in play, the art comes from your card.*
@@ -83,7 +82,7 @@ src/
   frontend/
     stage/     Pixi battle stage, cut-ins, effects, per-theme battle screens (stage/themes)
     parley/    the Parley view and per-theme Parley screens (parley/themes)
-    scene/     the scene screen and its six themes, two of them three.js rooms
+    scene/     the scene screen and its four themes
   shared/      protocol and types shared by both sides
 assets/        effect sheets and sounds, played by slot
 looks/         art-direction presets
